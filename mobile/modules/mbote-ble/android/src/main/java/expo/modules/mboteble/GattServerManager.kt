@@ -58,7 +58,11 @@ class GattServerManager(
 
     fun start(adapterManager: BluetoothManager): Boolean {
         return try {
-            server = adapterManager.openGattServer(appContext, callback)?.also { s ->
+            val s = adapterManager.openGattServer(appContext, callback)
+            if (s == null) {
+                log("GattServer: openGattServer a renvoyé null")
+                false
+            } else {
                 val service = BluetoothGattService(
                     UUID.fromString(MeshBle.SERVICE_UUID),
                     BluetoothGattService.SERVICE_TYPE_PRIMARY
@@ -87,11 +91,9 @@ class GattServerManager(
                 s.addService(service)
                 writeChar = w
                 notifyChar = n
+                server = s
                 log("GattServer: service publié")
                 true
-            } ?: run {
-                log("GattServer: openGattServer a renvoyé null")
-                false
             }
         } catch (t: Throwable) {
             log("GattServer: échec démarrage — ${t.message}")
@@ -110,7 +112,9 @@ class GattServerManager(
         for (frame in frames) {
             try {
                 if (Build.VERSION.SDK_INT >= 33) {
-                    if (s.notifyCharacteristicChanged(device, n, false, frame)) sent++
+                    // signature API 33 : valeur portée par l'appel, retour void
+                    s.notifyCharacteristicChanged(device, n, false, frame)
+                    sent++
                 } else {
                     @Suppress("DEPRECATION")
                     n.value = frame

@@ -1,9 +1,11 @@
 package expo.modules.mboteble
 
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
+import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Handler
@@ -37,7 +39,7 @@ class BleMeshEngine(
     private val mainHandler = Handler(Looper.getMainLooper())
     private var serverManager: GattServerManager? = null
     private var clientManager: GattClientManager? = null
-    private var advertiser: android.bluetooth.BluetoothLeAdvertiser? = null
+    private var advertiser: BluetoothLeAdvertiser? = null
     private var running = false
     private var stateEmitted = ""
 
@@ -165,7 +167,7 @@ class BleMeshEngine(
         }
     }
 
-    private fun startAdvertising(adapter: android.bluetooth.BluetoothAdapter): android.bluetooth.BluetoothLeAdvertiser? {
+    private fun startAdvertising(adapter: BluetoothAdapter): BluetoothLeAdvertiser? {
         val adv = adapter.bluetoothLeAdvertiser ?: run {
             log("Advertising : non supporté par la puce")
             return null

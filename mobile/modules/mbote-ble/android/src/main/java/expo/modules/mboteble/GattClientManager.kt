@@ -245,13 +245,13 @@ class GattClientManager(
             }
         }
 
+        @Deprecated("Android < 13 : la valeur est portée par characteristic.value", ReplaceWith("this.onCharacteristicChanged(gatt, characteristic, characteristic.value)"))
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            value: ByteArray?
+            characteristic: BluetoothGattCharacteristic
         ) {
             // Android < 33
-            val data = value ?: return
+            val data = characteristic.value ?: return
             if (!characteristic.uuid.toString().equals(MeshBle.CHAR_NOTIFY_UUID, ignoreCase = true)) return
             val addr = gatt.device?.address ?: return
             val rssi = connections[addr]?.rssi ?: MeshBle.RSSI_UNKNOWN

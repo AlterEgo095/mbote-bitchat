@@ -6,7 +6,6 @@ import android.util.Log
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import expo.modules.kotlin.permissions.PermissionStatus
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -51,7 +50,7 @@ class MboteBleModule : Module() {
             try {
                 engine.start { running ->
                     if (running) promise.resolve(mapOf("running" to true))
-                    else promise.reject("ERR_START", "moteur BLE non démarré (voir onStateChanged)")
+                    else promise.reject("ERR_START", "moteur BLE non démarré (voir onStateChanged)", null)
                 }
             } catch (t: Throwable) {
                 promise.reject("ERR_START", t.message ?: "échec démarrage", t)
@@ -91,24 +90,24 @@ class MboteBleModule : Module() {
     /**
      * Permissions runtime via l'API Permissions d'expo-modules-core
      * (plumbing ActivityResult géré par Expo).
+     * Signature Java : askForPermissions(listener, vararg permissions) —
+     * le listener vient AVANT le vararg.
      */
     private fun requestNativePermissions(onResult: (granted: Boolean, missing: List<String>) -> Unit) {
-        val required = BlePermissions.required().toTypedArray()
+        val required = BlePermissions.required()
         val manager = appContext.permissions
         if (manager == null) {
-            onResult(false, required.toList())
+            onResult(false, required)
             return
         }
         try {
-            manager.askForPermissions(*required) { result ->
-                val missing = result
-                    .filterValues { it != PermissionStatus.GRANTED }
-                    .keys.toList()
+            manager.askForPermissions({ _ ->
+                val missing = required.filter { !manager.hasGrantedPermissions(it) }
                 onResult(missing.isEmpty(), missing)
-            }
+            }, *required.toTypedArray())
         } catch (t: Throwable) {
             Log.e("MboteBLE", "askForPermissions a échoué", t)
-            onResult(false, required.toList())
+            onResult(false, required)
         }
     }
 }
