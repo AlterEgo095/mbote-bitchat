@@ -156,8 +156,10 @@ export async function POST(req: NextRequest) {
     if (senderKey === recipientKey) {
       return NextResponse.json({ error: "Autolivraison refusée" }, { status: 400 });
     }
-    if (ciphertext.length > 8192) {
-      return NextResponse.json({ error: "Enveloppe trop volumineuse (16 KiB max)" }, { status: 413 });
+    // F-44 : garde en OCTETS réels (base64 décodé) et non en caractères
+    const cipherBytes = Buffer.from(ciphertext, "base64");
+    if (cipherBytes.length > 8192) {
+      return NextResponse.json({ error: "Enveloppe trop volumineuse (8 KiB max)" }, { status: 413 });
     }
 
     const [sender, recipient] = await Promise.all([

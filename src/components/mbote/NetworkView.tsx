@@ -49,7 +49,10 @@ interface UserWithFollow extends UserPublic {
 /** Liste des identités avec annotation de suivi (on passe `me` ET on s'exclut soi-même). */
 async function fetchUsersWithFollow(mePub: string): Promise<UserWithFollow[]> {
   const q = new URLSearchParams({ me: mePub, exclude: mePub });
-  const res = await fetch(`/api/users?${q.toString()}`);
+  const res = await fetch(`/api/users?${q.toString()}`, {
+    // F-32 : garde-fou anti-fetch suspendu
+    signal: AbortSignal.timeout(15_000),
+  });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `HTTP ${res.status}`);

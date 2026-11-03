@@ -6,45 +6,53 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// F-21 : portes qualité réactivées. Seules dérogations assumées :
+// - react/prop-types : redondant avec la validation statique TypeScript ;
+// - no-console limité à warn/error (logs serveur légitimes dans les routes API) ;
+// - no-empty tolère les catch vides (pattern `.catch(() => ({}))` assumé).
 const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
   rules: {
-    // TypeScript rules
-    "@typescript-eslint/no-explicit-any": "off",
-    "@typescript-eslint/no-unused-vars": "off",
-    "@typescript-eslint/no-non-null-assertion": "off",
-    "@typescript-eslint/ban-ts-comment": "off",
-    "@typescript-eslint/prefer-as-const": "off",
-    "@typescript-eslint/no-unused-disable-directive": "off",
-    
-    // React rules
-    "react-hooks/exhaustive-deps": "off",
-    "react-hooks/purity": "off",
-    "react/no-unescaped-entities": "off",
-    "react/display-name": "off",
-    "react/prop-types": "off",
-    "react-compiler/react-compiler": "off",
-    
-    // Next.js rules
-    "@next/next/no-img-element": "off",
-    "@next/next/no-html-link-for-pages": "off",
-    
-    // General JavaScript rules
-    "prefer-const": "off",
-    "no-unused-vars": "off",
-    "no-console": "off",
-    "no-debugger": "off",
-    "no-empty": "off",
-    "no-irregular-whitespace": "off",
-    "no-case-declarations": "off",
-    "no-fallthrough": "off",
-    "no-mixed-spaces-and-tabs": "off",
-    "no-redeclare": "off",
-    "no-undef": "off",
-    "no-unreachable": "off",
-    "no-useless-escape": "off",
+    // TypeScript
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+    "@typescript-eslint/no-non-null-assertion": "error",
+    "@typescript-eslint/ban-ts-comment": "error",
+    "@typescript-eslint/prefer-as-const": "error",
+
+    // React
+    "react-hooks/exhaustive-deps": "error",
+    "react-hooks/purity": "error",
+    "react/no-unescaped-entities": "error",
+    "react/display-name": "error",
+    "react/prop-types": "off", // redondant avec TypeScript
+
+    // Next.js
+    "@next/next/no-img-element": "error",
+    "@next/next/no-html-link-for-pages": "error",
+
+    // JavaScript général
+    "prefer-const": "error",
+    "no-unused-vars": "off", // couvert par @typescript-eslint/no-unused-vars
+    "no-console": ["error", { allow: ["warn", "error"] }],
+    "no-debugger": "error",
+    "no-empty": ["error", { allowEmptyCatch: true }],
+    "no-irregular-whitespace": "error",
+    "no-case-declarations": "error",
+    "no-fallthrough": "error",
+    "no-mixed-spaces-and-tabs": "error",
+    "no-redeclare": "error",
+    "no-undef": "off", // couvert par TypeScript (no-dupe-keys etc.) en scope TS
+    "no-unreachable": "error",
+    "no-useless-escape": "error",
   },
 }, {
   ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "mobile/**"]
+}, {
+  // Outils (scripts, tests, mini-services) : les console.log sont des sorties légitimes
+  files: ["scripts/**", "tests/**", "mini-services/**"],
+  rules: {
+    "no-console": "off",
+  },
 }];
 
 export default eslintConfig;

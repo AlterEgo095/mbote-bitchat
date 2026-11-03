@@ -100,12 +100,13 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
     queryKey: ["dms", myPub, selectedPub],
     // F-07 : lecture authentifiée — preuve signée à chaque poll/refetch
     queryFn: async () => {
+      if (!selectedPub) throw new Error("destinataire manquant");
       const ts = Date.now();
       const signature = await signPayload(
         identity.signPriv,
-        dmReadProofMessage(myPub, selectedPub!, ts)
+        dmReadProofMessage(myPub, selectedPub, ts)
       );
-      return apiGetConversation(myPub, selectedPub!, { ts, signature });
+      return apiGetConversation(myPub, selectedPub, { ts, signature });
     },
     enabled: !!selectedPub,
     refetchInterval: canUseNetwork && selectedPub ? 20000 : false, // fallback : dm:new pousse en direct
@@ -304,7 +305,7 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                   Rien encore. Le bot est le premier contact idéal.
                 </p>
               ) : (
-                conversations.data!.conversations.map(({ peer: u, unread }) => (
+                (conversations.data?.conversations ?? []).map(({ peer: u, unread }) => (
                   <button
                     key={u.pubkey}
                     onClick={() => setSelectedPub(u.pubkey)}
@@ -385,7 +386,7 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                       onglet.
                     </p>
                   ) : (
-                    messages.data!.messages.map((m) => {
+                    (messages.data?.messages ?? []).map((m) => {
                       const mine = m.senderKey === myPub;
                       const body = peer.ecdhPub
                         ? (plain[m.id] ?? "…déchiffrement")

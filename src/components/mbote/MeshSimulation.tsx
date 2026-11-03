@@ -504,7 +504,7 @@ function pickNextHop(
     return dx * dx + dy * dy;
   };
 
-  let candidates: number[] = [];
+  const candidates: number[] = [];
   for (const nb of node.neighbors) {
     const n = sim.nodes[nb];
     if (n.kind === 'dead') continue;

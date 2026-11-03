@@ -32,11 +32,6 @@ export function getSocket(): Socket {
   return socket;
 }
 
-export function closeSocket(): void {
-  socket?.disconnect();
-  socket = null;
-}
-
 /** Événements diffusés par le relay */
 export interface RealtimePostPayload {
   post: {

@@ -15,6 +15,7 @@ services:
       - DATABASE_URL=file:/app/db/custom.db
       - NEXT_TELEMETRY_DISABLED=1
       - RELAY_EMIT_URL=http://relay:3031
+      - RELAY_EMIT_TOKEN=${RELAY_EMIT_TOKEN:-}
     volumes:
       - mbote-data:/app/db
     restart: unless-stopped
@@ -43,8 +44,11 @@ services:
     ports:
       - "127.0.0.1:3030:3030"
     # F-09 : origine autorisée par le relay (CORS), lue depuis le .env du VPS.
+    # F-51 : token /emit optionnel — définir RELAY_EMIT_TOKEN dans le .env VPS
+    # pour exiger l'en-tête x-emit-token sur l'endpoint interne d'émission.
     environment:
       - RELAY_ALLOWED_ORIGIN=${RELAY_ALLOWED_ORIGIN:-}
+      - RELAY_EMIT_TOKEN=${RELAY_EMIT_TOKEN:-}
     restart: unless-stopped
     healthcheck:
       test:

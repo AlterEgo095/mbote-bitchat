@@ -10,6 +10,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 name: Déploiement VPS
 
+permissions:
+  contents: read # F-50 : le déploiement n'a besoin d'aucune écriture sur le dépôt
+
 on:
   push:
     branches: [main]

@@ -37,6 +37,8 @@ export interface MeshMessage {
 
 const NICK_KEY = "mbote.nickname.v1";
 const BRIDGE_URL_KEY = "mbote.bridgeUrl.v1";
+// F-47 : le fil de messages survit au kill de l'app (AsyncStorage, plafond 200)
+const MESSAGES_KEY = "mbote.messages.v1";
 const MAX_MESSAGES = 200;
 const MAX_LOGS = 60;
 const MAX_DECISIONS = 30;
@@ -91,7 +93,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const appendMessage = useCallback((m: MeshMessage) => {
-    setMessages((prev) => [m, ...prev].slice(0, MAX_MESSAGES));
+    setMessages((prev) => {
+      const next = [m, ...prev].slice(0, MAX_MESSAGES);
+      // F-47 : persistance du transcript (fire-and-forget — jamais bloquant)
+      void AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(next)).catch(() => undefined);
+      return next;
+    });
   }, []);
 
   // ── câblage du transport (une fois) ──
@@ -129,10 +136,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const bundle = await loadOrCreateKeyBundle();
         const storedNick = await AsyncStorage.getItem(NICK_KEY);
         const storedUrl = await AsyncStorage.getItem(BRIDGE_URL_KEY);
+        // F-47 : le transcript persisté est restauré au démarrage (plafond 200)
+        const storedMessages = await AsyncStorage.getItem(MESSAGES_KEY);
+        let restoredMessages: MeshMessage[] = [];
+        if (storedMessages) {
+          try {
+            const parsed: unknown = JSON.parse(storedMessages);
+            if (Array.isArray(parsed)) {
+              restoredMessages = (parsed as MeshMessage[])
+                .filter((m) => m && typeof m.id === "string" && typeof m.content === "string")
+                .slice(0, MAX_MESSAGES);
+            }
+          } catch {
+            /* transcript illisible → démarrage à vide */
+          }
+        }
         if (cancelled) return;
         setIdentity(bundle);
         setNicknameState(storedNick || `mbote-${bundle.pubkey.slice(0, 4)}`);
         setBridgeUrlState(storedUrl || "");
+        if (restoredMessages.length > 0) {
+          setMessages(restoredMessages);
+          pushLog(`transcript restauré (${restoredMessages.length} message(s))`);
+        }
         pushLog("identité chargée (clés locales)");
         // F-05 : l'URL du pont persistée est réappliquée AU TRANSPORT avant le
         // démarrage — l'outbox et le downlink survivent au redémarrage de l'app.
@@ -237,6 +263,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.multiRemove([
         NICK_KEY,
         BRIDGE_URL_KEY,
+        MESSAGES_KEY, // F-47 : le transcript persisté fait partie du wipe
         "mbote.outbox.packets.v1", // repli AsyncStorage de l'outbox durable
       ]);
     } catch {

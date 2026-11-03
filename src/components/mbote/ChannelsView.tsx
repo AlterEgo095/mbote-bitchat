@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
-import { Loader2, MapPin, Plus, Users } from "lucide-react";
+import { MapPin, Plus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -114,62 +114,76 @@ export function ChannelsView({
         </Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {channels.data!.channels.map((ch) => (
-            <Card
-              key={`${ch.geohash}-${ch.precision}`}
-              className="group cursor-pointer transition-colors hover:border-primary/40"
-              onClick={() =>
-                onOpenChannel({
-                  geohash: ch.geohash,
-                  precision: ch.precision,
-                  label: labelFor(ch),
-                })
-              }
-            >
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{labelFor(ch)}</p>
-                    <p className="truncate font-mono text-[11px] text-muted-foreground">
-                      #{ch.geohash}
-                    </p>
+          {(channels.data?.channels ?? []).map((ch) => {
+            const open = () =>
+              onOpenChannel({
+                geohash: ch.geohash,
+                precision: ch.precision,
+                label: labelFor(ch),
+              });
+            return (
+              <Card
+                key={`${ch.geohash}-${ch.precision}`}
+                role="button"
+                tabIndex={0}
+                aria-label={`Ouvrir le canal ${labelFor(ch)} (#${ch.geohash})`}
+                className="group cursor-pointer transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                onClick={open}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    open();
+                  }
+                }}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{labelFor(ch)}</p>
+                      <p className="truncate font-mono text-[11px] text-muted-foreground">
+                        #{ch.geohash}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="shrink-0 border-primary/40 text-[10px] text-primary">
+                      {precisionLabel(ch.precision)}
+                    </Badge>
                   </div>
-                  <Badge variant="outline" className="shrink-0 border-primary/40 text-[10px] text-primary">
-                    {precisionLabel(ch.precision)}
-                  </Badge>
-                </div>
 
-                <div className="mt-3 flex items-center gap-3 text-[11px] text-muted-foreground">
-                  <span className="inline-flex items-center gap-1">
-                    <MapPin className="size-3" aria-hidden="true" />
-                    {precisionRadius(ch.precision)}
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <Users className="size-3" aria-hidden="true" />
-                    {ch.participantCount} voix
-                  </span>
-                </div>
+                  <div className="mt-3 flex items-center gap-3 text-[11px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin className="size-3" aria-hidden="true" />
+                      {precisionRadius(ch.precision)}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <Users className="size-3" aria-hidden="true" />
+                      {ch.participantCount} voix
+                    </span>
+                  </div>
 
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  <span className="text-[11px] text-muted-foreground">
-                    {ch.postCount} message{ch.postCount > 1 ? "s" : ""} · actif{" "}
-                    {formatDistanceToNow(new Date(ch.lastAt), {
-                      addSuffix: true,
-                      locale: fr,
-                    })}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="h-7 text-[11px]"
-                    tabIndex={-1}
-                  >
-                    Ouvrir
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-muted-foreground">
+                      {ch.postCount} message{ch.postCount > 1 ? "s" : ""} · actif{" "}
+                      {formatDistanceToNow(new Date(ch.lastAt), {
+                        addSuffix: true,
+                        locale: fr,
+                      })}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="h-7 text-[11px]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        open();
+                      }}
+                    >
+                      Ouvrir
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

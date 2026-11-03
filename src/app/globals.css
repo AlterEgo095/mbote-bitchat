@@ -138,3 +138,16 @@
     background: oklch(0.696 0.17 162.48 / 0.6);
   }
 }
+
+/* F-41 : respect de prefers-reduced-motion — la simulation mesh et les
+   transitions deviennent statiques pour les utilisateurs sensibles */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -83,9 +83,9 @@ export async function GET(req: NextRequest) {
 
     const conversations = peers
       .map((peer) => {
-        const entry = byPeer.get(peer)!;
+        const entry = byPeer.get(peer);
         const user = userByPub.get(peer);
-        if (!user) return null;
+        if (!entry || !user) return null;
         return {
           peer: toUserDto(user), // Vague 3 : champs publics uniquement (botPriv jamais exposé)
           last: {
@@ -100,10 +100,10 @@ export async function GET(req: NextRequest) {
           unread: entry.unread,
         };
       })
-      .filter(Boolean)
+      .filter((c): c is NonNullable<typeof c> => c != null)
       .sort((a, b) => {
-        const ta = new Date(a!.last!.createdAt).getTime();
-        const tb = new Date(b!.last!.createdAt).getTime();
+        const ta = new Date(a.last.createdAt).getTime();
+        const tb = new Date(b.last.createdAt).getTime();
         return tb - ta;
       });
 

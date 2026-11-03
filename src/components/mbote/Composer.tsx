@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Mail, MapPin, Send, X } from "lucide-react";
+import { Loader2, Mail, MapPin, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,12 +13,11 @@ interface ComposerProps {
   channelGeohash?: string | null;
   channelPrecision?: number | null;
   channelLabel?: string | null;
-  parentId?: string | null;
   forceOffline: boolean;
   submitting: boolean;
-  placeholder?: string;
+  /** texte initial (partage PWA share_target, brouillon) — monté une seule fois */
+  initialText?: string;
   onSubmit: (content: string) => Promise<void>;
-  onCancel?: () => void;
 }
 
 export function Composer({
@@ -26,14 +25,12 @@ export function Composer({
   channelGeohash,
   channelPrecision,
   channelLabel,
-  parentId,
   forceOffline,
   submitting,
-  placeholder,
+  initialText,
   onSubmit,
-  onCancel,
 }: ComposerProps) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText ?? "");
   const remaining = MAX_POST_LENGTH - text.length;
   const valid = text.trim().length > 0 && remaining >= 0;
 
@@ -54,9 +51,9 @@ export function Composer({
       className={`rounded-xl border bg-card p-4 ${
         forceOffline && canPost ? "border-amber-500/40" : "border-border"
       }`}
-      aria-label={parentId ? "Composer une réponse" : "Composer une publication"}
+      aria-label="Composer une publication"
     >
-      {channelGeohash && !parentId && (
+      {channelGeohash && (
         <div className="mb-2.5 flex flex-wrap items-center gap-2">
           <Badge
             variant="outline"
@@ -82,14 +79,11 @@ export function Composer({
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void submit();
           }}
           placeholder={
-            placeholder ??
-            (parentId
-              ? "Ta réponse…"
-              : channelGeohash
-                ? `Écris dans le canal ${channelGeohash}…`
-                : "Quoi de neuf ? Ton message sera signé sur ton appareil…")
+            channelGeohash
+              ? `Écris dans le canal ${channelGeohash}…`
+              : "Quoi de neuf ? Ton message sera signé sur ton appareil…"
           }
-          rows={parentId ? 2 : 3}
+          rows={3}
           maxLength={MAX_POST_LENGTH}
           disabled={!canPost}
           className="min-h-[64px] resize-none text-sm"
@@ -119,12 +113,6 @@ export function Composer({
           >
             {remaining}
           </span>
-          {onCancel && (
-            <Button variant="ghost" size="sm" onClick={onCancel} className="h-9">
-              <X className="size-4" aria-hidden="true" />
-              Annuler
-            </Button>
-          )}
           <Button onClick={submit} disabled={!canPost || !valid || submitting} className="h-9">
             {submitting ? (
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -133,7 +121,7 @@ export function Composer({
             ) : (
               <Send className="size-4" aria-hidden="true" />
             )}
-            {forceOffline && canPost ? "Mettre en file" : parentId ? "Répondre" : "Publier"}
+            {forceOffline && canPost ? "Mettre en file" : "Publier"}
           </Button>
         </div>
       </div>

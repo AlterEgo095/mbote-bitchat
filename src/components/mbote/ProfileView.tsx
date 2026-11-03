@@ -10,10 +10,8 @@ import {
   Flame,
   Loader2,
   PenLine,
-  Users,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -228,7 +226,7 @@ export function ProfileView({
           </Card>
         ) : (
           <div className="space-y-3">
-            {myPosts.data!.posts.map((p) => (
+            {(myPosts.data?.posts ?? []).map((p) => (
               <PostCard
                 key={p.id}
                 post={p}

@@ -316,9 +316,12 @@ export class FragmentAssembler {
     const index = chunk[2];
     const total = chunk[3];
     this.totals.set(fragId, total);
-    if (!this.parts.has(fragId)) this.parts.set(fragId, new Map());
-    this.parts.get(fragId)!.set(index, chunk.slice(4));
-    const bag = this.parts.get(fragId)!;
+    let bag = this.parts.get(fragId);
+    if (!bag) {
+      bag = new Map();
+      this.parts.set(fragId, bag);
+    }
+    bag.set(index, chunk.slice(4));
     if (bag.size < total) return null;
     const merged = new Uint8Array(
       [...bag.values()].reduce((acc, b) => acc + b.length, 0)

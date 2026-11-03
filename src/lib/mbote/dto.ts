@@ -21,7 +21,6 @@ export interface PostLikeRow {
     pubkey: string;
     nickname: string;
     bio: string | null;
-    avatarSeed: string | null;
     ecdhPub: string | null;
     isBot: boolean;
     createdAt: Date;
@@ -59,7 +58,6 @@ export interface UserPrivateRow {
   pubkey: string;
   nickname: string;
   bio: string | null;
-  avatarSeed: string | null;
   ecdhPub: string | null;
   isBot: boolean;
   createdAt: Date;
@@ -72,7 +70,6 @@ export function toUserDto(u: UserPrivateRow) {
     pubkey: u.pubkey,
     nickname: u.nickname,
     bio: u.bio,
-    avatarSeed: u.avatarSeed,
     ecdhPub: u.ecdhPub,
     isBot: u.isBot,
     createdAt: u.createdAt,

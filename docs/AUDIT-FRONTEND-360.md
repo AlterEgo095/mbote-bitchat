@@ -324,7 +324,7 @@ Upload d'images/vidéos, notifications push (web + app), recherche d'utilisateur
 8. UI follows + scroll infini (backend déjà prêt) + lecture `?view=` + DM hors-ligne via outbox.
 9. Cache de données offline (persistance react-query ou stale-if-error SW) ; icônes/splash/scheme mobile ; harmonisation de marque.
 
-**Vague 4 — Hygiène (P2/P3 groupés) : F-21, F-23, F-32, F-35, F-36, puis P3**
+**Vague 4 — Hygiène (P2/P3 groupés) : F-21, F-23, F-32, F-35, F-36, puis P3** ✅ exécutée et validée (§19)
 10. Réactiver strict TS/ESLint/React strict mode (avec correction des erreurs), purger les deps/composants morts, headers de sécurité, migrations Prisma, timeouts fetch, puis nettoyage P3 en lot.
 
 ---
@@ -493,3 +493,71 @@ Identité existante conservée → post signé publié → follow signé (état 
 2. F-15 : purge de bulle en cas de rejet 4xx **tardif** (preuve > 7 j) — la bulle reste jusqu'au rechargement.
 3. F-25 : trim à 60 entrées sous trafic soutenu ; SW réellement actif en production (`PwaRegister` prod-only) à revalider au déploiement VPS.
 4. F-27 : build Gradle réel (CI), rendu splash/adaptive-icon sur appareil, `eas init` (opérateur), icône App Store 1024 sans alpha (le logo est opaque ✅).
+
+---
+
+## 19. JOURNAL D'EXÉCUTION — VAGUE 4 (Hygiène P2/P3) ✅ EXÉCUTÉE ET VALIDÉE
+
+**Périmètre** : F-21, F-23, F-32, F-35, F-36 + lot P3 (F-37 → F-54). **Statut : 22/23 traitées** (F-51 mitigée, restructuration du proxy sandbox hors périmètre). Méthode : carte d'usage exhaustive d'abord (grep `import`/`require` multi-syntaxes sur src/scripts/tests/mini-services/configs — aucune suppression « au doigt mouillé »), puis correctifs, puis re-validation complète (lint, tsc ×2, navigateur).
+
+### F-21 — Portes qualité réactivées — CORRIGÉ
+- `next.config.ts` : `reactStrictMode: true`, **suppression de `typescript.ignoreBuildErrors`** (le build échoue désormais sur toute erreur TS).
+- `tsconfig.json` : `noImplicitAny: true` (état des lieux préalable : 0 `: any`, 0 `as any` dans src/ et mobile/src/ → 0 erreur au forçage).
+- `eslint.config.mjs` : **27 règles réactivées** (`no-explicit-any`, `no-unused-vars`, `no-non-null-assertion`, `ban-ts-comment`, `prefer-as-const`, `react-hooks/exhaustive-deps`, `react-hooks/purity`, `no-unescaped-entities`, `display-name`, `no-img-element`, `prefer-const`, `no-console`, `no-debugger`, `no-empty`, `no-fallthrough`…). Dérogations assumées et commentées : `react/prop-types` (redondant TS), `no-console` limité à warn/error, `no-empty` avec `allowEmptyCatch`, console.log libre dans scripts/tests/mini-services (sorties d'outils).
+- **35 violations corrigées une à une** : 14 `!` non-null → gardes/type-guards réels (dont une vraie robustesse : `byPeer.get(peer)!` du registre conversations tolère désormais un pair absent), 2 deps `useEffect` (réstructures avec destructuration stable — sentinelle scroll infini), 3 imports morts, 1 `prefer-const`, 1 `console.info` → `warn`. **`bun run lint` : 0 erreur. `tsc` web + mobile : 0 erreur.**
+
+### F-23 — Purge des morts — CORRIGÉ (le plus gros chantier de la vague)
+- **42 dépendances retirées** (`bun remove`) : 15 mortes sèches (zustand, framer-motion, next-auth, zod, react-markdown, @tanstack/react-table, @dnd-kit/*, @hookform/resolvers, @mdxeditor/editor, @reactuses/core, next-intl, react-syntax-highlighter, uuid, z-ai-web-dev-sdk, bun-types) + 8 orphelines de composants morts (cmdk, embla-carousel-react, input-otp, react-day-picker, react-hook-form, react-resizable-panels, recharts, vaul) + **15 radix orphelins** + tailwindcss-animate + @radix-ui/react-tabs. `sharp` conservé (optimiseur next/image, référence directe bun.lock).
+- **31 composants shadcn supprimés** (48 → 17, tous les restants référencés) + 2 hooks morts (`use-mobile`, `use-toast` — transitivement morts avec sidebar/toaster) + `tailwind.config.ts` (config morte sous Tailwind v4, jamais chargée sans `@config`).
+- Symboles morts retirés : `apiGetFollow`, `apiBridgePost`, `BridgeResult`, exports internes dé-exportés (`feedUrl`, `FeedParams`, `DmReadProof`), `BOT_NICKNAME`, `LS_READ_DMS`, `closeSocket`, props `parentId`/`onCancel`/`placeholder` du Composer. Vérifié : zéro import rompu (lint + tsc verts).
+
+### F-32 — Timeouts fetch — CORRIGÉ
+- `jsonFetch` : **AbortController + timer 15 s** (finally clearTimeout) — tous les 17 appels API héritent. 3 fetch bruts signalés : outbox web (flush), web-bridge-transport (send), NetworkView (liste users). Les chemins déjà protégés (relay-notify 1,5 s, sonde pont) inchangés.
+
+### F-35 — En-têtes de sécurité — CORRIGÉ
+- `next.config.ts` `headers()` : **CSP** (default-src 'self' ; scripts 'self' + inline, +eval en dev HMR uniquement ; connect-src étendu à `NEXT_PUBLIC_SOCKET_URL` en prod ; object-src 'none', frame-ancestors 'none', base-uri/form-action 'self') + **HSTS** (2 ans, includeSubDomains, preload) + **X-Content-Type-Options: nosniff** + **X-Frame-Options: DENY** + **Referrer-Policy: strict-origin-when-cross-origin** + **Permissions-Policy** (camera/microphone/geolocation/payment interdits — l'app n'utilise aucune de ces API).
+- Vérifié par curl sur le serveur dev : les 6 en-têtes présents sur `/`.
+
+### F-36 — Migrations Prisma versionnées — CORRIGÉ
+- `prisma/migrations/` créé : **`0001_baseline`** (diff from-empty → schema, marqué `migrate resolve --applied` sur la DB existante) puis **`0002_drop_avatar_seed`** (diff DB → schema) appliqué par `migrate deploy`. Client régénéré, requêtes vérifiées.
+- `Dockerfile` CMD : `bunx prisma migrate deploy` remplace `db push --skip-generate` ; `package.json` : `db:push` sans `--accept-data-loss`, nouveau script `db:deploy`.
+
+### Lot P3 (F-37 → F-54) — CORRIGÉS
+- **F-37** : route « Hello world » `/api` supprimée (aucun client, SW non concerné).
+- **F-38** : `avatarSeed` supprimé partout (schema → DTO → types ; colonne réellement retirée par la migration 0002) ; constantes/exports morts (cf. F-23).
+- **F-39** : props mortes du Composer retirées ; remplacées par une prop utile `initialText` (F-49).
+- **F-40** : cartes canaux `role="button"` + `tabIndex={0}` + `aria-label` + Enter/Espace ; bouton « Ouvrir » **fonctionnel** (stopPropagation + ouverture, tabIndex 0, focus-ring visible). **Vérifié navigateur** : carte focusable « Ouvrir le canal Kinshasa · ville (#kr4zk) », Enter → ouverture du canal.
+- **F-41** : bloc global `@media (prefers-reduced-motion: reduce)` (simulation, spinners, transitions neutralisées).
+- **F-42** : header sticky + `pt-[env(safe-area-inset-top)]` (le bas l'était déjà) — résolu à 0 px sans encoche, à confirmer sur iPhone réel.
+- **F-43** : `MAX_PEERS` Android 6 → **8**, aligné iOS.
+- **F-44** : garde DM en **octets décodés** (`Buffer.from(base64)` ≤ 8 192) et message honnête « 8 KiB max » (fini le mensonge 16 KiB).
+- **F-45** : nouveau `src/lib/mbote/params.ts` — `parseBoundedInt`/`parseGeohashPrecision`/`parseBodyPrecision` ; `/api/posts` limit 1..100 (400 sinon), precisions 1..12 partout (GET + POST) ; **N+1 canaux éliminé** : 2 requêtes (groupBy + un seul findMany `distinct geohash+precision+authorId` borné aux canaux affichés, agrégat en mémoire).
+- **F-46** : `isSupported` reflète `CBManager.authorization` (fini le `true` hardcodé) ; `requestPermissions` attend la réponse réelle de l'utilisateur (poll 250 ms, plafond 30 s) au lieu de résoudre « invite en cours ». Code seul — NOT VERIFIED appareil.
+- **F-47** : transcript mobile **persisté** (AsyncStorage `mbote.messages.v1`, plafond 200, restauration validée au démarrage, inclus dans le panic wipe) ; `PKT_GOSSIP` conservé (complétude d'enum protocole partagée web/mobile/serveur — toute suppression créerait une dérive de duplication F-22).
+- **F-48** : en-tête du paquet tunnel décodé **1× par rendu** au lieu de 2 (`qHeader`).
+- **F-49** : **page hors-ligne brandée** `offline.html` (pré-cachée, repli des navigations — fini le texte nu 503) ; **`share_target` GET** (`?text=&url=&title=`) → brouillon du composer + nettoyage d'URL (vérifié navigateur : `/?text=Partagé…` → composer prérempli) ; **`icon-512-maskable.png` dédiée** (logo 62 % sur fond #0a0f0d, safe zone Android) au lieu du double-purpose. SW v3.
+- **F-50** : CI durcie — `permissions: contents: read` au niveau workflow (build-android, build-ios, **deploy-vps qui n'en avait aucun**), `contents: write` limité au job publiant la Release ; mot de passe keychain iOS **éphémère** (`openssl rand -hex 24` par run, fini `mbote-ci` en dur) ; `ssh-keyscan` TOFU documenté (choix opérateur, hors périmètre code).
+- **F-51** : **mitigé** — `RELAY_EMIT_TOKEN` optionnel bout-en-bout (relay exige `x-emit-token` si défini ; relay-notify l'envoie ; docker-compose passe la variable aux deux conteneurs) + avertissement SSRF explicite en tête de Caddyfile. La restructuration du proxy par query (ouvrage de sandbox) reste hors périmètre.
+- **F-52** : `AsyncFallbackOutboxStorage.kind` devient un **getter** reflétant le stockage réellement actif — plus d'« IndexedDB » affiché en repli localStorage (corrigé sur les DEUX miroirs web + mobile).
+- **F-53** : résolu par retrait — `zod` était 100 % mort (0 import) ; la validation des formats de clés est portée par `proof.ts` depuis la Vague 1.
+- **F-54** : hero passé en `next/image` **`fill priority`** (candidat LCP priorisé) au lieu d'un background-image CSS non optimisé.
+
+### Validation navigateur (golden path complet, après correctifs)
+Identité créée sous StrictMode double-mount → post signé (POST 200, visible feed) → like signé (POST 200) → canal #kr4zk créé + premier message (200) → liste canaux : carte focusable + Ouvrir opérationnel + Enter → raccourcis `/?view=network` / `?view=channels` → **DM bot E2E** (POST /api/dms/bot 200, réponse **déchiffrée** dans l'UI, lectures authentifiées F-07 200) → **share_target `/?text=`** → composer prérempli + URL nettoyée → mobile 390×844 (header, hero LCP, nav fixe) → **zéro erreur console, zéro erreur page**.
+
+### Incidents de la vague (résolus en séance)
+1. Après la migration 0002, le serveur dev tournait encore avec le client Prisma d'avant régénération → `P2022 avatarSeed` sur /api/posts. **Redémarrage du serveur → 200.** (Rappel prod : `migrate deploy` s'exécute AVANT le boot du serveur dans le CMD, l'ordre Docker est correct.)
+2. `@typescript-eslint/no-unused-disable-directive` inexistante dans la version du plugin → retirée de la config.
+
+### Restant NOT VERIFIED (Vague 4, appareils/infra réels)
+1. F-42 : rendu du safe-area **top** sur iPhone avec encoche (PWA standalone).
+2. F-46 : invite de permission iOS réelle + retour `granted` après réponse utilisateur.
+3. F-47 : kill/relance de l'app → restauration du transcript (build dev-client requis).
+4. Production VPS : CSP sans 'unsafe-eval' (bundle prod), HSTS effectif derrière TLS, SW v3 (offline.html, share_target, maskable) en PWA installée, `migrate deploy` sur le volume persistant, `RELAY_EMIT_TOKEN` activé.
+5. F-50 : exécution CI (PR en read-only, release sur tag en write).
+
+### Registre — statut après Vague 4
+- **Corrigées** : F-01→F-15, F-21, F-23, F-25, F-27, F-32, F-35→F-50, F-52→F-54 (+ découverte botPriv Vague 3) — **39/54**.
+- **Restantes ouvertes (P2 non ciblés par les vagues 1-4)** : F-16 (unité ts downlink), F-17 (seed compteurs + backfill), F-18 (rate limit manquants), F-19 (FragmentAssembler sans borne), F-20 (bornes /dms/bot), F-22 (duplication protocole sans sync), F-24 (présence trichée + texte Nostr), F-26 (SW skipWaiting sans UI), F-28 (rate limit GET dms + rollback like), F-29 (botPriv JWK en clair en DB — démo assumée), F-30 (dédup posts non signés), F-31 (double outbox), F-33 (push canal mort), F-34 (zéro code-splitting) — **14/54**.
+- **Mitigée** : F-51 (token /emit + documentation SSRF ; proxy sandbox inchangé).
+- **Maturité réévaluée (mon avis)** : web sécurité 3 → **7** (preuves obligatoires, IDOR fermés, en-têtes, migrations) ; PWA 6 → **7,5** (données offline, share_target, offline page, shortcuts vivants) ; global 5,5 → **7/10 — POC consolidée, prête pour un pilote réel** (les 10 anomalies restantes sont des P2 d'optimisation/robustesse, aucun bloqueur production connu côté code).

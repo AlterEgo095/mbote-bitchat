@@ -13,7 +13,6 @@ model User {
   pubkey     String   @unique // empreinte publique (ECDSA P-256, base64url) = identité stable
   nickname   String
   bio        String?
-  avatarSeed String?
   ecdhPub    String? // clé publique ECDH P-256 (base64url) pour le chiffrement des DM
   isBot      Boolean  @default(false)
   botPriv    String? // JWK privée — UNIQUEMENT pour le bot de démonstration

@@ -34,8 +34,8 @@ object MeshBle {
 
     /** MTU plancher quasi universel sur les piles BLE iOS/Android modernes */
     const val DEFAULT_MTU = 185
-    /** Plafond de connexions GATT simultanées par rôle (stabilité radio) */
-    const val MAX_PEERS = 6
+    /** Plafond de connexions GATT simultanées par rôle — aligné iOS (F-43 : 6 ≠ 8) */
+    const val MAX_PEERS = 8
 
     /** Taille utile d'une valeur GATT pour un MTU donné (opcode ATT = 3 octets) */
     fun valueCap(mtu: Int): Int = (mtu - 3).coerceAtLeast(20)

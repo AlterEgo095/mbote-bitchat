@@ -226,7 +226,7 @@ export function PostCard({
                 </p>
               ) : (
                 <ul className="max-h-96 space-y-2 overflow-y-auto scrollbar-thin">
-                  {replies.data!.posts.map((r) => (
+                  {(replies.data?.posts ?? []).map((r) => (
                     <li key={r.id} className="flex items-start gap-2">
                       <CornerDownRight
                         className="mt-1 size-3.5 shrink-0 text-muted-foreground"

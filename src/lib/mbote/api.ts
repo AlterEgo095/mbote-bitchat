@@ -8,16 +8,29 @@ import type {
   UserPublic,
 } from "./types";
 
-async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+/** Délai par défaut des appels API (F-32) — abort propre au lieu d'un fetch suspendu */
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+async function jsonFetch<T>(url: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(
+    () => ctrl.abort(new Error(`Délai dépassé (${(timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000} s)`)),
+    timeoutMs ?? DEFAULT_TIMEOUT_MS
+  );
+  try {
+    const res = await fetch(url, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+    }
+    return res.json() as Promise<T>;
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json() as Promise<T>;
 }
 
 // ---------- identité ----------
@@ -51,7 +64,7 @@ export function apiListUsers() {
 
 export type FeedScope = "global" | "channel" | "user" | "replies" | "following";
 
-export interface FeedParams {
+interface FeedParams {
   scope: FeedScope;
   geohash?: string;
   precision?: number;
@@ -63,7 +76,7 @@ export interface FeedParams {
   before?: string;
 }
 
-export function feedUrl(p: FeedParams): string {
+function feedUrl(p: FeedParams): string {
   const q = new URLSearchParams({ scope: p.scope });
   if (p.geohash) q.set("geohash", p.geohash);
   if (p.precision != null) q.set("precision", String(p.precision));
@@ -124,16 +137,10 @@ export function apiSetFollow(payload: {
   });
 }
 
-export function apiGetFollow(followerPub: string, targetPub: string) {
-  return jsonFetch<{ following: boolean }>(
-    `/api/follows?followerPub=${encodeURIComponent(followerPub)}&targetPub=${encodeURIComponent(targetPub)}`
-  );
-}
-
 // ---------- DMs ----------
 
 /** F-07 : preuve de possession requise pour TOUTE lecture de boîte DM. */
-export interface DmReadProof {
+interface DmReadProof {
   /** horodatage de la signature (ms) — fenêtre courte côté serveur */
   ts: number;
   /** signature ECDSA sur `${me}|dm-read|${peer ou *}|${ts}` */
@@ -195,23 +202,6 @@ export function apiFetchStats() {
 }
 
 // ---------- passerelle BitChat (mesh ↔ VPS) ----------
-
-export interface BridgeResult {
-  received: number;
-  accepted: number;
-  duplicates: number;
-  invalid: number;
-  results: { hash: string; status: string; detail?: string }[];
-  posts: PostWithMeta[];
-}
-
-/** Dépose les paquets mesh (base64) comme le fait une passerelle native */
-export function apiBridgePost(payload: { gatewayId: string; label?: string; packets: string[] }) {
-  return jsonFetch<BridgeResult>("/api/mesh/bridge", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
 
 export interface BridgeDownlink {
   since: string;

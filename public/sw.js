@@ -13,7 +13,7 @@
  *  - socket.io (/socket.io, engine.io) : jamais intercepté (temps réel)
  */
 
-const VERSION = "mbote-v2"; // v2 : ajout du cache API (F-25) → force la réactivation
+const VERSION = "mbote-v3"; // v3 : page hors-ligne brandée (F-49) → force la réactivation
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
@@ -22,7 +22,9 @@ const SHELL_ASSETS = [
   "/manifest.webmanifest",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
+  "/icons/icon-512-maskable.png",
   "/icons/apple-touch-icon.png",
+  "/offline.html",
 ];
 
 // ---------------------------------------------------------------------------
@@ -148,7 +150,10 @@ self.addEventListener("fetch", (event) => {
           return res;
         })
         .catch(() =>
-          caches.match("/").then((cached) => cached ?? new Response("Hors ligne", { status: 503 }))
+          // F-49 : repli sur la page hors-ligne brandée (au lieu du texte nu 503)
+          caches
+            .match("/offline.html")
+            .then((fallback) => fallback ?? new Response("Hors ligne", { status: 503 }))
         )
     );
     return;

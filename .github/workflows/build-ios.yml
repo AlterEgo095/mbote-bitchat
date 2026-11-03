@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read # F-50 : lecture seule au niveau workflow — PR sans jeton d'écriture
 
 concurrency:
   group: ios-${{ github.ref }}
@@ -26,6 +26,8 @@ concurrency:
 
 jobs:
   build:
+    permissions:
+      contents: write # requis pour publier l'artefact/release sur tag v*.*.*
     name: Build iOS
     runs-on: macos-latest
     steps:
@@ -104,12 +106,14 @@ jobs:
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
           KEYCHAIN="$RUNNER_TEMP/mbote.keychain-db"
-          security create-keychain -p mbote-ci "$KEYCHAIN"
+          # F-50 : mot de passe keychain éphémère (unique à ce run, jamais en dur)
+          KC_PASS="$(openssl rand -hex 24)"
+          security create-keychain -p "$KC_PASS" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
-          security unlock-keychain -p mbote-ci "$KEYCHAIN"
+          security unlock-keychain -p "$KC_PASS" "$KEYCHAIN"
           echo "$CERT_B64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASS" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k mbote-ci "$KEYCHAIN" > /dev/null
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PASS" "$KEYCHAIN" > /dev/null
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           echo "$PROFILE_B64" | base64 --decode > "$HOME/Library/MobileDevice/Provisioning Profiles/mbote.mobileprovision"
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' /dev/stdin <<< \

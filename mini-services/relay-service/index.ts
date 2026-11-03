@@ -31,6 +31,9 @@ import { Server, type Socket } from "socket.io";
 
 const RELAY_PORT = 3030; // public (navigateurs) — NE PAS changer le path, géré par Caddy
 const EMIT_PORT = 3031; // interne (routes API Next.js → notifications)
+// F-51 : token optionnel pour /emit — RELAY_EMIT_TOKEN défini = exigé (header
+// x-emit-token) ; vide (défaut sandbox) = contrôle désactivé (réseau Docker interne).
+const EMIT_TOKEN = process.env.RELAY_EMIT_TOKEN ?? "";
 
 // ───────────────────────── F-08 : vérification autonome ─────────────────────────
 // Miroir minimal de src/lib/mbote/proof.ts (le relay est un contexte Docker
@@ -139,8 +142,12 @@ function broadcastPresence(): void {
 
 function attachPresence(socket: Socket, pubkey: string | null): void {
   if (!pubkey || typeof pubkey !== "string" || pubkey.length < 8) return;
-  if (!onlineKeys.has(pubkey)) onlineKeys.set(pubkey, new Set());
-  onlineKeys.get(pubkey)!.add(socket.id);
+  let sockets = onlineKeys.get(pubkey);
+  if (!sockets) {
+    sockets = new Set();
+    onlineKeys.set(pubkey, sockets);
+  }
+  sockets.add(socket.id);
   broadcastPresence();
 }
 
@@ -227,6 +234,9 @@ Bun.serve({
     }
 
     if (req.method === "POST" && url.pathname === "/emit") {
+      if (EMIT_TOKEN && req.headers.get("x-emit-token") !== EMIT_TOKEN) {
+        return Response.json({ error: "token requis" }, { status: 401 });
+      }
       return req
         .json()
         .then(

@@ -92,6 +92,8 @@ export class WebBridgeTransport implements Transport {
         label: "passerelle navigateur (DORS)",
         packets: [bytesToBase64(raw)],
       }),
+      // F-32 : timeout — un paquet ne doit jamais rester suspendu
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`pont HTTP ${res.status}`);
     const json = (await res.json()) as { results?: { status: string; detail?: string }[] };

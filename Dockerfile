@@ -2,7 +2,7 @@
 # ============================================================
 # Mbote Mesh — image unique, déployable sur n'importe quel VPS
 # Build : bun (deps + next build en mode standalone)
-# Run   : bun + prisma db push automatique au démarrage
+# Run   : bun + prisma migrate deploy (F-36) au démarrage
 # ============================================================
 
 FROM oven/bun:1 AS builder
@@ -36,7 +36,7 @@ ENV NODE_ENV=production \
 
 # sortie standalone (serveur + modules tracés + static + public)
 COPY --from=builder /app/.next/standalone ./
-# CLI + client Prisma pour le `db push` au démarrage
+# CLI + client Prisma pour les migrations au démarrage
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 
@@ -45,5 +45,6 @@ VOLUME ["/app/db"]
 
 EXPOSE 3000
 
-# schéma synchronisé, puis serveur Next standalone
-CMD ["sh", "-c", "bunx prisma db push --skip-generate && exec bun .next/standalone/server.js"]
+# F-36 : migrations versionnées (jamais db push --accept-data-loss en prod),
+# puis serveur Next standalone
+CMD ["sh", "-c", "bunx prisma migrate deploy && exec bun .next/standalone/server.js"]

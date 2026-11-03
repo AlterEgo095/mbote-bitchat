@@ -16,10 +16,8 @@ export const CITY_PRESETS: { name: string; country: string; lat: number; lng: nu
 ];
 
 export const MAX_POST_LENGTH = 500;
-export const BOT_NICKNAME = "Mbote Bot";
 
 /** Clés localStorage */
 export const LS_IDENTITY = "mbote_identity_v1";
 export const LS_OUTBOX = "mbote_outbox_v1";
 export const LS_FORCE_OFFLINE = "mbote_force_offline";
-export const LS_READ_DMS = "mbote_read_dms";

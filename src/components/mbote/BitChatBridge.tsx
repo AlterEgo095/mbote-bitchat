@@ -346,6 +346,8 @@ export function BitChatBridge() {
   };
 
   const q = queue[queue.length - 1];
+  // F-48 : l'en-tête du paquet affiché n'est décodé qu'une fois par rendu
+  const qHeader = q ? describePacket(base64ToBytes(q.base64)).header : null;
 
   return (
     <Card className="border-primary/25">
@@ -544,7 +546,7 @@ export function BitChatBridge() {
 
             {q && (
               <p className="mt-2 font-mono text-[10px] text-muted-foreground">
-                en-tête décodé : v{describePacket(base64ToBytes(q.base64)).header.version} · senderID {q.senderId} · ttl {describePacket(base64ToBytes(q.base64)).header.ttl} · {PACKET_TYPE_NAMES[PKT_PUBLIC]}
+                en-tête décodé : v{qHeader?.version} · senderID {q.senderId} · ttl {qHeader?.ttl} · {PACKET_TYPE_NAMES[PKT_PUBLIC]}
               </p>
             )}
 

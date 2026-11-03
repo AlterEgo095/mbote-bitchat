@@ -42,8 +42,11 @@ public class MboteBleModule: Module {
         )
 
         Function("isSupported") { _ -> Bool in
-            // Tout iPhone depuis le 4s supporte le BLE 4.x requis ici.
-            true
+            // F-46 : plus de `true` hardcodé — reflet de l'état système réel.
+            // (Tout iPhone depuis le 4s a le BLE requis ; seul un refus explicite
+            // dans Réglages rend le support indisponible au runtime.)
+            let auth = CBManager.authorization
+            return auth != .denied && auth != .restricted
         }
 
         AsyncFunction("start") { (promise: Promise) in
@@ -78,8 +81,27 @@ public class MboteBleModule: Module {
             case .allowed:
                 promise.resolve(["granted": true, "missing": []])
             case .notDetermined:
-                // l'invite vient d'être déclenchée par la création du CBManager
-                promise.resolve(["granted": false, "missing": ["bluetooth (invite en cours)"]])
+                // F-46 : l'invite vient d'être déclenchée par la création du
+                // CBManager — on attend la réponse réelle de l'utilisateur
+                // (poll 250 ms, plafond 30 s) au lieu de résoudre à l'aveugle.
+                let timer = DispatchSource.makeTimerSource(queue: .main)
+                var waited = 0.0
+                timer.schedule(deadline: .now() + 0.25, repeating: 0.25)
+                timer.setEventHandler {
+                    waited += 0.25
+                    let auth = CBManager.authorization
+                    guard auth != .notDetermined || waited >= 30 else { return }
+                    timer.cancel()
+                    switch auth {
+                    case .allowed:
+                        promise.resolve(["granted": true, "missing": []])
+                    case .notDetermined:
+                        promise.resolve(["granted": false, "missing": ["bluetooth (invite sans réponse)"]])
+                    default:
+                        promise.resolve(["granted": false, "missing": ["bluetooth (désactivé dans Réglages)"]])
+                    }
+                }
+                timer.resume()
             default:
                 promise.resolve(["granted": false, "missing": ["bluetooth (désactivé dans Réglages)"]])
             }

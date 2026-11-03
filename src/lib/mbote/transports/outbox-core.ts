@@ -67,14 +67,16 @@ export interface OutboxStorage {
  * de façon transparente sur le secondaire (localStorage, AsyncStorage…).
  */
 export class AsyncFallbackOutboxStorage implements OutboxStorage {
-  readonly kind: string;
   private primaryFailed = false;
 
   constructor(
     private readonly primary: OutboxStorage,
     private readonly secondary: OutboxStorage
-  ) {
-    this.kind = this.primaryFailed ? secondary.kind : primary.kind;
+  ) {}
+
+  /** Reflète le stockage réellement actif (F-52 : plus de kind figé au constructeur) */
+  get kind(): string {
+    return this.primaryFailed ? this.secondary.kind : this.primary.kind;
   }
 
   async init(): Promise<void> {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   Globe,
@@ -42,6 +43,8 @@ interface FeedViewProps {
   submitting: boolean;
   pendingPosts: PendingPost[];
   onDismissPending: (clientRef: string) => void;
+  /** F-49 : texte partagé via share_target (brouillon initial du composer) */
+  draft?: string | null;
 }
 
 export function FeedView({
@@ -57,6 +60,7 @@ export function FeedView({
   submitting,
   pendingPosts,
   onDismissPending,
+  draft,
 }: FeedViewProps) {
   // F-12.3 : portée du fil global — « Tous » ou « Abonnements » (scope
   // "following" du backend, consommé ici pour la première fois).
@@ -118,24 +122,21 @@ export function FeedView({
   // F-13 : sentinelle IntersectionObserver — précharge la page suivante
   // ~400 px avant d'atteindre le bas de la liste.
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = feed;
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
     const io = new IntersectionObserver(
       (entries) => {
-        if (
-          entries.some((e) => e.isIntersecting) &&
-          feed.hasNextPage &&
-          !feed.isFetchingNextPage
-        ) {
-          void feed.fetchNextPage();
+        if (entries.some((e) => e.isIntersecting) && hasNextPage && !isFetchingNextPage) {
+          void fetchNextPage();
         }
       },
       { rootMargin: "400px" }
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [feed.hasNextPage, feed.isFetchingNextPage, feed.fetchNextPage, posts.length]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, posts.length]);
 
   const visiblePending = pendingPosts.filter(
     (p) => !activeChannel || p.geohash === activeChannel.geohash
@@ -147,11 +148,19 @@ export function FeedView({
       {!activeChannel && (
         <Card className="relative overflow-hidden border-0 p-0">
           <div
-            className="relative flex h-44 flex-col justify-end bg-cover bg-center p-5 md:h-52"
-            style={{ backgroundImage: "url(/mbote/hero.png)" }}
+            className="relative flex h-44 flex-col justify-end p-5 md:h-52"
             role="img"
             aria-label="Illustration : skyline africaine connectée par un réseau mesh lumineux"
           >
+            {/* F-54 : hero priorisé via next/image (LCP) au lieu d'un background-image CSS */}
+            <Image
+              src="/mbote/hero.png"
+              alt=""
+              fill
+              priority
+              sizes="(max-width: 768px) 100vw, 896px"
+              className="object-cover object-center"
+            />
             <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
             <div className="relative">
               <h1 className="text-xl font-bold tracking-tight md:text-2xl">
@@ -260,6 +269,8 @@ export function FeedView({
       {/* Composer / CTA */}
       {hasIdentity ? (
         <Composer
+          key={draft ?? "composer"}
+          initialText={draft ?? undefined}
           canPost
           channelGeohash={activeChannel?.geohash ?? null}
           channelPrecision={activeChannel?.precision ?? null}

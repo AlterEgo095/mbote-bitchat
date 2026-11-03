@@ -9,6 +9,7 @@ import {
 } from "@/lib/mbote/state-store";
 import { isValidPubkeyFormat } from "@/lib/mbote/proof";
 import { verifyPostSignature } from "@/lib/mbote/verify";
+import { parseBoundedInt, parseGeohashPrecision, parseBodyPrecision } from "@/lib/mbote/params";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,12 @@ export async function GET(req: NextRequest) {
     const sp = req.nextUrl.searchParams;
     const scope = sp.get("scope") ?? "global";
     const myPub = sp.get("myPub");
-    const limit = Math.min(parseInt(sp.get("limit") ?? "50", 10) || 50, 100);
+    // F-45 : limit borné — plus de négatif/NaN vers Prisma
+    const limitRaw = sp.get("limit");
+    const limit = limitRaw == null ? 50 : parseBoundedInt(limitRaw, 1, 100);
+    if (limit == null) {
+      return NextResponse.json({ error: "limit invalide (1..100)" }, { status: 400 });
+    }
     const cursor = decodeCursor(sp.get("before"));
 
     let where: Record<string, unknown> = {};
@@ -62,9 +68,17 @@ export async function GET(req: NextRequest) {
         if (!geohash) {
           return NextResponse.json({ error: "geohash requis" }, { status: 400 });
         }
+        let channelPrecision: number | undefined;
+        if (precision) {
+          const parsed = parseGeohashPrecision(precision);
+          if (parsed == null) {
+            return NextResponse.json({ error: "precision invalide (1..12)" }, { status: 400 });
+          }
+          channelPrecision = parsed;
+        }
         where = {
           geohash,
-          ...(precision ? { precision: parseInt(precision, 10) } : {}),
+          ...(channelPrecision != null ? { precision: channelPrecision } : {}),
         };
         break;
       }
@@ -230,11 +244,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const bodyPrecision = parseBodyPrecision(precision);
+    if (precision != null && bodyPrecision == null) {
+      return NextResponse.json({ error: "precision invalide (1..12)" }, { status: 400 });
+    }
+
     const data = {
       authorId: author.id,
       content: text,
       geohash: geohash ?? null,
-      precision: precision != null ? parseInt(String(precision), 10) : null,
+      precision: bodyPrecision,
       parentId: parentId ?? null,
       signature,
     };

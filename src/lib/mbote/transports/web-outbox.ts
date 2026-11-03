@@ -39,6 +39,8 @@ async function webOutboxSend(base64Batch: string[]) {
       label: "passerelle navigateur · outbox durable",
       packets: base64Batch,
     }),
+    // F-32 : un flush ne doit jamais rester suspendu indéfiniment
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`pont HTTP ${res.status}`);
   const json = (await res.json()) as { results?: { status: string; detail?: string }[] };
@@ -71,7 +73,7 @@ export function getWebOutbox(): DurableOutbox {
         ?.flush(true)
         .then((o) => {
           if (o.attempted > 0) {
-            console.info(
+            console.warn(
               `[outbox] flush réseau : ${o.accepted} accepté(s), ${o.duplicate} déjà connu(s), ${o.failed} en backoff`
             );
           }

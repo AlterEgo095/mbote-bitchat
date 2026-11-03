@@ -102,6 +102,8 @@ export function MboteApp() {
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [view, setView] = useState<ViewKey>("feed");
+  /** F-49 : texte reçu via share_target (?text=&url=) → brouillon composer */
+  const [shareDraft, setShareDraft] = useState<string | null>(null);
   const [activeChannel, setActiveChannel] = useState<ActiveChannel | null>(null);
   const [forceOffline, setForceOffline] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
@@ -129,9 +131,21 @@ export function MboteApp() {
       // sans identité, OnboardingDialog reste prioritaire et le paramètre est
       // ignoré. Valeur inconnue → ignorée silencieusement (reste sur « feed »).
       if (id) {
-        const requested = new URLSearchParams(window.location.search).get("view");
+        const sp = new URLSearchParams(window.location.search);
+        const requested = sp.get("view");
         if (requested && (VIEW_KEYS as readonly string[]).includes(requested)) {
           setView(requested as ViewKey);
+        }
+        // F-49 : partage PWA (share_target GET) → brouillon du composer, puis
+        // nettoyage de l'URL (le brouillon vit dans l'état, pas dans l'adresse)
+        const sharedText = [sp.get("text"), sp.get("url")].filter(Boolean).join(" ").trim();
+        if (sharedText) {
+          setShareDraft(sharedText);
+          const keepView =
+            requested && (VIEW_KEYS as readonly string[]).includes(requested) && requested !== "feed"
+              ? requested
+              : null;
+          window.history.replaceState(null, "", keepView ? `/?view=${keepView}` : "/");
         }
       }
       setMounted(true);
@@ -236,10 +250,10 @@ export function MboteApp() {
     queryKey: ["conversations", identity?.pubkey],
     // F-07 : chaque lecture de boîte DM est signée (preuve courte durée)
     queryFn: async () => {
-      const id = identity!;
+      if (!identity) throw new Error("identité absente");
       const ts = Date.now();
-      const signature = await signPayload(id.signPriv, dmReadProofMessage(id.pubkey, "*", ts));
-      return apiGetConversations(id.pubkey, { ts, signature });
+      const signature = await signPayload(identity.signPriv, dmReadProofMessage(identity.pubkey, "*", ts));
+      return apiGetConversations(identity.pubkey, { ts, signature });
     },
     enabled: mounted && !!identity,
     refetchInterval: 30000,
@@ -336,7 +350,7 @@ export function MboteApp() {
       s.off("dm:new", onDm);
       s.off("identity:new", onIdentity);
     };
-  }, [mounted, identity?.pubkey, identity?.nickname, qc]);
+  }, [mounted, identity, qc]);
 
   // ---------- actions ----------
   const createIdentity = useCallback(
@@ -571,6 +585,7 @@ export function MboteApp() {
             submitting={submitting}
             pendingPosts={pendingPosts}
             onDismissPending={dismissPending}
+            draft={shareDraft}
           />
         );
       case "channels":
@@ -608,7 +623,7 @@ export function MboteApp() {
   return (
     <div className="flex min-h-screen flex-col">
       {/* ---------- header ---------- */}
-      <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b bg-background/85 pt-[env(safe-area-inset-top)] backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4">
           <button
             className="flex min-w-0 items-center gap-2"

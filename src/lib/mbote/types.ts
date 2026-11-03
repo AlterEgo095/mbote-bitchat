@@ -3,7 +3,6 @@ export interface UserPublic {
   pubkey: string;
   nickname: string;
   bio?: string | null;
-  avatarSeed?: string | null;
   ecdhPub?: string | null;
   isBot: boolean;
   createdAt: string;
