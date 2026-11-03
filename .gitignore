@@ -61,3 +61,7 @@ download/
 # sandbox data
 /db/
 *.db
+
+# Expo CNG — projets natifs régénérés par `expo prebuild` (et par la CI)
+mobile/android/
+mobile/ios/

@@ -7,6 +7,16 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0B0F0E",
     "assetBundlePatterns": ["**/*"],
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.9.25"
+          }
+        }
+      ]
+    ],
     "ios": {
       "bundleIdentifier": "org.mbote.bitchat",
       "supportsTablet": false,
