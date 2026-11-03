@@ -21,6 +21,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { loadOrCreateKeyBundle, signPayload, wipeIdentity, type KeyBundle } from "../core/crypto-rn";
 import { MeshTransport, type MeshMeta } from "../transport/MeshTransport";
 import type { MeshEvent } from "../core/bitchat-protocol";
+import type { RouteDecision } from "../transport/types";
 import type { MeshStateEvent, PeerInfo } from "../../modules/mbote-ble/index";
 
 export interface MeshMessage {
@@ -38,6 +39,7 @@ const NICK_KEY = "mbote.nickname.v1";
 const BRIDGE_URL_KEY = "mbote.bridgeUrl.v1";
 const MAX_MESSAGES = 200;
 const MAX_LOGS = 60;
+const MAX_DECISIONS = 30;
 
 interface AppState {
   ready: boolean;
@@ -50,6 +52,8 @@ interface AppState {
   logs: string[];
   transport: MeshTransport;
   bridgeQueueSize: number;
+  /** journal des décisions de routage DORS (plus récentes d'abord) */
+  routeDecisions: RouteDecision[];
   setNickname: (n: string) => Promise<void>;
   setBridgeUrl: (u: string) => Promise<void>;
   sendPost: (content: string) => Promise<void>;
@@ -79,6 +83,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [meshState, setMeshState] = useState<MeshStateEvent["state"] | "stopped">("stopped");
   const [logs, setLogs] = useState<string[]>([]);
   const [bridgeQueueSize, setBridgeQueueSize] = useState(0);
+  const [routeDecisions, setRouteDecisions] = useState<RouteDecision[]>([]);
 
   const pushLog = useCallback((msg: string) => {
     const line = `${new Date().toLocaleTimeString()}  ${msg}`;
@@ -94,6 +99,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     transport.onLog = pushLog;
     transport.onStateChange = (s) => setMeshState(s);
     transport.onPeersChange = (p) => setPeers(p);
+    transport.onRouteDecision = (d) =>
+      setRouteDecisions((prev) => [d, ...prev].slice(0, MAX_DECISIONS));
 
     transport.onEvent = (ev: MeshEvent, meta: MeshMeta) => {
       if (ev.kind === "post") {
@@ -231,6 +238,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       logs,
       transport,
       bridgeQueueSize,
+      routeDecisions,
       setNickname,
       setBridgeUrl,
       sendPost,
@@ -249,6 +257,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       logs,
       transport,
       bridgeQueueSize,
+      routeDecisions,
       setNickname,
       setBridgeUrl,
       sendPost,

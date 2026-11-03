@@ -18,6 +18,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { BitChatBridge } from "./BitChatBridge";
 import MeshSimulation from "./MeshSimulation";
+import { RouteurPanel } from "./RouteurPanel";
 
 const PROTOCOL_STATS = [
   { icon: Hourglass, value: "7", label: "sauts TTL max", sub: "clampé à 5 en zone dense" },
@@ -37,6 +38,9 @@ export function NetworkView() {
           joindre un pair hors de portée.
         </p>
       </div>
+
+      {/* Routeur de transports (DORS) : santé + journal des décisions */}
+      <RouteurPanel />
 
       {/* Tunnel réel : encapsulation BitChat → passerelle → VPS */}
       <BitChatBridge />

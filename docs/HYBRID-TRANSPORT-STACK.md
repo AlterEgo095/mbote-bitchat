@@ -151,7 +151,17 @@ un argument produit fort : l'utilisateur **voit** pourquoi son message voyage.
 ## 4. Roadmap de croissance
 
 ### P1 — TransportRouter « DORS maison » (la fondation) — ~300 lignes
-- `src/lib/mbote/transports/types.ts` — contrat Transport + santé.
+
+> ✅ **LIVRÉ** — contrat `Transport` isomorphe (`types.ts`), `TransportRouter`
+> (politique §3.1, journal ring-buffer, onDecision), adaptateurs `BleTransport`
+> (module natif) + `InternetTransport` (sonde RTT 30 s), intégration
+> `MeshTransport` (les posts sortants passent par le routeur, l'annonce reste
+> locale BLE, flush outbox déclenché par paquet reçu), web : `WebBridgeTransport`
+> + panneau « Routeur de transports (DORS) » dans NetworkView avec journal des
+> décisions en direct (action, raison, RTT, latence) ; le tunnel BitChat route
+> chaque paquet individuellement. Copies synchronisées : `src/lib/mbote/transports/`
+> ↔ `mobile/src/transport/`.
+- - `src/lib/mbote/transports/types.ts` — contrat Transport + santé.
 - `src/lib/mbote/transports/router.ts` — scoring, politique §3.1, journal.
 - Mobile : `BleTransport` (wrap `mbote-ble`) + `InternetTransport` (wrap fetch
   bridge + NetInfo) ; web : `WebBridgeTransport` (HTTPS) — même routeur.

@@ -23,6 +23,22 @@ function stateColor(state: string): string {
   return C.bad;
 }
 
+const DECISION_LABEL: Record<string, string> = {
+  ble: "BLE",
+  internet: "INTERNET",
+  queued: "OUTBOX",
+};
+
+function decisionLabel(action: string): string {
+  return DECISION_LABEL[action] ?? action.toUpperCase();
+}
+
+function decisionColor(action: string): string {
+  if (action === "ble") return C.accent;
+  if (action === "internet") return C.warn;
+  return C.dim;
+}
+
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={styles.card}>
@@ -33,8 +49,9 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 export default function MeshScreen() {
-  const { meshState, peers, logs, transport } = useApp();
+  const { meshState, peers, logs, transport, routeDecisions } = useApp();
   const color = stateColor(meshState);
+  const health = transport.healthSnapshot();
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
@@ -65,6 +82,36 @@ export default function MeshScreen() {
             </Text>
           </View>
         ))}
+      </Card>
+
+      <Card title={`Routeur (DORS) — ${routeDecisions.length} décision(s)`}>
+        {health.map((h) => (
+          <View key={h.id} style={styles.peer}>
+            <Text style={styles.peerId}>{h.id}</Text>
+            <Text style={styles.peerMeta}>
+              {h.available ? "prêt" : "indisponible"} · {h.detail}
+            </Text>
+          </View>
+        ))}
+        {routeDecisions.length === 0 && (
+          <Text style={styles.line}>
+            Aucune décision encore — publiez un message pour voir le routage.
+          </Text>
+        )}
+        {routeDecisions.map((d) => (
+          <View key={d.id} style={styles.peer}>
+            <Text style={[styles.peerId, { color: decisionColor(d.action) }]}>
+              {decisionLabel(d.action)}
+            </Text>
+            <Text style={styles.peerMeta} numberOfLines={2}>
+              {new Date(d.at).toLocaleTimeString()} · {d.detail}
+              {d.latencyMs !== undefined ? ` · ${d.latencyMs} ms` : ""}
+            </Text>
+          </View>
+        ))}
+        <Text style={styles.line}>
+          BLE si ≥ 1 voisin → sinon pont VPS (sonde 30 s) → sinon outbox.
+        </Text>
       </Card>
 
       <Card title={`Journal (${logs.length})`}>

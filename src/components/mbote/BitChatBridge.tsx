@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
-import { apiBridgeDownlink, apiBridgePost, type BridgeDownlink } from "@/lib/mbote/api";
+import { apiBridgeDownlink, type BridgeDownlink } from "@/lib/mbote/api";
 import {
   PACKET_TYPE_NAMES,
   PAYLOAD_MAX_BYTES,
@@ -59,6 +59,7 @@ import { CITY_PRESETS } from "@/lib/mbote/constants";
 import { signPayload } from "@/lib/mbote/crypto";
 import { encodeGeohash } from "@/lib/mbote/geohash";
 import { loadIdentity } from "@/lib/mbote/identity";
+import { getWebRouter } from "@/lib/mbote/transports";
 
 /** Un paquet en attente dans la mémoire locale de la passerelle */
 interface QueuedPacket {
@@ -215,23 +216,53 @@ export function BitChatBridge() {
     );
   };
 
-  /** Étape 2 : la passerelle trouve internet → dépôt des paquets au VPS */
+  /** Étape 2 : le routeur DORS trouve un canal → chaque paquet est routé
+   *  individuellement (BLE indisponible côté web → Internet ou outbox) et la
+   *  décision est journalisée dans le panneau Routeur. */
   const transmit = async () => {
     if (queue.length === 0 || sending) return;
     setSending(true);
     try {
-      const res = await apiBridgePost({
-        gatewayId,
-        label: "Passerelle démo (navigateur)",
-        packets: queue.map((q) => q.base64),
-      });
-      setJournal(res.results);
+      const { router, bridge } = getWebRouter();
+      const results: { hash: string; status: string; detail?: string }[] = [];
+      const remaining: QueuedPacket[] = [];
+
+      for (const p of queue) {
+        const d = await router.submit(base64ToBytes(p.base64), {
+          trace: `${p.typeName}${p.fragLabel ? ` ${p.fragLabel}` : ""}`,
+        });
+        if (d.action === "queued") {
+          // aucun canal : le paquet attend dans la mémoire locale (store-and-forward)
+          results.push({ hash: p.hash, status: "outbox", detail: d.detail });
+          remaining.push(p);
+        } else if (d.delivered) {
+          results.push({
+            hash: p.hash,
+            status: d.detail.includes("déjà connu") ? "duplicate" : "accepted",
+            detail: d.detail,
+          });
+        } else {
+          // paquet refusé par le pont (invalid) : purgé, comme côté natif
+          results.push({ hash: p.hash, status: "invalid", detail: d.detail });
+        }
+      }
+
+      bridge.setQueueDepth(remaining.length);
+      setJournal(results);
+      const accepted = results.filter((r) => r.status === "accepted").length;
+      const duplicates = results.filter((r) => r.status === "duplicate").length;
+      const queuedN = results.filter((r) => r.status === "outbox").length;
       toast.success(
-        `${res.accepted} accepté(s) · ${res.duplicates} doublon(s) · ${res.invalid} invalide(s)`,
-        { description: "Le VPS a dédupliqué et injecté les publications dans le fil global." }
+        `${accepted + duplicates} acheminé(s) via le routeur · ${queuedN} en outbox`,
+        {
+          description:
+            queuedN > 0
+              ? "Le store-and-forward garde les paquets jusqu'à un canal disponible."
+              : "Le VPS a dédupliqué et injecté les publications dans le fil global.",
+        }
       );
-      setQueue([]);
-      await qc.invalidateQueries({ queryKey: ["feed"] });
+      setQueue(remaining);
+      if (accepted > 0) await qc.invalidateQueries({ queryKey: ["feed"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Échec de transmission");
     } finally {
