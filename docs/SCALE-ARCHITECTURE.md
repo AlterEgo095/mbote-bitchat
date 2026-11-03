@@ -97,13 +97,13 @@ sync des passerelles mesh le matin.
 Infrastructure : inchangée (Docker Compose actuel).
 
 Travail code (checklist exécutable dès le prochain « suite ») :
-- [ ] **D5** : `likeCount`/`replyCount` en colonnes + migration backfill + updates atomiques dans `/api/posts/like` et création de replies
-- [ ] **D6** : curseur `before` sur `/api/posts` (tous les scopes) + `cursor` renvoyé dans la réponse
-- [ ] **D4** : vérification ECDSA serveur quand `signature` est présente ; rate limit token-bucket par pubkey+IP (MemoryStore, interface pluggable D2)
-- [ ] **D2** : `FragmentAssembler` et purges déplacées derrière un module `state-store` (mémoire → Redis sans refactor)
-- [ ] Purge `MeshIngest` déplacée en tâche périodique (setInterval process, pas par requête)
-- [ ] Index audit : `Post(createdAt DESC)`, `Post(parentId, createdAt)`, `Like(postId)` (déjà unique), `Follow(followingId)`
-- [ ] Healthcheck complet + `GET /api/stats` enrichi (req/s, latence p95, sockets)
+- [x] **D5** : `likeCount`/`replyCount` en colonnes + migration backfill + updates atomiques dans `/api/posts/like` et création de replies ✅ *implémenté*
+- [x] **D6** : curseur `before` sur `/api/posts` (tous les scopes) + `nextCursor` renvoyé dans la réponse ✅ *implémenté*
+- [x] **D4** : vérification ECDSA serveur quand `signature` est présente (`src/lib/mbote/verify.ts`, chaîne canonique `${pubkey}|${content}|${ts}`) ; rate limit fenêtre fixe par pubkey+IP sur posts/likes/DMs/bridge ; **idempotence par signature** (`@@unique(signature)`) — le même événement arrivé par le web ET par le mesh = un seul post ✅ *implémenté*
+- [x] **D2** : `FragmentAssembler`, rate store et purges derrière `src/lib/mbote/state-store.ts` (MemoryStore → Redis sans toucher aux routes) ✅ *implémenté*
+- [x] Purge `MeshIngest` déplacée en tâche périodique via `src/instrumentation.ts` (une fois par process, plus jamais par requête) ✅ *implémenté*
+- [x] Index audit : `Post(createdAt)`, `Post(parentId, createdAt)`, `Follow(followingId)` ajoutés ; `Like` déjà couvert par `@@unique` ✅ *implémenté*
+- [x] `GET /api/stats` enrichi : req/s, latence p95, par route, clés du rate store, passerelles, uptime ✅ *implémenté*
 
 ### Palier 1 — « Split vertical » (déclencheur : 10 k DAU ou 50 écritures/s) — 2-3 VPS
 - **Postgres 16** : managé (Neon/Supabase, ~0-25 $/mois) ou VPS dédié (~12 $/mois) — D1 exécutée

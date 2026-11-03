@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { relayNotify } from "@/lib/mbote/relay-notify";
+import { clientIp, getRateStore, trackApiRequest } from "@/lib/mbote/state-store";
 
 export const dynamic = "force-dynamic";
+
+const DMS_PER_MIN_PER_KEY = 30;
+const DMS_PER_MIN_PER_IP = 90;
+const RATE_WINDOW_MS = 60_000;
 
 /** GET /api/dms?me=&peer= — conversation (le serveur ne lit jamais le contenu) */
 export async function GET(req: NextRequest) {
@@ -39,6 +44,7 @@ export async function GET(req: NextRequest) {
 
 /** POST /api/dms — dépose une enveloppe chiffrée (boîte aux lettres aveugle) */
 export async function POST(req: NextRequest) {
+  const done = trackApiRequest("dms.post");
   try {
     const { senderKey, recipientKey, iv, ciphertext } = await req.json();
     if (!senderKey || !recipientKey || !iv || !ciphertext) {
@@ -47,6 +53,18 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // rate limit (D4) : les DMs sont le vecteur de spam n°1 (contenu opaque)
+    const rates = getRateStore();
+    const byKey = rates.hit(`dm:${senderKey}`, DMS_PER_MIN_PER_KEY, RATE_WINDOW_MS);
+    const byIp = rates.hit(`dm-ip:${clientIp(req.headers)}`, DMS_PER_MIN_PER_IP, RATE_WINDOW_MS);
+    if (!byKey.allowed || !byIp.allowed) {
+      return NextResponse.json(
+        { error: "Trop de messages — ralentissez" },
+        { status: 429, headers: { "Retry-After": "60" } }
+      );
+    }
+
     if (senderKey === recipientKey) {
       return NextResponse.json({ error: "Autolivraison refusée" }, { status: 400 });
     }
@@ -76,5 +94,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error("POST /api/dms", e);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  } finally {
+    done();
   }
 }

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { toPostDto } from "@/lib/mbote/dto";
 import { relayNotify } from "@/lib/mbote/relay-notify";
 import {
   PAYLOAD_MAX_BYTES,
   PKT_PUBLIC,
   PROTOCOL_VERSION,
   TTL_MAX,
-  FragmentAssembler,
   base64ToBytes,
   bytesToBase64,
   decodeMeshEvent,
@@ -19,16 +19,25 @@ import {
   utf8Encode,
   type MeshEvent,
 } from "@/lib/mbote/bitchat-protocol";
+import {
+  clientIp,
+  getFragmentAssembler,
+  getRateStore,
+  trackApiRequest,
+} from "@/lib/mbote/state-store";
 
 export const dynamic = "force-dynamic";
 
 const GEOHASH_RE = /^[0-9bcdefghjkmnpqrstuvwxyz]{1,12}$/;
-const INGEST_TTL_MS = 6 * 60 * 60 * 1000; // dédup persistante : fenêtre 6 h (comme la gossip window)
 const MAX_BATCH = 64;
 const DOWNLINK_MAX = 50;
+const BRIDGE_PER_MIN_PER_GATEWAY = 120;
+const BRIDGE_PER_MIN_PER_IP = 240;
+const RATE_WINDOW_MS = 60_000;
 
-/** réassembleur des paquets fragmentés (fragId → chunks), en mémoire process */
-const assembler = new FragmentAssembler();
+/** réassembleur des paquets fragmentés — singleton pluggable (D2) :
+ *  mémoire aujourd'hui, store partagé (Redis) au Palier 1, sans changer la route */
+const assembler = getFragmentAssembler();
 
 /** senderID fixe du serveur (b64url de "serverdownlink") pour les paquets downlink */
 const SERVER_PUBKEY_B64 = "c2VydmV1cmRvd25saW5r";
@@ -41,6 +50,7 @@ const SERVER_PUBKEY_B64 = "c2VydmV1cmRvd25saW5r";
  *  répond paquet par paquet pour que la passerelle purge sa file locale.
  */
 export async function POST(req: NextRequest) {
+  const done = trackApiRequest("bridge.post");
   try {
     const body = await req.json();
     const gatewayId: string = String(body?.gatewayId ?? "").trim();
@@ -57,10 +67,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `max ${MAX_BATCH} paquets par lot` }, { status: 400 });
     }
 
-    // purge de la dédup expirée (fenêtre 6 h)
-    await db.meshIngest
-      .deleteMany({ where: { createdAt: { lt: new Date(Date.now() - INGEST_TTL_MS) } } })
-      .catch(() => undefined);
+    // ── rate limit (D4) : les passerelles burstent le matin — on plafonne ──
+    const rates = getRateStore();
+    const byGw = rates.hit(
+      `bridge:${gatewayId}`,
+      BRIDGE_PER_MIN_PER_GATEWAY,
+      RATE_WINDOW_MS
+    );
+    const byIp = rates.hit(
+      `bridge-ip:${clientIp(req.headers)}`,
+      BRIDGE_PER_MIN_PER_IP,
+      RATE_WINDOW_MS
+    );
+    if (!byGw.allowed || !byIp.allowed) {
+      const retry = Math.ceil(Math.max(byGw.retryAfterMs, byIp.retryAfterMs) / 1000);
+      return NextResponse.json(
+        { error: "Trop de lots — réessayez plus tard" },
+        { status: 429, headers: { "Retry-After": String(retry || 60) } }
+      );
+    }
 
     const results: {
       hash: string;
@@ -143,46 +168,60 @@ export async function POST(req: NextRequest) {
           const author = await db.user.findUnique({ where: { pubkey: event.pubkey } });
           if (!author) throw new Error("identité introuvable après upsert");
 
-          const post = await db.post.create({
-            data: {
-              authorId: author.id,
-              content: text,
-              geohash: event.geohash ?? null,
-              precision: event.precision ?? null,
-              parentId: event.parentId ?? null,
-              signature: event.signature ?? null,
-              origin: "mesh",
-              meshHops: hops,
-            },
-            include: {
+          // idempotence inter-canaux (D4) : le même événement signé arrivé
+          // à la fois par le web et par une passerelle mesh = UN seul post.
+          try {
+            const post = await db.$transaction(async (tx) => {
+              const created = await tx.post.create({
+                data: {
+                  authorId: author.id,
+                  content: text,
+                  geohash: event.geohash ?? null,
+                  precision: event.precision ?? null,
+                  parentId: event.parentId ?? null,
+                  signature: event.signature ?? null,
+                  origin: "mesh",
+                  meshHops: hops,
+                },
+              });
+              if (event.parentId) {
+                await tx.post.update({
+                  where: { id: event.parentId },
+                  data: { replyCount: { increment: 1 } },
+                });
+              }
+              return created;
+            });
+            const postDto = toPostDto({
+              ...post,
               author: {
-                include: { _count: { select: { posts: true, followers: true, following: true } } },
+                ...author,
+                _count: { posts: 0, followers: 0, following: 0 },
               },
-              _count: { select: { likes: true, replies: true } },
-            },
-          });
-          const postDto = {
-            id: post.id,
-            content: post.content,
-            geohash: post.geohash,
-            precision: post.precision,
-            parentId: post.parentId,
-            signature: post.signature,
-            origin: post.origin,
-            meshHops: post.meshHops,
-            createdAt: post.createdAt,
-            author: post.author,
-            likeCount: post._count.likes,
-            replyCount: post._count.replies,
-            likedByMe: false,
-          };
-          createdPosts.push(postDto);
-          relayNotify(
-            "post:new",
-            { post: postDto },
-            post.geohash ? ["feed", `channel:${post.geohash}`] : ["feed"]
-          );
-          results.push({ hash, status: "accepted", detail: `publication · ${hops} saut(s)` });
+            });
+            createdPosts.push(postDto);
+            relayNotify(
+              "post:new",
+              { post: postDto },
+              post.geohash ? ["feed", `channel:${post.geohash}`] : ["feed"]
+            );
+            results.push({ hash, status: "accepted", detail: `publication · ${hops} saut(s)` });
+          } catch (err) {
+            if (
+              typeof err === "object" &&
+              err !== null &&
+              "code" in err &&
+              (err as { code?: string }).code === "P2002"
+            ) {
+              results.push({
+                hash,
+                status: "duplicate",
+                detail: "déjà ingéré via un autre canal (signature identique)",
+              });
+              continue;
+            }
+            throw err;
+          }
         } else if (event.kind === "dm") {
           await db.directMessage.create({
             data: {
@@ -235,6 +274,8 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error("POST /api/mesh/bridge", e);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  } finally {
+    done();
   }
 }
 
@@ -245,6 +286,7 @@ export async function POST(req: NextRequest) {
  *  hors-ligne à portée. C'est le retour du store-and-forward.
  */
 export async function GET(req: NextRequest) {
+  const done = trackApiRequest("bridge.get");
   try {
     const sp = req.nextUrl.searchParams;
     const gatewayId = sp.get("gatewayId") ?? "";
@@ -343,5 +385,7 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     console.error("GET /api/mesh/bridge", e);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  } finally {
+    done();
   }
 }

@@ -55,6 +55,16 @@ export interface NetworkStats {
   dms: number;
   channels: number;
   likes: number;
+  gateways?: number;
+  meshIngest24h?: number;
+  /** santé de performance (Palier 0 : métriques process, fenêtre 5 min) */
+  perf?: {
+    reqPerSec: number;
+    p95Ms: number;
+    byRoute: { route: string; count: number; p95Ms: number }[];
+    rateStoreKeys: number;
+  };
+  uptimeSec?: number;
 }
 
 /** Post optimiste en attente de synchronisation (mode courrier hors-ligne) */

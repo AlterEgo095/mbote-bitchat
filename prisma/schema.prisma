@@ -37,16 +37,21 @@ model Post {
   parentId  String? // réponse à un autre post
   parent    Post?    @relation("Replies", fields: [parentId], references: [id], onDelete: Cascade)
   replies   Post[]   @relation("Replies")
-  signature String? // signature ECDSA produite sur l'appareil
+  signature String? @unique // signature ECDSA produite sur l'appareil (idempotence : même événement = même post)
   origin    String   @default("web") // web | mesh (arrivé via passerelle BitChat)
   meshHops  Int      @default(0) // sauts mesh traversés (7 − TTL restant)
-  createdAt DateTime @default(now())
+  // Compteurs dénormalisés (scalabilité D5) : incrémentés atomiquement à l'écriture,
+  // les COUNT à chaud disparaissent des lectures de feed.
+  likeCount  Int      @default(0)
+  replyCount Int      @default(0)
+  createdAt  DateTime @default(now())
 
   likes Like[]
 
   @@index([geohash, precision])
   @@index([authorId])
   @@index([parentId])
+  @@index([parentId, createdAt]) // scope "replies" : filtre + tri en un seul index
   @@index([createdAt])
 }
 
@@ -91,6 +96,7 @@ model Follow {
   createdAt   DateTime @default(now())
 
   @@unique([followerId, followingId])
+  @@index([followingId]) // abonnés d'une cible (fan-out, profil)
 }
 
 // Message privé : le serveur ne stocke QUE du chiffré (AES-GCM sur ECDH P-256)

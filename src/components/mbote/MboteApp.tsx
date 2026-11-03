@@ -335,11 +335,13 @@ export function MboteApp() {
     }) => {
       if (!identity) throw new Error("Aucune identité locale");
       const ts = Date.now();
+      // chaîne canonique du protocole (§ bitchat-protocol) : `${pubkey}|${content}|${ts}`
+      // — le serveur VÉRIFIE cette signature (D4) : ne pas modifier la forme.
       const signature = await signPayload(
         identity.signPrivJwk,
-        `${input.content}|${input.geohash ?? ""}|${ts}`
+        `${identity.pubkey}|${input.content}|${ts}`
       );
-      const payload = { pubkey: identity.pubkey, ...input, signature };
+      const payload = { pubkey: identity.pubkey, ...input, signature, ts };
 
       if (canSend) {
         await apiCreatePost(payload as Parameters<typeof apiCreatePost>[0]);

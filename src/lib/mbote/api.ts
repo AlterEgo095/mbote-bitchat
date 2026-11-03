@@ -56,6 +56,8 @@ export interface FeedParams {
   parentId?: string;
   myPub?: string;
   limit?: number;
+  /** curseur de pagination (renvoyé par la réponse précédente : nextCursor) */
+  before?: string;
 }
 
 export function feedUrl(p: FeedParams): string {
@@ -65,12 +67,13 @@ export function feedUrl(p: FeedParams): string {
   if (p.authorPub) q.set("authorPub", p.authorPub);
   if (p.parentId) q.set("parentId", p.parentId);
   if (p.myPub) q.set("myPub", p.myPub);
+  if (p.before) q.set("before", p.before);
   q.set("limit", String(p.limit ?? 50));
   return `/api/posts?${q.toString()}`;
 }
 
 export function apiFetchFeed(p: FeedParams) {
-  return jsonFetch<{ posts: PostWithMeta[] }>(feedUrl(p));
+  return jsonFetch<{ posts: PostWithMeta[]; nextCursor?: string | null }>(feedUrl(p));
 }
 
 export function apiCreatePost(payload: {
@@ -80,8 +83,10 @@ export function apiCreatePost(payload: {
   precision?: number | null;
   parentId?: string | null;
   signature?: string | null;
+  /** horodatage SIGNÉ (ms) — requis pour vérifier la signature côté serveur */
+  ts?: number;
 }) {
-  return jsonFetch<{ post: PostWithMeta }>("/api/posts", {
+  return jsonFetch<{ post: PostWithMeta; duplicate?: boolean }>("/api/posts", {
     method: "POST",
     body: JSON.stringify(payload),
   });
