@@ -18,6 +18,8 @@
 | Backend | Solidé (transactions, idempotence, rate-limit partiel) mais **seed cassé sur DB fraîche** (P2002) et **temps réel non déployable en l'état** (NEXT_PUBLIC_SOCKET_URL non transmis au build). |
 | Maturité globale | **POC avancée / démo soignée — NON prête pour la production.** 3 P0, 8 P1, ~22 P2, ~20 P3. |
 
+> **Mise à jour Vagues 1→5 (§16-§20)** : les 54 anomalies ont été **traitées** (53 corrigées, F-51 mitigée) en 5 vagues successives — registre clos, maturité réévaluée à **8/10** (§20). La synthèse ci-dessus décrit l'état AU MOMENT de l'audit (pré-correctifs).
+
 ---
 
 ## 1. CARTOGRAPHIE DE L'ÉCOSYSTÈME FRONTEND
@@ -561,3 +563,94 @@ Identité créée sous StrictMode double-mount → post signé (POST 200, visibl
 - **Restantes ouvertes (P2 non ciblés par les vagues 1-4)** : F-16 (unité ts downlink), F-17 (seed compteurs + backfill), F-18 (rate limit manquants), F-19 (FragmentAssembler sans borne), F-20 (bornes /dms/bot), F-22 (duplication protocole sans sync), F-24 (présence trichée + texte Nostr), F-26 (SW skipWaiting sans UI), F-28 (rate limit GET dms + rollback like), F-29 (botPriv JWK en clair en DB — démo assumée), F-30 (dédup posts non signés), F-31 (double outbox), F-33 (push canal mort), F-34 (zéro code-splitting) — **14/54**.
 - **Mitigée** : F-51 (token /emit + documentation SSRF ; proxy sandbox inchangé).
 - **Maturité réévaluée (mon avis)** : web sécurité 3 → **7** (preuves obligatoires, IDOR fermés, en-têtes, migrations) ; PWA 6 → **7,5** (données offline, share_target, offline page, shortcuts vivants) ; global 5,5 → **7/10 — POC consolidée, prête pour un pilote réel** (les 10 anomalies restantes sont des P2 d'optimisation/robustesse, aucun bloqueur production connu côté code).
+
+---
+
+## 20. JOURNAL D'EXÉCUTION — VAGUE 5 (Clôture P2) ✅ EXÉCUTÉE ET VALIDÉE
+
+**Périmètre** : les 14 P2 restantes — F-16, F-17, F-18, F-19, F-20, F-22, F-24, F-26, F-28, F-29, F-30, F-31, F-33, F-34. **Statut : 14/14 traitées. Registre final : 54/54** (53 corrigées + F-51 mitigée). Portes qualité : lint 0 erreur, tsc web 0, tsc mobile 0, golden path navigateur complet, tests E2E serveur verts.
+
+### F-16 — Unité `ts` unifiée en millisecondes — CORRIGÉ
+- `verify.ts` + `proof.ts` : nouveau `normalizeTsToMs()` — la fraîcheur est calculée sur l'unité normalisée (ts < 1e11 = secondes → ×1000) tandis que la **signature reste vérifiée sur la valeur brute** (chaîne canonique intacte) : les anciens émetteurs en secondes restent acceptés, les nouveaux sont cohérents.
+- Downlink du pont (`bridge/route.ts`) : `event.ts` émis en **ms** (`createdAt.getTime()`) — l'en-tête du paquet BLE reste en secondes (spec protocole).
+- `tests/mesh-bridge-e2e.ts` réécrit : paire ECDSA **réelle** (le pont exige une signature depuis F-01), ts en ms, **contrôle F-16 automatique** (décodage + réassembly du paquet downlink → assertion ms). Exécution : `F-16 ts downlink : 1793739045331 MILLISECONDES ✅`.
+
+### F-17 — Compteurs seed + backfill branché — CORRIGÉ
+- Constat honnête : le seed incrémente déjà likeCount/replyCount (corrigé de fait en Vague 1 avec F-02 — le registre restait en retard sur ce point).
+- Restant exécuté : `backfill-counters.ts` branché au script npm **`db:backfill`** + exécution de contrôle : `signatures dédoublonnées : 0 · posts=58 · ΣlikeCount=1 · ΣreplyCount=0` (cohérent avec la base).
+
+### F-18 — Rate limits complétés — CORRIGÉ
+- `identity` POST : 10/min/clé + 30/min/IP (avant toute vérification crypto, après validation de format). `follows` POST : 30/min/clé + 90/min/IP (après la preuve — l'usurpateur paie la crypto, le spammeur 429). `seed` : 5/10 min/IP (dév/opérateur). `dms/bot` : 10/min/clé + 30/min/IP.
+- Test hostile : 12 requêtes identity à la rafale → **2× 429 observés** ✅ (10 premières en 401 signature invalide, puis plafond).
+
+### F-19 — FragmentAssembler borné (anti-DoS) — CORRIGÉ
+- `bitchat-protocol.ts` : **TTL 5 min** sur les paquets fragmentés inachevés (purge à chaque push), **256 IDs actifs max** (abandon LRU par firstSeen), **total ≤ 64** et **index < total** sinon throw (→ paquet `invalid` côté pont).
+- Tests : `total 200 hors borne` rejeté ✅ · `index 7 ≥ total 3` rejeté ✅ · fragment valide en attente → null (pas une erreur) ✅ · **300 paquets orphelins absorbés** sans croissance mémoire ✅.
+
+### F-20 — Bornes `/api/dms/bot` — CORRIGÉ
+- Garde en **octets décodés** (`Buffer.from(base64)` ≤ 8 192 → 413), alignée sur `/api/dms` + rate limit F-18 — la dernière route du produit sans borne de taille.
+
+### F-22 — Parité protocole web ↔ mobile — CORRIGÉ (parité sémantique en CI)
+- Choix professionnel : **parité SÉMANTIQUE**, pas textuelle — les miroirs ont divergé en style (dédrift interne assumé) mais le CONTRAT doit rester bit-identique. `scripts/check-protocol-parity.ts` : **11 assertions** (constantes protocole, `buildPacket` octets identiques, décodage croisé, fragmentation identique, **réassembly croisé** fragments web → assembleur mobile, FNV-64, courbe de backoff outbox 0..12 tentatives).
+- `bun run check:parity` : **tout vert** (parité OK — les divergences existantes sont de style, pas de contrat). Portail ajouté aux **workflows CI Android + iOS** (étape avant prebuild — un drift casse le build).
+
+### F-24 — Présence honnête + textes conformes au transport réel — CORRIGÉ
+- `Math.max(presence, 1)` supprimé aux 2 emplacements (header + panneau Réseau) : 0 identité connectée = « 0 » (le hub réel n'est plus contredit par l'UI).
+- Textes Nostr remplacés (×2, NetworkView) : « bascule sur les **relais internet Mbote** (pont VPS `/api/mesh/bridge` + relay temps réel, canaux géohash) ». Vérifié navigateur : **zéro mention Nostr** dans la page ✅.
+
+### F-26 — Mise à jour SW annoncée — CORRIGÉ (SW v4)
+- `sw.js` : **skipWaiting automatique supprimé** (install) ; activation sur **message `SKIP_WAITING`** explicite ; version `mbote-v4`.
+- `PwaRegister.tsx` : détection du worker **en attente** (dès l'arrivée ET pendant la session via `updatefound`) → **toast « Nouvelle version disponible »** persistant avec bouton **« Mettre à jour »** → `postMessage('SKIP_WAITING')` → `controllerchange` → reload. Fini les rechargements à l'improviste en pleine rédaction.
+
+### F-28 — Rollback du like optimiste — CORRIGÉ
+- `api.ts` : **`ApiError` typée** (le statut HTTP voyage avec l'erreur) + `isDefinitiveApiError()` (4xx hors 429).
+- `PostCard.handleLike` : état optimiste (cœur + compteur) **annulé** si `onLike` retourne `false` (rejet définitif) — l'ancien code laissait l'UI dans un état faux.
+- `MboteApp.like` : 4xx → toast d'erreur + `false` (rollback) ; erreur de transport → outbox (offline-first préservé, retourne `true`). Like nominal vérifié navigateur : POST 200, compteur = 1 ✅.
+- **Découverte connexe corrigée** : l'ancienne détection 4xx de `flushOutbox` (regex `/HTTP 4\d\d/`) ne matchait **presque jamais** — `jsonFetch` jetait l'erreur avec le **texte serveur**, pas le statut. Les enveloppes condamnées étaient retestées à l'infini.
+
+### F-29 — botPriv chiffré au repos — CORRIGÉ
+- Nouveau `src/lib/mbote/bot-key.ts` : JWK bot **chiffrée AES-GCM 256** au format `enc:v1:<iv>:<ct>`, clé dérivée de `MBOTE_BOT_KEY` (prod) ou `SEED_SECRET`, repli dev journalisé en warning (honnêteté : sans secret serveur, la protection vaut surtout contre l'exfiltration de la colonne seule).
+- `seed` : stocke chiffré + **migration silencieuse** du legacy — la MÊME clé ECDH est re-chiffrée (zéro rupture des DM existants). `dms/bot` : déchiffrement transparent (legacy accepté).
+- **Vérifié E2E** : base migrée (`botPriv = enc:v1:sobEyYz5wBwbcbQm:…`) puis DM bot complet via l'UI → **réponse du bot déchiffrée dans l'UI** ✅.
+- **Incident trouvé par l'E2E et corrigé en séance** : destructuring erroné du format chiffré (`iv`/`ct` confondus avec le préfixe `enc:v1`) → 500 « botPriv indéchiffrable » au premier test navigateur ; corrigé, re-validé.
+
+### F-30 — Dédup mesh cryptographique — CORRIGÉ
+- `bridge/route.ts` : empreinte de dédup persistante en **SHA-256** (`crypto.createHash`) au lieu de FNV-64 (collisions forgeables). E2E : même paquet re-déposé → `duplicate` (hash SHA-256 visible dans la réponse) ✅.
+
+### F-31 — Double outbox : politique unifiée — CORRIGÉ
+- `identity.ts` : **`pruneOutbox()`** — l'outbox sociale (LS) gagne l'expiration **7 j** (= `ACTION_MAX_AGE_MS` : une preuve morte ne pourrit plus la file) et le **plafond 200 FIFO**, appliqué à chaque `load/save/enqueue` (purge persistée). Politique des DEUX files documentée dans l'en-tête (sociale = ACK API ; durable binaire = maxItems 1000 + backoff 30 s→15 min + purge poison).
+- `flushOutbox` : rejet définitif (4xx hors 429) détecté via `ApiError` → enveloppe jetée + **toast explicite** ; erreur de transport → l'enveloppe reste (reflush).
+
+### F-33 — Push canal vivant — CORRIGÉ
+- `MboteApp` : joint la salle **`channel:<geohash>`** à l'ouverture du canal (`subscribe`), quitte l'ancienne (`unsubscribe`), **rejoint après chaque reconnexion** (la mémoire de rooms est perdue côté relay à la déconnexion).
+- **E2E dédié** (`tests/relay-channel-push.ts`) : client SANS hello (jamais dans `feed`) + `subscribe` → post signé via le pont → **push reçu** (la seule salle possible est le canal) → `unsubscribe` → post suivant **non livré** ✅. (Note : socket.io déduplique par socket — `io.to([...])` = union, une livraison suffit à prouver le join.)
+
+### F-34 — Code-splitting — CORRIGÉ
+- `next/dynamic` (`ssr: false` + squelettes `aria-busy`) : **ChannelsView, MessagesView, NetworkView, ProfileView** (MboteApp) + **MeshSimulation** (1 400+ lignes, NetworkView). **FeedView reste eager** (vue par défaut, candidat LCP).
+- Vérifié navigateur : les 4 vues + la simulation se chargent toutes après découpage ✅.
+
+### Validation navigateur (golden path complet, après correctifs)
+Identité créée via onboarding → post signé publié et affiché (badges « toi » + « signée ») → like signé (POST 200, compteur = 1) → vues **Canaux / Messages / Réseau / Profil** chargées (code-splitting F-34) → simulation mesh rendue → textes F-24 (zéro Nostr) → **DM bot E2E** (réponse déchiffrée dans l'UI, botPriv chiffré au repos F-29) → **mobile 390×844** (header sticky, nav fixe, zéro scroll horizontal) → **zéro erreur console, zéro erreur page**.
+
+### Validation serveur (tests automatisés de la vague)
+1. `bun tests/mesh-bridge-e2e.ts` → uplink signé fragmenté accepté (2/2, réassembly OK) · re-dépôt → 2× `duplicate` (SHA-256) · downlink avec ts **ms** — **EXIT 0**.
+2. `bun tests/relay-channel-push.ts` → join canal → push reçu · unsubscribe → bloqué — **EXIT 0**.
+3. `bun run check:parity` → 11/11 assertions de parité web ↔ mobile — **EXIT 0**.
+4. Tests hostiles : FragmentAssembler (bornes, LRU) ✅ · rate limit identity (429) ✅ · `db:backfill` (compteurs cohérents) ✅.
+
+### Incidents de la vague (résolus en séance)
+1. Test E2E : payload > 452 o non fragmenté → le test fragmente désormais **comme `MeshTransport.publish`** (miroir F-03) et réassemble au contrôle downlink.
+2. `bot-key.ts` : destructuring du format `enc:v1:` — trouvé par le test navigateur DM bot (500 « indéchiffrable »), corrigé, re-validé ✅.
+3. `jsonFetch` sans statut HTTP → détection 4xx de l'outbox quasi inopérante (découverte F-28/F-31, corrigée via `ApiError`).
+
+### Restant NOT VERIFIED (appareils/infra réels — cumul, cf. §15)
+1. Android/iOS physique : BLE multi-sauts, permissions, builds EAS/Gradle — inchangé.
+2. Production VPS : CSP sans 'unsafe-eval' (bundle prod), HSTS derrière TLS, **SW v4 (flux de mise à jour toast)** en PWA installée, `migrate deploy`, `RELAY_EMIT_TOKEN` + **`MBOTE_BOT_KEY` défini** (chiffrement botProd pleine valeur).
+3. CI : exécution réelle du portail parité (étape ajoutée aux 2 workflows mobiles).
+4. Charge (~100 posts/min) + audit axe/Lighthouse + lecteurs d'écran — inchangés (§15).
+
+### Registre — statut final après Vague 5
+- **Corrigées : 53/54** (F-01→F-50, F-52→F-54).
+- **Mitigée : F-51** (token /emit + doc SSRF ; restructuration du proxy sandbox hors périmètre).
+- **TOTAL : 54/54 traitées — REGISTRE CLOS.**
+- **Maturité réévaluée** : web sécurité 7 → **7,5** (rate limits sur toute écriture, dédup cryptographique, botPriv chiffré au repos) ; Architecture 7 → **8** (parité protocole testée en CI, outboxes alignées, code-splitting) ; PWA 7,5 → **8** (mises à jour annoncées) ; Backend 6 → **7,5** (bornes + limites complètes) ; **Global 7 → 8/10 — POC robuste, pilote réel possible. Les NOT VERIFIED restants exigent des appareils/une infra réels ; aucun bloqueur code connu.**

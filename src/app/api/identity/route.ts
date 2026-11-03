@@ -2,9 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { toUserDto } from "@/lib/mbote/dto";
 import { relayNotify } from "@/lib/mbote/relay-notify";
+import { clientIp, getRateStore, trackApiRequest } from "@/lib/mbote/state-store";
 import { identityProofMessage, isValidPubkeyFormat, verifySignedMessage } from "@/lib/mbote/proof";
 
 export const dynamic = "force-dynamic";
+
+// F-18 : rate limiting sur l'écriture d'identité (la preuve ECDSA bloque
+// l'usurpation, pas le spam de creations/reécritures légitimement signées)
+const IDENTITY_PER_MIN_PER_KEY = 10;
+const IDENTITY_PER_MIN_PER_IP = 30;
+const RATE_WINDOW_MS = 60_000;
 
 /** POST /api/identity — enregistre / met à jour une identité (clé publique = compte)
  *
@@ -15,6 +22,7 @@ export const dynamic = "force-dynamic";
  *  surtout de `ecdhPub` (détournement des DM futurs) d'un tiers.
  */
 export async function POST(req: NextRequest) {
+  const done = trackApiRequest("identity.post");
   try {
     const body = await req.json();
     const { pubkey, nickname, bio, ecdhPub, ts, signature } = body ?? {};
@@ -23,6 +31,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "pubkey invalide (clé publique P-256 brute base64url attendue)" },
         { status: 400 }
+      );
+    }
+
+    // F-18 : avant toute vérification cryptographique (coûteuse) ni écriture
+    const rates = getRateStore();
+    const byKey = rates.hit(`identity:${pubkey}`, IDENTITY_PER_MIN_PER_KEY, RATE_WINDOW_MS);
+    const byIp = rates.hit(`identity-ip:${clientIp(req.headers)}`, IDENTITY_PER_MIN_PER_IP, RATE_WINDOW_MS);
+    if (!byKey.allowed || !byIp.allowed) {
+      const retry = Math.ceil(Math.max(byKey.retryAfterMs, byIp.retryAfterMs) / 1000);
+      return NextResponse.json(
+        { error: "Trop de mises à jour d'identité — réessayez plus tard" },
+        { status: 429, headers: { "Retry-After": String(retry || 60) } }
       );
     }
     if (ecdhPub !== undefined && ecdhPub !== null && !isValidPubkeyFormat(ecdhPub)) {
@@ -85,6 +105,8 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error("POST /api/identity", e);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  } finally {
+    done();
   }
 }
 

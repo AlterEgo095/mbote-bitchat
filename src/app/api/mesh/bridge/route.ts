@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { db } from "@/lib/db";
 import { toPostDto } from "@/lib/mbote/dto";
 import { relayNotify } from "@/lib/mbote/relay-notify";
@@ -40,6 +41,14 @@ const RATE_WINDOW_MS = 60_000;
 /** réassembleur des paquets fragmentés — singleton pluggable (D2) :
  *  mémoire aujourd'hui, store partagé (Redis) au Palier 1, sans changer la route */
 const assembler = getFragmentAssembler();
+
+/** F-30 : dédup persistante cryptographique (SHA-256) — l'ancien FNV-64
+ *  (non cryptographique) permettait des collisions forgées qui masquaient
+ *  des paquets légitimes ou laissaient passer du rejeu. L'empreinte de la
+ *  requête (hash d'entrée) est comptée en hex SHA-256 sur les octets bruts. */
+function sha256Hex(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
 
 /** senderID fixe du serveur (b64url de "serverdownlink") pour les paquets downlink */
 const SERVER_PUBKEY_B64 = "c2VydmV1cmRvd25saW5r";
@@ -104,7 +113,7 @@ export async function POST(req: NextRequest) {
       try {
         if (typeof raw !== "string") throw new Error("paquet non base64");
         bytes = base64ToBytes(raw);
-        hash = fnv64(bytes);
+        hash = sha256Hex(bytes);
 
         // dédup persistante (le même paquet peut arriver de plusieurs passerelles)
         const already = await db.meshIngest.findUnique({ where: { hash } });
@@ -349,7 +358,10 @@ export async function GET(req: NextRequest) {
         precision: p.precision,
         parentId: p.parentId,
         signature: p.signature,
-        ts: Math.floor(p.createdAt.getTime() / 1000),
+        // F-16 : l'horodatage SOCIAL de l'événement est en millisecondes,
+        // comme les clients web/mobile qui signent `${pubkey}|${content}|${ts}`.
+        // (L'en-tête du paquet BLE reste en secondes — spec protocole.)
+        ts: p.createdAt.getTime(),
       };
       const payload = encodeMeshEvent(ev);
       // ≤ 452 o → un seul paquet ; sinon fragmentation BitChat (fragId stable)

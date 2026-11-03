@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import {
@@ -43,6 +44,7 @@ import {
   apiSendDm,
   apiToggleLike,
   apiUpsertIdentity,
+  isDefinitiveApiError,
 } from "@/lib/mbote/api";
 import { generateKeyBundle, signPayload } from "@/lib/mbote/crypto";
 import {
@@ -75,12 +77,38 @@ import type { ActiveChannel, PendingPost, ViewKey } from "@/lib/mbote/types";
 import { closeWebOutbox } from "@/lib/mbote/transports/web-outbox";
 
 import { MboteAvatar } from "./Avatar";
-import { ChannelsView } from "./ChannelsView";
+// F-34 (audit Vague 5) : code-splitting des vues secondaires — FeedView
+// reste eager (vue par défaut + candidat LCP), les 4 autres vues + le
+// tunnel BitChat sont chargés à la demande (bundle initial allégé).
+const ChannelsView = dynamic(
+  () => import("./ChannelsView").then((m) => m.ChannelsView),
+  { ssr: false, loading: ViewSkeleton }
+);
+const MessagesView = dynamic(
+  () => import("./MessagesView").then((m) => m.MessagesView),
+  { ssr: false, loading: ViewSkeleton }
+);
+const NetworkView = dynamic(
+  () => import("./NetworkView").then((m) => m.NetworkView),
+  { ssr: false, loading: ViewSkeleton }
+);
+const ProfileView = dynamic(
+  () => import("./ProfileView").then((m) => m.ProfileView),
+  { ssr: false, loading: ViewSkeleton }
+);
 import { FeedView } from "./FeedView";
-import { MessagesView } from "./MessagesView";
-import { NetworkView } from "./NetworkView";
 import { OnboardingDialog } from "./OnboardingDialog";
-import { ProfileView } from "./ProfileView";
+
+/** Squelette de chargement des vues découpées (F-34). */
+function ViewSkeleton() {
+  return (
+    <div className="space-y-3" aria-busy="true" aria-label="Chargement de la vue">
+      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-40 w-full" />
+      <Skeleton className="h-40 w-full" />
+    </div>
+  );
+}
 
 const NAV_ITEMS: { key: ViewKey; label: string; icon: typeof Newspaper }[] = [
   { key: "feed", label: "Fil", icon: Newspaper },
@@ -113,6 +141,8 @@ export function MboteApp() {
   const [realtimeOk, setRealtimeOk] = useState(false);
   const [presence, setPresence] = useState(0);
   const flushingRef = useRef(false);
+  /** F-33 : salle de canal actuellement jointe côté relay (channel:<geohash>). */
+  const channelRoomRef = useRef<string | null>(null);
 
   // ---------- initialisation ----------
   useEffect(() => {
@@ -213,12 +243,18 @@ export function MboteApp() {
           const ref = (item.payload as { clientRef?: string }).clientRef;
           if (ref) setPendingPosts((ps) => ps.filter((p) => p.clientRef !== ref));
         } catch (e) {
-          const msg = e instanceof Error ? e.message : "";
-          // erreur définitive (4xx) → on jette l'enveloppe pour ne pas bloquer la file
-          if (/HTTP 4\d\d/.test(msg)) {
+          // F-31 : erreur DÉFINITIVE (4xx, hors 429) → enveloppe jetée (le
+          // retest est futile : preuve expirée, malformation…). L'ancienne
+          // détection par regex /HTTP 4\d\d/ ne matchait presque jamais
+          // (le message est le texte d'erreur serveur, pas le statut).
+          if (isDefinitiveApiError(e)) {
             removeOutbox(item.id);
             setOutbox(loadOutbox());
+            toast.error("Élément rejeté — retiré de la file locale", {
+              description: e instanceof Error ? e.message : "erreur définitive",
+            });
           }
+          // sinon : erreur de transport → l'enveloppe reste, reflush plus tard
         }
       }
       if (synced > 0) {
@@ -352,6 +388,35 @@ export function MboteApp() {
     };
   }, [mounted, identity, qc]);
 
+  // ---------- F-33 : abonnement réel aux salles de canal ----------
+  // Le relay diffuse post:new vers ["feed", "channel:<geohash>"] mais la
+  // salle canal n'était JAMAIS jointe (subscribe jamais émis) → push canal
+  // mort. On joint la salle du canal actif, on quitte l'ancienne, et on
+  // rejoint après chaque reconnexion (la mémoire de rooms est perdue côté
+  // relay à la déconnexion).
+  useEffect(() => {
+    if (!mounted) return;
+    const s = getSocket();
+    const room = activeChannel ? `channel:${activeChannel.geohash}` : null;
+    const prev = channelRoomRef.current;
+    if (prev && prev !== room) {
+      s.emit("unsubscribe", { rooms: [prev] });
+    }
+    if (room && room !== prev) {
+      s.emit("subscribe", { rooms: [room] });
+    }
+    channelRoomRef.current = room;
+    const resubscribe = () => {
+      if (channelRoomRef.current) {
+        s.emit("subscribe", { rooms: [channelRoomRef.current] });
+      }
+    };
+    s.on("connect", resubscribe);
+    return () => {
+      s.off("connect", resubscribe);
+    };
+  }, [mounted, activeChannel]);
+
   // ---------- actions ----------
   const createIdentity = useCallback(
     async (nickname: string, bio: string) => {
@@ -456,8 +521,8 @@ export function MboteApp() {
   );
 
   const like = useCallback(
-    async (postId: string, _liked: boolean) => {
-      if (!identity) return;
+    async (postId: string, _liked: boolean): Promise<boolean> => {
+      if (!identity) return false;
       // F-01 : le like est signé AVANT l'envoi (ou la mise en file) — preuve
       // de possession vérifiée côté serveur à l'arrivée comme au flush.
       const ts = Date.now();
@@ -469,23 +534,35 @@ export function MboteApp() {
         );
       } catch {
         toast.error("Signature impossible — like non envoyé");
-        return;
+        return false;
       }
       const payload = { pubkey: identity.pubkey, postId, ts, signature };
       if (canSend) {
-        apiToggleLike(payload)
-          .then(() => {
-            qc.invalidateQueries({ queryKey: ["feed"] });
-          })
-          .catch(() => {
-            enqueueOutbox({ type: "like", payload });
-            setOutbox(loadOutbox());
-            toast.info("J'aime mis en file locale (courrier)");
-          });
+        try {
+          await apiToggleLike(payload);
+          qc.invalidateQueries({ queryKey: ["feed"] });
+          return true;
+        } catch (e) {
+          // F-28 : rejet DÉFINITIF (4xx, hors 429) → l'appelant ROLLBACK
+          // l'état optimiste (l'ancien comportement mettait en outbox une
+          // enveloppe condamnée, qui saturait la file de rejets 401).
+          if (isDefinitiveApiError(e)) {
+            toast.error("Like refusé", {
+              description: e instanceof Error ? e.message : "rejet du serveur",
+            });
+            return false;
+          }
+          // erreur de transport → comportement offline-first : file locale
+          enqueueOutbox({ type: "like", payload });
+          setOutbox(loadOutbox());
+          toast.info("J'aime mis en file locale (courrier)");
+          return true;
+        }
       } else {
         enqueueOutbox({ type: "like", payload });
         setOutbox(loadOutbox());
         toast.info("J'aime en file locale — synchronisé plus tard");
+        return true;
       }
     },
     [identity, canSend, qc]
@@ -684,7 +761,7 @@ export function MboteApp() {
               className={cn("size-3.5", realtimeOk && "animate-pulse")}
               aria-hidden="true"
             />
-            {realtimeOk ? `${Math.max(presence, 1)} en direct` : "relay…"}
+            {realtimeOk ? `${presence} en direct` : "relay…"}
           </div>
 
           <div className="ml-auto flex items-center gap-2.5">
@@ -837,7 +914,7 @@ export function MboteApp() {
               </p>
               <div className="space-y-0.5 text-[11px] text-muted-foreground">
                 <p>
-                  <span className="font-mono font-semibold text-primary">{realtimeOk ? Math.max(presence, 1) : "—"}</span>{" "}
+                  <span className="font-mono font-semibold text-primary">{realtimeOk ? presence : "—"}</span>{" "}
                   identités en direct
                 </p>
                 <p>

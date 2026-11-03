@@ -305,16 +305,69 @@ export function fragmentPayload(payload: Uint8Array, fragId: number): Uint8Array
   return chunks;
 }
 
+/**
+ * F-19 (audit Vague 5) : l'assembleur serveur est BORNÉ — l'ancienne version
+ * gardait chaque fragment orphelin pour toujours (croissance mémoire → DoS
+ * progressif par inondation de fragments sans suite).
+ *  • FRAGMENT_TTL_MS   : un paquet fragmenté inachevé expire après 5 min
+ *    (un vrai pair BitChat retransmet bien avant) ;
+ *  • MAX_ACTIVE_IDS    : 256 paquets fragmentés suivis simultanément —
+ *    au-delà, les plus anciens sont abandonnés (LRU par firstSeen) ;
+ *  • MAX_FRAG_TOTAL    : un `total` de fragments > 64 est rejeté (throw) —
+ *    64 × 448 o ≈ 28 KiB, très au-delà de tout événement social légitime.
+ */
+const FRAGMENT_TTL_MS = 5 * 60_000;
+const MAX_ACTIVE_IDS = 256;
+const MAX_FRAG_TOTAL = 64;
+
 export class FragmentAssembler {
   private parts = new Map<number, Map<number, Uint8Array>>();
   private totals = new Map<number, number>();
+  private firstSeen = new Map<number, number>();
 
-  /** Retourne la charge utile complète si le fragment final est arrivé */
+  /** Purge les paquets fragmentés expirés (appelé à chaque push — O(n) borné par MAX_ACTIVE_IDS). */
+  private prune(now = Date.now()): void {
+    for (const [id, seen] of this.firstSeen) {
+      if (now - seen > FRAGMENT_TTL_MS) {
+        this.parts.delete(id);
+        this.totals.delete(id);
+        this.firstSeen.delete(id);
+      }
+    }
+  }
+
+  /** Retourne la charge utile complète si le fragment final est arrivé.
+   *  Lève sur un fragment structurellement invalide (plafond, index hors borne). */
   push(chunk: Uint8Array): Uint8Array | null {
     const dv = new DataView(chunk.buffer, chunk.byteOffset, chunk.byteLength);
     const fragId = dv.getUint16(0, false);
     const index = chunk[2];
     const total = chunk[3];
+    if (total < 2 || total > MAX_FRAG_TOTAL) {
+      throw new Error(`fragment invalide (total ${total} hors borne 2..${MAX_FRAG_TOTAL})`);
+    }
+    if (index >= total) {
+      throw new Error(`fragment invalide (index ${index} ≥ total ${total})`);
+    }
+    this.prune();
+
+    // plafond d'IDs actifs : abandon des plus anciens (hors paquet courant)
+    while (this.parts.size >= MAX_ACTIVE_IDS && !this.parts.has(fragId)) {
+      let oldest = -1;
+      let oldestSeen = Infinity;
+      for (const [id, seen] of this.firstSeen) {
+        if (seen < oldestSeen) {
+          oldestSeen = seen;
+          oldest = id;
+        }
+      }
+      if (oldest < 0) break;
+      this.parts.delete(oldest);
+      this.totals.delete(oldest);
+      this.firstSeen.delete(oldest);
+    }
+
+    if (!this.firstSeen.has(fragId)) this.firstSeen.set(fragId, Date.now());
     this.totals.set(fragId, total);
     let bag = this.parts.get(fragId);
     if (!bag) {
@@ -335,6 +388,7 @@ export class FragmentAssembler {
     }
     this.parts.delete(fragId);
     this.totals.delete(fragId);
+    this.firstSeen.delete(fragId);
     return merged;
   }
 }

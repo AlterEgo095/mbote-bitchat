@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { encodeGeohash } from "@/lib/mbote/geohash";
+import { clientIp, getRateStore } from "@/lib/mbote/state-store";
+import { encryptBotPriv, isBotPrivEncrypted } from "@/lib/mbote/bot-key";
 
 export const dynamic = "force-dynamic";
+
+// F-18 : le seed est gardé (dev/secret opérateur) mais plafonné — un appel
+// en boucle génère une paire ECDH + 10+ écritures par invocation.
+const SEED_PER_10MIN_PER_IP = 5;
+const RATE_WINDOW_MS = 10 * 60_000;
 
 /**
  * POST /api/seed — données de démonstration (idempotent).  [F-02, audit Vague 1]
@@ -140,6 +147,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // F-18 : rate limit par IP (l'endpoint reste idempotent, mais chaque
+    // appel coûte une génération de clé + une rafale d'upserts)
+    const rates = getRateStore();
+    const byIp = rates.hit(`seed:${clientIp(req.headers)}`, SEED_PER_10MIN_PER_IP, RATE_WINDOW_MS);
+    if (!byIp.allowed) {
+      const retry = Math.ceil(byIp.retryAfterMs / 1000);
+      return NextResponse.json(
+        { error: "Trop d'appels seed — réessayez plus tard" },
+        { status: 429, headers: { "Retry-After": String(retry || 600) } }
+      );
+    }
+
     buildPosts();
 
     // 1) utilisateurs : bot (clé ECDH réelle) + comptes démo — créés s'ils manquent
@@ -148,6 +167,10 @@ export async function POST(req: NextRequest) {
     ]);
     const botPrivJwk = await subtle().exportKey("jwk", botPair.privateKey);
     const botPubRaw = await subtle().exportKey("raw", botPair.publicKey);
+
+    // F-29 : la JWK privée du bot est CHIFFRÉE AU REPOS (AES-GCM, clé serveur
+    // MBOTE_BOT_KEY/SEED_SECRET) — plus jamais de JWK en clair en base.
+    const botPrivEncrypted = await encryptBotPriv(JSON.stringify(botPrivJwk));
 
     const bot = await db.user.upsert({
       where: { pubkey: "demo-pubkey-mbote-bot-99a8b7c6d5e4f3120" },
@@ -158,9 +181,19 @@ export async function POST(req: NextRequest) {
         bio: "Bot de démonstration · répond en chiffré de bout en bout · écris « aide »",
         isBot: true,
         ecdhPub: bufToB64url(botPubRaw),
-        botPriv: JSON.stringify(botPrivJwk),
+        botPriv: botPrivEncrypted,
       },
     });
+
+    // F-29 : migration silencieuse d'un déploiement existant — si la clé du
+    // bot est encore en clair (legacy), on la RE-CHIFFRE au repos SANS la
+    // changer (les conversations DM existantes restent valides).
+    if (bot.botPriv && !isBotPrivEncrypted(bot.botPriv)) {
+      await db.user.update({
+        where: { id: bot.id },
+        data: { botPriv: await encryptBotPriv(bot.botPriv) },
+      });
+    }
 
     const users = [bot];
     for (const u of DEMO_USERS) {

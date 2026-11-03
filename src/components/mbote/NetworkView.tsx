@@ -34,7 +34,20 @@ import { followProofMessage } from "@/lib/mbote/proof";
 import type { UserPublic } from "@/lib/mbote/types";
 import { MboteAvatar } from "./Avatar";
 import { BitChatBridge } from "./BitChatBridge";
-import MeshSimulation from "./MeshSimulation";
+import dynamic from "next/dynamic";
+
+// F-34 : la simulation (1 400+ lignes) ne voyage plus dans le bundle initial —
+// chargée uniquement quand l'utilisateur ouvre la vue Réseau.
+const MeshSimulation = dynamic(() => import("./MeshSimulation"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-64 rounded-xl border bg-card/50" aria-busy="true" aria-label="Chargement de la simulation" />
+  ),
+});
+
+// F-24 : les textes décrivent le VRAI transport internet de cette démo —
+// le pont mesh + le relay socket.io de Mbote (jamais déployé : relays Nostr).
+const TRANSPORT_INTERNET_LABEL = "relais internet Mbote" as const;
 import { RouteurPanel } from "./RouteurPanel";
 
 /**
@@ -337,10 +350,11 @@ export function NetworkView() {
               </AccordionTrigger>
               <AccordionContent className="text-xs leading-relaxed text-muted-foreground">
                 Chaque message tente d&apos;abord le <strong>mesh Bluetooth LE</strong> (portée
-                locale, multi-sauts, zéro infrastructure) puis bascule sur{" "}
-                <strong>Nostr</strong> (relays internet mondiaux, canaux géohash) si personne
-                n&apos;est à portée. Le routeur choisit le meilleur transport automatiquement —
-                ici, la file locale « courrier » joue le rôle du store-and-forward.
+                locale, multi-sauts, zéro infrastructure) puis bascule sur les{" "}
+                <strong>{TRANSPORT_INTERNET_LABEL}</strong> (pont VPS `/api/mesh/bridge` + relay
+                temps réel, canaux géohash) si personne n&apos;est à portée. Le routeur choisit
+                le meilleur transport automatiquement — ici, la file locale « courrier » joue
+                le rôle du store-and-forward.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="crypto">
@@ -370,7 +384,7 @@ export function NetworkView() {
                 persistante de l&apos;expéditeur, les <strong>courriers</strong> (3 pairs
                 transporteurs, budget de copies 4→8, tags rotatifs quotidiens), la
                 réconciliation d&apos;historique public par filtres de Golomb (GCS) toutes les
-                15 s, et les boîtes aux lettres Nostr avec rappel de 24 h.
+                15 s, et les boîtes aux lettres {TRANSPORT_INTERNET_LABEL} avec rappel de 24 h.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="geohash">

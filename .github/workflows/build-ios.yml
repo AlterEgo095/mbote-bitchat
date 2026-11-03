@@ -49,6 +49,9 @@ jobs:
         working-directory: mobile
         run: bunx tsc --noEmit
 
+      - name: Portail qualité — parité protocole web ↔ mobile (F-22)
+        run: bun run check:parity
+
       - name: Générer le projet iOS (Expo prebuild + CocoaPods)
         working-directory: mobile
         run: bunx expo prebuild --platform ios --clean

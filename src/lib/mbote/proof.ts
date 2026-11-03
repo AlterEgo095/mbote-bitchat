@@ -38,6 +38,15 @@ export const READ_MAX_AGE_MS = 15 * 60_000;
 /** Dérive horloge acceptée dans le futur pour les preuves de lecture */
 export const READ_FUTURE_TOLERANCE_MS = 2 * 60_000;
 
+/**
+ * F-16 : unité de `ts` historiquement ambiguë (web/mobile signent en ms, les
+ * anciens émetteurs en s). La signature porte sur la valeur BRUTE ; seule la
+ * fraîcheur est calculée sur la valeur normalisée (ts < 1e11 = secondes).
+ */
+export function normalizeTsToMs(tsNum: number): number {
+  return tsNum < 1e11 ? tsNum * 1000 : tsNum;
+}
+
 // ───────────────────────── Chaînes canoniques ─────────────────────────
 
 export interface IdentityProofFields {
@@ -153,7 +162,8 @@ function checkFreshness(
   if (!Number.isFinite(tsNum) || tsNum <= 0) {
     return { valid: false, reason: "ts invalide" };
   }
-  const age = Date.now() - tsNum;
+  // F-16 : fraîcheur sur l'unité normalisée (s → ms)
+  const age = Date.now() - normalizeTsToMs(tsNum);
   if (age > maxAgeMs) {
     return {
       valid: false,

@@ -7,11 +7,13 @@
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
+    "check:parity": "bun scripts/check-protocol-parity.ts",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:deploy": "prisma migrate deploy",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset"
+    "db:reset": "prisma migrate reset",
+    "db:backfill": "bun scripts/backfill-counters.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.11.1",

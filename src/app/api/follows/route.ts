@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { followProofMessage, verifySignedMessage } from "@/lib/mbote/proof";
+import { clientIp, getRateStore, trackApiRequest } from "@/lib/mbote/state-store";
 
 export const dynamic = "force-dynamic";
+
+// F-18 : rate limiting sur follow/unfollow (le graphe social est une surface
+// de spam : gonfler followers, rafales d'unfollow)
+const FOLLOWS_PER_MIN_PER_KEY = 30;
+const FOLLOWS_PER_MIN_PER_IP = 90;
+const RATE_WINDOW_MS = 60_000;
 
 /** GET /api/follows?followerPub=&targetPub= — est-ce que A suit B ? */
 export async function GET(req: NextRequest) {
@@ -27,6 +34,7 @@ export async function GET(req: NextRequest) {
  *  `${followerPub}|follow|${action}|${targetPub}|${ts}`.
  */
 export async function POST(req: NextRequest) {
+  const done = trackApiRequest("follows.post");
   try {
     const { followerPub, targetPub, action, ts, signature } = await req.json();
     if (!followerPub || !targetPub || followerPub === targetPub) {
@@ -49,6 +57,19 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       );
     }
+
+    // F-18 : après la preuve (l'usurpateur paie la crypto, le spammeur 429)
+    const rates = getRateStore();
+    const byKey = rates.hit(`follows:${followerPub}`, FOLLOWS_PER_MIN_PER_KEY, RATE_WINDOW_MS);
+    const byIp = rates.hit(`follows-ip:${clientIp(req.headers)}`, FOLLOWS_PER_MIN_PER_IP, RATE_WINDOW_MS);
+    if (!byKey.allowed || !byIp.allowed) {
+      const retry = Math.ceil(Math.max(byKey.retryAfterMs, byIp.retryAfterMs) / 1000);
+      return NextResponse.json(
+        { error: "Trop d'abonnements — réessayez plus tard" },
+        { status: 429, headers: { "Retry-After": String(retry || 60) } }
+      );
+    }
+
     const [follower, target] = await Promise.all([
       db.user.findUnique({ where: { pubkey: followerPub } }),
       db.user.findUnique({ where: { pubkey: targetPub } }),
@@ -75,5 +96,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error("POST /api/follows", e);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  } finally {
+    done();
   }
 }

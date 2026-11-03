@@ -37,7 +37,7 @@ interface FeedViewProps {
     precision: number | null;
     parentId?: string | null;
   }) => Promise<void>;
-  onLike: (postId: string, liked: boolean) => void;
+  onLike: (postId: string, liked: boolean) => boolean | Promise<boolean> | void;
   onReply: (parentId: string, content: string) => Promise<void>;
   forceOffline: boolean;
   submitting: boolean;

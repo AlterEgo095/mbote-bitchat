@@ -19,6 +19,18 @@ import { LS_IDENTITY, LS_OUTBOX, LS_FORCE_OFFLINE } from "./constants";
 import { importLegacyKeyBundle, type KeyBundle } from "./crypto";
 import { clearSecureKeys, getSecureKeys, putSecureKeys } from "./secure-keys";
 
+// ── F-31 : politique de purge unifiée des DEUX outboxes ──
+// L'app porte deux files aux rôles distincts et complémentaires :
+//   • outbox SOCIALE (cette file, LS, JSON) — actions signées vers l'API
+//     (identity, post, like, dm) ; purgée par ACK du serveur ;
+//   • outbox DURABLE binaire (outbox-core, IndexedDB/SQLite, paquets
+//     BitChat base64) — plafond 1000, backoff 30 s→15 min, purge poison.
+// Historiquement leurs politiques divergaient (la sociale n'avait NI âge NI
+// plafond) : des enveloppes dont la preuve avait expiré (> 7 j, rejetées 401)
+// y pourrissaient à jamais. Alignement :
+const SOCIAL_OUTBOX_MAX_ITEMS = 200;
+const SOCIAL_OUTBOX_MAX_AGE_MS = 7 * 24 * 3600 * 1000; // = ACTION_MAX_AGE_MS (proof.ts)
+
 export interface StoredIdentity extends KeyBundle {
   nickname: string;
   bio?: string;
@@ -152,7 +164,7 @@ function deleteDb(name: string): Promise<void> {
  * Panic wipe : « Clés, file locale et état local détruits » — la promesse est
  * désormais tenue (F-11) :
  *  - identité : LS + coffre IndexedDB `mbote-secure` ;
- *  - outbox sociale (LS) ;
+ *  - outbox sociale (LS, F-31 : purge par pruneOutbox) ;
  *  - outbox durable binaire : IndexedDB `mbote-outbox` + repli LS
  *    `mbote.outbox.packets.v1` ;
  *  - mode mesh forcé + thème (état local).
@@ -178,18 +190,33 @@ export type OutboxItem =
   | { id: string; type: "like"; payload: Record<string, unknown>; queuedAt: number }
   | { id: string; type: "dm"; payload: Record<string, unknown>; queuedAt: number };
 
+/**
+ * F-31 : purge d'alignement — supprime les enveloppes expirées (preuve > 7 j,
+ * rejetée d'office par le serveur) et applique le plafond FIFO. Retourne la
+ * liste assainie. Appelé à chaque chargement/enfilement/flush.
+ */
+export function pruneOutbox(items: OutboxItem[]): OutboxItem[] {
+  const now = Date.now();
+  const fresh = items.filter((i) => now - i.queuedAt <= SOCIAL_OUTBOX_MAX_AGE_MS);
+  const overflow = fresh.length - SOCIAL_OUTBOX_MAX_ITEMS;
+  return overflow > 0 ? fresh.slice(overflow) : fresh;
+}
+
 export function loadOutbox(): OutboxItem[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(LS_OUTBOX);
-    return raw ? (JSON.parse(raw) as OutboxItem[]) : [];
+    const items = raw ? (JSON.parse(raw) as OutboxItem[]) : [];
+    const pruned = pruneOutbox(items);
+    if (pruned.length !== items.length) saveOutbox(pruned); // purge persistée
+    return pruned;
   } catch {
     return [];
   }
 }
 
 export function saveOutbox(items: OutboxItem[]): void {
-  localStorage.setItem(LS_OUTBOX, JSON.stringify(items));
+  localStorage.setItem(LS_OUTBOX, JSON.stringify(pruneOutbox(items)));
 }
 
 export function enqueueOutbox(item: Omit<OutboxItem, "id" | "queuedAt">): OutboxItem[] {
@@ -200,8 +227,9 @@ export function enqueueOutbox(item: Omit<OutboxItem, "id" | "queuedAt">): Outbox
     queuedAt: Date.now(),
   } as OutboxItem;
   items.push(full);
-  saveOutbox(items);
-  return items;
+  const pruned = pruneOutbox(items);
+  saveOutbox(pruned);
+  return pruned;
 }
 
 export function removeOutbox(id: string): OutboxItem[] {

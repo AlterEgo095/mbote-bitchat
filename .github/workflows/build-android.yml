@@ -47,6 +47,9 @@ jobs:
         working-directory: mobile
         run: bunx tsc --noEmit
 
+      - name: Portail qualité — parité protocole web ↔ mobile (F-22)
+        run: bun run check:parity
+
       - name: JDK 17 (requis par React Native 0.76)
         uses: actions/setup-java@v4
         with:

@@ -21,6 +21,18 @@ export function postSignatureMessage(pubkey: string, content: string, ts: number
   return `${pubkey}|${content}|${ts}`;
 }
 
+/**
+ * F-16 : unité de `ts` historiquement ambiguë (web/mobile signent en
+ * millisecondes ; les anciens downlink/e2e émettaient en secondes).
+ * La SIGNATURE reste vérifiée sur la valeur BRUTE envoyée (chaîne canonique
+ * intacte) ; seule la FRAÎCHEUR est calculée sur la valeur normalisée :
+ * un `ts` < 1e11 (≈ mars 5133 en secondes, 1973 en ms) est traité comme
+ * des secondes et converti.
+ */
+export function normalizeTsToMs(tsNum: number): number {
+  return tsNum < 1e11 ? tsNum * 1000 : tsNum;
+}
+
 function b64urlToBytes(s: string): Uint8Array | null {
   try {
     const buf = Buffer.from(s, "base64url");
@@ -55,7 +67,8 @@ export async function verifyPostSignature(params: {
   if (!Number.isFinite(tsNum) || tsNum <= 0) {
     return { valid: false, reason: "ts invalide" };
   }
-  const age = Date.now() - tsNum;
+  // F-16 : fraîcheur sur l'unité normalisée (s → ms), signature sur la valeur brute
+  const age = Date.now() - normalizeTsToMs(tsNum);
   if (age > POST_SIGNATURE_MAX_AGE_MS) {
     return { valid: false, reason: "signature trop ancienne (hors tolérance offline)" };
   }

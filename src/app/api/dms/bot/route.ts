@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { relayNotify } from "@/lib/mbote/relay-notify";
+import { clientIp, getRateStore, trackApiRequest } from "@/lib/mbote/state-store";
+import { decryptBotPriv } from "@/lib/mbote/bot-key";
 
 export const dynamic = "force-dynamic";
+
+// F-18 : rate limiting — le bot est une surface de spam gratuite (réponses
+// automatiques, écritures DB systématiques). 10 msg/min/clé, 30/min/IP.
+const BOT_PER_MIN_PER_KEY = 10;
+const BOT_PER_MIN_PER_IP = 30;
+const RATE_WINDOW_MS = 60_000;
 
 /**
  * POST /api/dms/bot — le bot de démonstration.
@@ -100,10 +108,30 @@ function botReply(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  const done = trackApiRequest("dms.bot");
   try {
     const { meKey, iv, ciphertext } = await req.json();
     if (!meKey || !iv || !ciphertext) {
       return NextResponse.json({ error: "meKey, iv, ciphertext requis" }, { status: 400 });
+    }
+
+    // F-20 : garde en OCTETS réels (base64 décodé), alignée sur /api/dms —
+    // l'ancienne route était la seule sans borne de taille du produit.
+    const cipherBytes = Buffer.from(String(ciphertext), "base64");
+    if (cipherBytes.length > 8192) {
+      return NextResponse.json({ error: "Enveloppe trop volumineuse (8 KiB max)" }, { status: 413 });
+    }
+
+    // F-18 : avant toute écriture ni déchiffrement
+    const rates = getRateStore();
+    const byKey = rates.hit(`dms-bot:${meKey}`, BOT_PER_MIN_PER_KEY, RATE_WINDOW_MS);
+    const byIp = rates.hit(`dms-bot-ip:${clientIp(req.headers)}`, BOT_PER_MIN_PER_IP, RATE_WINDOW_MS);
+    if (!byKey.allowed || !byIp.allowed) {
+      const retry = Math.ceil(Math.max(byKey.retryAfterMs, byIp.retryAfterMs) / 1000);
+      return NextResponse.json(
+        { error: "Trop de messages au bot — ralentissez" },
+        { status: 429, headers: { "Retry-After": String(retry || 60) } }
+      );
     }
 
     const me = await db.user.findUnique({ where: { pubkey: meKey } });
@@ -116,7 +144,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 1) déchiffrer le message de l'utilisateur
-    const botPrivJwk = JSON.parse(bot.botPriv) as JsonWebKey;
+    // F-29 : la JWK privée du bot est chiffrée au repos (enc:v1:…) — legacy
+    // en clair accepté de façon transparente.
+    const botPrivJwk = JSON.parse(await decryptBotPriv(bot.botPriv)) as JsonWebKey;
     const aesKey = await deriveKey(botPrivJwk, me.ecdhPub);
     let plaintext: string;
     try {
@@ -164,5 +194,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error("POST /api/dms/bot", e);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  } finally {
+    done();
   }
 }

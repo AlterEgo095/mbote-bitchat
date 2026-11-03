@@ -11,6 +11,26 @@ import type {
 /** Délai par défaut des appels API (F-32) — abort propre au lieu d'un fetch suspendu */
 const DEFAULT_TIMEOUT_MS = 15_000;
 
+/**
+ * F-28/F-31 : erreur HTTP TYPÉE — le statut voyage avec l'erreur, ce qui
+ * permet aux appelants (rollback du like optimiste, purge de l'outbox)
+ * de distinguer une erreur DÉFINITIVE (4xx : inutile de retester) d'une
+ * erreur de transport (réseau : retest → outbox).
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/** Le rejet est-il une erreur HTTP définitive (4xx, hors 429 rate-limit) ? */
+export function isDefinitiveApiError(e: unknown): boolean {
+  return e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429;
+}
+
 async function jsonFetch<T>(url: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
   const ctrl = new AbortController();
   const timer = setTimeout(
@@ -25,7 +45,10 @@ async function jsonFetch<T>(url: string, init?: RequestInit, timeoutMs?: number)
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+      throw new ApiError(
+        (body as { error?: string }).error ?? `HTTP ${res.status}`,
+        res.status
+      );
     }
     return res.json() as Promise<T>;
   } finally {

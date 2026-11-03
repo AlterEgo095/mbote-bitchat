@@ -28,7 +28,8 @@ interface PostCardProps {
   post: PostWithMeta;
   myPub: string | null;
   forceOffline?: boolean;
-  onLike: (postId: string, liked: boolean) => void;
+  /** F-28 : peut retourner false = rejet DÉFINITIF → rollback de l'état optimiste. */
+  onLike: (postId: string, liked: boolean) => boolean | Promise<boolean> | void;
   onReply?: (parentId: string, content: string) => Promise<void>;
   compact?: boolean;
 }
@@ -56,11 +57,21 @@ export function PostCard({
 
   const isMine = myPub === post.author.pubkey;
 
-  const handleLike = () => {
+  const handleLike = async () => {
     const next = !liked;
+    const prevLiked = liked;
+    const prevCount = likeCount;
+    // optimiste (offline-first : le like peut partir en file locale)
     setLiked(next);
     setLikeCount((c) => c + (next ? 1 : -1));
-    onLike(post.id, next);
+    const result = onLike(post.id, next);
+    // F-28 : false = rejet définitif du serveur (4xx) → ROLLBACK de l'état
+    // optimiste (l'ancien code laissait le compteur et le cœur à l'envers).
+    const ok = result instanceof Promise ? await result : result;
+    if (ok === false) {
+      setLiked(prevLiked);
+      setLikeCount(prevCount);
+    }
   };
 
   const handleReply = async () => {

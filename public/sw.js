@@ -13,7 +13,14 @@
  *  - socket.io (/socket.io, engine.io) : jamais intercepté (temps réel)
  */
 
-const VERSION = "mbote-v3"; // v3 : page hors-ligne brandée (F-49) → force la réactivation
+/**
+ * F-26 (audit Vague 5) : version auto-skipWaiting supprimée — le nouveau SW
+ * ATTEND désormais que l'utilisateur ait accepté la mise à jour (toast
+ * « Nouvelle version » dans PwaRegister.tsx, qui envoie le message
+ * SKIP_WAITING). Fini les rechargements à l'improviste en pleine rédaction.
+ * v4 : flux de mise à jour contrôlé + offline.html déjà v3.
+ */
+const VERSION = "mbote-v4";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
@@ -68,8 +75,14 @@ self.addEventListener("install", (event) => {
       .open(SHELL_CACHE)
       .then((c) => c.addAll(SHELL_ASSETS))
       .catch(() => undefined) // l'app shell se reconstruira à la première visite
-      .then(() => self.skipWaiting())
+    // F-26 : PAS de skipWaiting() automatique — le SW attend l'accord de
+    // l'utilisateur (message SKIP_WAITING ci-dessous).
   );
+});
+
+// F-26 : activation sur consentement explicite du client (toast + bouton)
+self.addEventListener("message", (event) => {
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
