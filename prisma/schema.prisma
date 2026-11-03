@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Identité = paire de clés locale. Pas d'email, pas de téléphone.
+model User {
+  id         String   @id @default(cuid())
+  pubkey     String   @unique // empreinte publique (ECDSA P-256, base64url) = identité stable
+  nickname   String
+  bio        String?
+  avatarSeed String?
+  ecdhPub    String? // clé publique ECDH P-256 (base64url) pour le chiffrement des DM
+  isBot      Boolean  @default(false)
+  botPriv    String? // JWK privée — UNIQUEMENT pour le bot de démonstration
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  posts     Post[]
+  likes     Like[]
+  followers Follow[] @relation("following")
+  following Follow[] @relation("follower")
+}
+
+// Événement public signé côté client (style Nostr kind:1)
+model Post {
+  id        String   @id @default(cuid())
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content   String
+  geohash   String? // canal géographique (bloc #dr5rsj7 …)
+  precision Int? // précision géohash 2..7
+  parentId  String? // réponse à un autre post
+  parent    Post?    @relation("Replies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Post[]   @relation("Replies")
+  signature String? // signature ECDSA produite sur l'appareil
+  origin    String   @default("web") // web | mesh (arrivé via passerelle BitChat)
+  meshHops  Int      @default(0) // sauts mesh traversés (7 − TTL restant)
+  createdAt DateTime @default(now())
+
+  likes Like[]
+
+  @@index([geohash, precision])
+  @@index([authorId])
+  @@index([parentId])
+  @@index([createdAt])
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+}
+
+// Paquets BitChat déjà ingérés par la passerelle VPS (dédup persistante)
+model MeshIngest {
+  hash      String   @id // empreinte FNV-1a 64 du paquet brut (hex)
+  gatewayId String? // senderID hex du nœud passerelle qui l'a déposé
+  type      Int // type de paquet (0x01 announce, 0x02 public, 0x03 DM, 0x04 gossip)
+  hops      Int // sauts mesh traversés (TTL_MAX − TTL restant)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// Nœuds passerelle connus (app native / Raspberry Pi qui relayent mesh ↔ internet)
+model GatewayNode {
+  id         String   @id // senderID hex de la passerelle
+  label      String?
+  lastSeen   DateTime @updatedAt
+  packetsIn  Int      @default(0)
+  packetsOut Int      @default(0)
+}
+
+// Graphe de confiance (favoris mutuels chez BitChat)
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  follower    User     @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User     @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+}
+
+// Message privé : le serveur ne stocke QUE du chiffré (AES-GCM sur ECDH P-256)
+model DirectMessage {
+  id           String    @id @default(cuid())
+  senderKey    String // pubkey hex/base64url de l'expéditeur
+  recipientKey String // pubkey du destinataire
+  iv           String // IV AES-GCM base64
+  ciphertext   String // ciphertext AES-GCM base64 (opaque pour le serveur)
+  createdAt    DateTime  @default(now())
+  readAt       DateTime?
+
+  @@index([senderKey, recipientKey])
+  @@index([recipientKey, createdAt])
+}

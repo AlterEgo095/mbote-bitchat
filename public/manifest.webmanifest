@@ -1,0 +1,47 @@
+{
+  "name": "Mbote Mesh — réseau social hors-ligne",
+  "short_name": "Mbote Mesh",
+  "description": "Réseau social inspiré de BitChat : canaux géohash, DM chiffrés de bout en bout, file courrier hors-ligne, passerelle mesh ↔ VPS.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "fr",
+  "dir": "ltr",
+  "background_color": "#0a0f0d",
+  "theme_color": "#0a0f0d",
+  "categories": ["social", "communication"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Fil global",
+      "url": "/?view=feed",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Passerelle BitChat",
+      "url": "/?view=network",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
