@@ -6,15 +6,28 @@
  *    • le module natif BLE (octets transportés, fragmentation radio)
  *    • le cœur du protocole TS (encodage, dédup LRU, TTL, gigue)
  *    • le TransportRouter (DORS, P1) : BLE → Internet → outbox
+ *    • l'outbox durable (P2) : expo-sqlite, backoff 30 s → 15 min
  *
  *  Principe BitChat conservé : le natif livre un PAQUET COMPLET à JS ; JS
  *  décide — dédup → traitement → retransmission (TTL−1 après gigue).
- *  Nouveauté P1 : le contenu sortant (posts, DM) passe par le routeur —
- *  BLE si ≥ 1 voisin (avec copie outbox), sinon pont VPS si la sonde RTT
- *  est OK, sinon outbox (spray-and-wait). La présence (announce) reste un
- *  geste local BLE : elle n'a pas de sens hors du mesh.
+ *  Le contenu sortant (posts, DM) passe par le routeur — BLE si ≥ 1 voisin
+ *  (avec copie outbox), sinon pont VPS si la sonde RTT est OK, sinon outbox.
+ *  La présence (announce) reste un geste local BLE.
+ *
+ *  P2 — la file d'attente du pont est DURABLE (fin du bug « je tue l'app,
+ *  je perds 200 paquets ») et le flush est déclenché par :
+ *    • paquet reçu (« un voisin = un canal », anti-rebond 3 s)
+ *    • publication locale copiée en outbox
+ *    • regain réseau (NetInfo) + invalidation de la sonde
+ *    • retour au premier plan (AppState)
+ *    • timer périodique 5 min
+ *  La purge se fait par ack du pont (accepted/duplicate par paquet) ; les
+ *  échecs reprogramment un backoff exponentiel 30 s → 15 min.
  * ─────────────────────────────────────────────────────────────────────────────
  */
+
+import NetInfo from "@react-native-community/netinfo";
+import { AppState, type AppStateStatus } from "react-native";
 
 import {
   DedupCache,
@@ -34,6 +47,12 @@ import { BleMesh, type MeshStateEvent, type PeerInfo } from "../../modules/mbote
 import { BleTransport } from "./ble-transport";
 import { InternetTransport } from "./internet-transport";
 import { TransportRouter } from "./transport-router";
+import { AsyncFallbackOutboxStorage, DurableOutbox } from "./outbox-core";
+import type { FlushOutcome } from "./outbox-core";
+import {
+  MobileFallbackOutboxStorage,
+  SqliteOutboxStorage,
+} from "./outbox-storage";
 import type { PacketMeta, RouteDecision } from "./types";
 
 export interface MeshMeta {
@@ -53,18 +72,19 @@ export interface BridgeResult {
 }
 
 const ANNOUNCE_INTERVAL_MS = 30_000;
-const BRIDGE_QUEUE_MAX = 200;
 const BRIDGE_BATCH = 64;
-/** Déclencheurs P1 du flush outbox : paquet reçu, publication locale. */
+/** Déclencheur « paquet reçu / publication » : anti-rebond avant flush. */
 const FLUSH_DEBOUNCE_MS = 3000;
+/** Déclencheur P2 : timer périodique de flush (spéc P2). */
+const PERIODIC_FLUSH_MS = 5 * 60_000;
 
 export class MeshTransport {
   private dedup = new DedupCache();
   private subs: { remove: () => void }[] = [];
   private announceTimer: ReturnType<typeof setInterval> | null = null;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private periodicTimer: ReturnType<typeof setInterval> | null = null;
   private identity: { pubkey: string; nickname: string; ecdhPub?: string } | null = null;
-  private bridgeQueue: string[] = [];
   private started = false;
   private lastBridgeUrl = "";
 
@@ -73,6 +93,11 @@ export class MeshTransport {
   private readonly ble: BleTransport;
   private readonly net: InternetTransport;
 
+  /** outbox durable (P2) — les paquets survivent au kill de l'app */
+  readonly outbox: DurableOutbox;
+  private appStateEmitter: { remove: () => void } | null = null;
+  private netUnsub: (() => void) | null = null;
+
   /** callbacks câblés par l'UI */
   onEvent?: (ev: MeshEvent, meta: MeshMeta) => void;
   onStateChange?: (state: MeshStateEvent["state"], detail?: string) => void;
@@ -80,13 +105,15 @@ export class MeshTransport {
   onLog?: (msg: string) => void;
   /** journal de décisions de routage (→ écran Mesh, panneau Routeur) */
   onRouteDecision?: (d: RouteDecision) => void;
+  /** profondeur de l'outbox durable (→ UI, compteur réactif) */
+  onOutboxChange?: (depth: number) => void;
 
   constructor() {
     this.ble = new BleTransport();
     this.net = new InternetTransport({
       gatewayId: () => this.identity?.pubkey.slice(0, 16) ?? "mbote-mobile",
       label: () => `mobile ${this.identity?.nickname ?? ""}`.trim(),
-      queueDepth: () => this.bridgeQueue.length,
+      queueDepth: () => this.outbox.count(),
     });
     this.router = new TransportRouter({ sendTimeoutMs: 8000 });
     this.router.register(this.ble);
@@ -96,6 +123,19 @@ export class MeshTransport {
       this.onLog?.(`route → ${d.action} · ${d.detail}${lat}`);
       this.onRouteDecision?.(d);
     });
+
+    this.outbox = new DurableOutbox(
+      new AsyncFallbackOutboxStorage(
+        new SqliteOutboxStorage(),
+        new MobileFallbackOutboxStorage()
+      ),
+      {
+        batchSize: BRIDGE_BATCH,
+        send: (batch) => this.sendBatchToBridge(batch),
+        onLog: (msg) => this.onLog?.(msg),
+      }
+    );
+    this.outbox.onChange((n) => this.onOutboxChange?.(n));
   }
 
   get isStarted(): boolean {
@@ -131,6 +171,32 @@ export class MeshTransport {
     this.started = true;
     this.ble.setRadioState(true, "GATT démarré");
 
+    // P2 : outbox durable — charge la file sqlite (paquets d'une session passée)
+    void this.outbox.ready().then((/* depth loggée par l'outbox */) => {
+      if (this.outbox.count() > 0 && this.lastBridgeUrl) this.flushOutbox(true);
+    });
+
+    // déclencheur P2 : regain réseau (NetInfo) — sonde invalidée + flush forcé
+    this.netUnsub = NetInfo.addEventListener((state) => {
+      if (state.isConnected) {
+        this.net.invalidateProbe();
+        this.onLog?.(`réseau : ${state.type} → flush outbox programmé`);
+        this.flushOutbox(true);
+      }
+    });
+
+    // déclencheur P2 : retour au premier plan (AppState)
+    this.appStateEmitter = {
+      remove: AppState.addEventListener("change", (s: AppStateStatus) => {
+        if (s === "active") this.flushOutbox(false);
+      }).remove,
+    };
+
+    // déclencheur P2 : timer périodique 5 min
+    this.periodicTimer = setInterval(() => {
+      this.flushOutbox(false);
+    }, PERIODIC_FLUSH_MS);
+
     // annonce de présence initiale + périodique (§5 whitepaper)
     await this.announce();
     this.announceTimer = setInterval(() => {
@@ -143,6 +209,12 @@ export class MeshTransport {
     this.announceTimer = null;
     if (this.flushTimer) clearTimeout(this.flushTimer);
     this.flushTimer = null;
+    if (this.periodicTimer) clearInterval(this.periodicTimer);
+    this.periodicTimer = null;
+    this.netUnsub?.();
+    this.netUnsub = null;
+    this.appStateEmitter?.remove();
+    this.appStateEmitter = null;
     this.subs.forEach((s) => s.remove());
     this.subs = [];
     if (this.started) BleMesh.stop().catch(() => undefined);
@@ -163,8 +235,8 @@ export class MeshTransport {
     this.dedup.checkAndRecord(packet);
     const decision = await this.router.submit(packet, { trace: ev.kind });
     if (decision.copyToOutbox) {
-      // §3.1 : copie outbox tant qu'aucun canal confirmé n'a porté le paquet
-      this.enqueueForBridge(bytesToBase64(packet));
+      // §3.1 : copie outbox durable tant qu'aucun canal confirmé n'a porté le paquet
+      await this.outbox.enqueue(bytesToBase64(packet), { trace: ev.kind });
       this.scheduleBridgeFlush();
     }
     return decision;
@@ -227,8 +299,8 @@ export class MeshTransport {
 
     if (ev) this.onEvent?.(ev, meshMeta);
 
-    // queue pour le pont VPS (store-and-forward)
-    this.enqueueForBridge(bytesToBase64(bytes));
+    // queue pour le pont VPS (store-and-forward) — durable depuis P2
+    void this.outbox.enqueue(bytesToBase64(bytes), { trace: "relais" });
     // §3.1 : un voisin = un canal → tentative de flush imminente
     this.scheduleBridgeFlush();
 
@@ -245,17 +317,10 @@ export class MeshTransport {
     this.onPeersChange?.(BleMesh.peers());
   }
 
-  // ───────────────────────── Pont VPS (outbox + flush) ─────────────────────────
-
-  private enqueueForBridge(base64: string): void {
-    this.bridgeQueue.push(base64);
-    if (this.bridgeQueue.length > BRIDGE_QUEUE_MAX) {
-      this.bridgeQueue.splice(0, this.bridgeQueue.length - BRIDGE_QUEUE_MAX);
-    }
-  }
+  // ───────────────────────── Pont VPS (outbox durable + flush) ─────────────────────────
 
   get bridgeQueueSize(): number {
-    return this.bridgeQueue.length;
+    return this.outbox.count();
   }
 
   /** Photo de santé de tous les transports (routeur ↔ UI, source unique). */
@@ -264,94 +329,89 @@ export class MeshTransport {
   }
 
   /**
-   * Programme un flush de l'outbox (anti-rebond). Déclencheurs P1 : paquet
-   * reçu (« un voisin = un canal ») et publication locale copiée en outbox.
-   * P2 ajoutera regain réseau (NetInfo), foreground et timer périodique sur
-   * l'outbox durable (expo-sqlite).
+   * Programme un flush de l'outbox (anti-rebond). Déclencheurs :
+   * paquet reçu (« un voisin = un canal ») et publication locale copiée en
+   * outbox. Les autres déclencheurs P2 (NetInfo, AppState, timer) appellent
+   * directement flushOutbox() sans anti-rebond.
    */
   private scheduleBridgeFlush(): void {
     if (this.flushTimer) clearTimeout(this.flushTimer);
     this.flushTimer = setTimeout(() => {
       this.flushTimer = null;
-      if (!this.lastBridgeUrl || this.bridgeQueue.length === 0) return;
-      this.syncBridge(this.lastBridgeUrl)
-        .then((r) => {
-          if (r.ok && (r.accepted > 0 || r.duplicate > 0)) {
-            this.onLog?.(
-              `flush outbox : ${r.accepted} accepté(s), ${r.duplicate} déjà connu(s)`
-            );
-          }
-        })
-        .catch(() => undefined);
+      this.flushOutbox(false);
     }, FLUSH_DEBOUNCE_MS);
   }
 
   /**
-   * Remonte les paquets accumulés au pont VPS dès qu'une connectivité existe.
-   * Les paquets acceptés ou déjà connus sont purgés de la file locale.
+   * Flush réel de l'outbox durable vers le pont. `force` envoie aussi les
+   * paquets en cours de backoff (regain réseau, sync manuelle).
+   */
+  private async flushOutbox(force: boolean): Promise<FlushOutcome | null> {
+    if (!this.lastBridgeUrl || this.outbox.count() === 0) return null;
+    this.net.configure(this.lastBridgeUrl);
+    try {
+      const o = await this.outbox.flush(force);
+      if (o.attempted > 0) {
+        const parts = [`${o.accepted} accepté(s)`, `${o.duplicate} déjà connu(s)`];
+        if (o.failed > 0) parts.push(`${o.failed} en backoff`);
+        this.onLog?.(`flush outbox : ${parts.join(", ")}`);
+      }
+      return o;
+    } catch {
+      return null; // l'outbox ne lève jamais ; ce catch est un filet
+    }
+  }
+
+  /** Envoi d'un lot base64 au pont — contrat OutboxSender de l'outbox. */
+  private async sendBatchToBridge(batch: string[]): Promise<{ status: string; detail?: string }[]> {
+    const url = this.lastBridgeUrl.replace(/\/+$/, "");
+    if (!url) throw new Error("URL du pont non configurée");
+    const res = await fetch(`${url}/api/mesh/bridge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        gatewayId: this.identity?.pubkey.slice(0, 16) ?? "mbote-mobile",
+        label: `mobile ${this.identity?.nickname ?? ""}`.trim(),
+        packets: batch,
+      }),
+    });
+    if (!res.ok) {
+      this.net.invalidateProbe();
+      throw new Error(`pont HTTP ${res.status}`);
+    }
+    const json = (await res.json()) as { results?: { status: string; detail?: string }[] };
+    return json.results ?? [];
+  }
+
+  /**
+   * Sync manuelle (bouton de l'écran Mesh / première configuration) :
+   * enregistre l'URL du pont puis vide l'outbox durable (flush forcé).
+   * Les paquets acceptés ou déjà connus sont purgés par ack ; les échecs
+   * reprogramment le backoff exponentiel (30 s → 15 min).
    */
   async syncBridge(baseUrl: string): Promise<BridgeResult> {
     if (!this.identity) {
       return { ok: false, accepted: 0, duplicate: 0, invalid: 0, error: "transport non démarré" };
     }
     const url = baseUrl.replace(/\/+$/, "");
-    if (!url) return { ok: false, accepted: 0, duplicate: 0, invalid: 0, error: "URL du pont non configurée" };
+    if (!url) {
+      return { ok: false, accepted: 0, duplicate: 0, invalid: 0, error: "URL du pont non configurée" };
+    }
 
     this.lastBridgeUrl = url;
     this.net.configure(url);
+    await this.outbox.ready();
 
-    let accepted = 0;
-    let duplicate = 0;
-    let invalid = 0;
-    let remaining: string[] = [];
-
-    try {
-      while (this.bridgeQueue.length > 0) {
-        const batch = this.bridgeQueue.slice(0, BRIDGE_BATCH);
-        const res = await fetch(`${url}/api/mesh/bridge`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            gatewayId: this.identity.pubkey.slice(0, 16),
-            label: `mobile ${this.identity.nickname}`,
-            packets: batch,
-          }),
-        });
-        if (!res.ok) {
-          this.net.invalidateProbe();
-          return {
-            ok: false,
-            accepted,
-            duplicate,
-            invalid,
-            error: `pont HTTP ${res.status}`,
-          };
-        }
-        const json = (await res.json()) as {
-          results?: { status: string }[];
-        };
-        for (let i = 0; i < batch.length; i++) {
-          const status = json.results?.[i]?.status;
-          if (status === "accepted") accepted++;
-          else if (status === "duplicate") duplicate++;
-          else invalid++;
-        }
-        this.bridgeQueue.splice(0, batch.length);
-      }
-      remaining = this.bridgeQueue;
-      return { ok: true, accepted, duplicate, invalid };
-    } catch (t) {
-      this.net.invalidateProbe();
-      remaining = this.bridgeQueue;
-      return {
-        ok: false,
-        accepted,
-        duplicate,
-        invalid,
-        error: t instanceof Error ? t.message : "réseau injoignable",
-      };
-    } finally {
-      if (remaining.length === 0) this.bridgeQueue = [];
+    const o = await this.outbox.flush(true);
+    if (o.error && o.attempted === 0) {
+      return { ok: false, accepted: 0, duplicate: 0, invalid: 0, error: o.error };
     }
+    return {
+      ok: !o.error,
+      accepted: o.accepted,
+      duplicate: o.duplicate,
+      invalid: o.invalid,
+      error: o.error,
+    };
   }
 }

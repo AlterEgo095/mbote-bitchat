@@ -169,13 +169,26 @@ un argument produit fort : l'utilisateur **voit** pourquoi son message voyage.
 - UI : panneau « Routeur » dans NetworkView (décisions en direct).
 
 ### P2 — Outbox durable (la garantie) — ~250 lignes
-- `src/lib/mbote/outbox.ts` — file persistante avec storage adapter :
-  mobile `expo-sqlite`, web IndexedDB (+ fallback localStorage).
-- Purge par ack (statuts par paquet déjà renvoyés par `/api/mesh/bridge`).
-- Backoff exponentiel (30 s → 15 min) ; jamais plus de 3 flush concurrents.
-- Déclencheurs : NetInfo regain · foreground · timer 5 min · paquet reçu.
-- Remplace `bridgeQueue` en mémoire (le bug « je tue l'app, je perds 200
-  paquets » disparaît).
+
+> ✅ **LIVRÉ** — cœur isomorphe `outbox-core.ts` (copies synchronisées
+> `src/lib/mbote/transports/` ↔ `mobile/src/transport/`) :
+> - `DurableOutbox` : file persistante avec storage adapter injecté —
+>   web `IndexedDbOutboxStorage` + repli `LocalStorageOutboxStorage`
+>   (navigation privée), mobile `SqliteOutboxStorage` (expo-sqlite,
+>   base `mbote-outbox.db`) + repli `AsyncStorageOutboxStorage`.
+> - Purge par ack : `accepted`/`duplicate` purgés, `invalid` purgé comme
+>   poison (paquet refusé par le pont, même politique côté natif).
+> - Backoff exponentiel 30 s → 15 min (`outboxBackoffMs`, plafond), garde
+>   anti-tempête : jamais plus de 3 flush concurrents, plafond de file
+>   1000 paquets (les plus vieux abandonnés, journalisé).
+> - Déclencheurs : NetInfo regain (sonde invalidée + flush forcé) ·
+>   foreground (AppState mobile / visibilitychange web) · timer 5 min ·
+>   paquet reçu + publication (anti-rebond 3 s) · event `online` navigateur.
+> - `bridgeQueue` en mémoire SUPPRIMÉE des deux côtés : le bug « je tue
+>   l'app, je perds 200 paquets » disparaît ; la file UI est la projection
+>   de l'outbox durable (source unique), badge backoff visible par paquet.
+> - Compteur exposé à la santé transport (`queueDepth`) et à l'UI
+>   (MeshScreen « Outbox durable (SQLite) », tunnel web badge IndexedDB).
 
 ### P3 — Extension & interop (les options)
 - **Pont Meshtastic** : script Node (`@meshtastic/js`) sur un boîtier LoRa (ou le

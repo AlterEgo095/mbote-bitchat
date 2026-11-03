@@ -59,9 +59,10 @@ import { CITY_PRESETS } from "@/lib/mbote/constants";
 import { signPayload } from "@/lib/mbote/crypto";
 import { encodeGeohash } from "@/lib/mbote/geohash";
 import { loadIdentity } from "@/lib/mbote/identity";
+import { getWebOutbox, type OutboxItem } from "@/lib/mbote/transports";
 import { getWebRouter } from "@/lib/mbote/transports";
 
-/** Un paquet en attente dans la mémoire locale de la passerelle */
+/** Un paquet en attente dans l'outbox durable de la passerelle (vue UI) */
 interface QueuedPacket {
   id: string;
   base64: string;
@@ -74,18 +75,44 @@ interface QueuedPacket {
   preview: string;
   fragLabel?: string; // « frag 1/2 » si le post a été fragmenté
   createdAt: number;
+  attempts: number; // P2 : tentatives de flush déjà échouées
+  nextAttemptAt: number; // P2 : backoff courant
+}
+
+/** Projette un item durable de l'outbox vers la vue UI du tunnel. */
+function itemToQueued(it: OutboxItem): QueuedPacket {
+  const desc = describePacket(base64ToBytes(it.base64));
+  return {
+    id: it.id,
+    base64: it.base64,
+    bytes: desc.totalBytes,
+    hash: desc.hash,
+    typeName: desc.typeName,
+    hops: Number(it.meta?.hops ?? 0),
+    senderId: bytesToHex(desc.header.senderId).toUpperCase(),
+    meshLatencyMs: Number(it.meta?.meshLatencyMs ?? 0),
+    preview: it.meta?.preview ?? "(contenu opaque)",
+    fragLabel: it.meta?.fragLabel,
+    createdAt: it.enqueuedAt,
+    attempts: it.attempts,
+    nextAttemptAt: it.nextAttemptAt,
+  };
 }
 
 const CANAL_NONE = "__global__";
 
 export function BitChatBridge() {
   const qc = useQueryClient();
+  // P2 : outbox durable (IndexedDB, repli localStorage) — les paquets en
+  // attente survivent au rechargement de la page et reflushent tout seuls.
+  const outbox = useMemo(() => getWebOutbox(), []);
 
   const [draft, setDraft] = useState("");
   const [neighbors, setNeighbors] = useState(3);
   const [hops, setHops] = useState(3);
   const [channel, setChannel] = useState<string>(CANAL_NONE);
   const [queue, setQueue] = useState<QueuedPacket[]>([]);
+  const [outboxKind, setOutboxKind] = useState<string>("");
   const [journal, setJournal] = useState<
     { hash: string; status: string; detail?: string }[]
   >([]);
@@ -97,6 +124,23 @@ export function BitChatBridge() {
   useEffect(() => {
     setHasIdentity(!!loadIdentity());
   }, []);
+
+  // P2 : la file affichée EST l'outbox durable (source unique)
+  useEffect(() => {
+    let mounted = true;
+    void outbox.ready().then(() => {
+      if (!mounted) return;
+      setQueue(outbox.snapshot().map(itemToQueued));
+      setOutboxKind(outbox.storageKind);
+    });
+    const unsub = outbox.onChange(() => {
+      setQueue(outbox.snapshot().map(itemToQueued));
+    });
+    return () => {
+      mounted = false;
+      unsub();
+    };
+  }, [outbox]);
 
   // TTL effectif selon la densité (whitepaper §3.1 : ≥6 voisins → clamp 5)
   const ttlEff = ttlForDensity(neighbors);
@@ -196,10 +240,27 @@ export function BitChatBridge() {
         meshLatencyMs: jitterChain.reduce((a, b) => a + b, 0),
         preview: content,
         fragLabel: chunks.length > 1 ? `frag ${i + 1}/${chunks.length}` : undefined,
+        attempts: 0,
+        nextAttemptAt: Date.now(),
         createdAt: Date.now(),
       };
     });
-    setQueue((q) => [...q, ...newPkts]);
+    // P2 : écriture durable immédiate — même un F5 ou un kill d'onglet ne
+    // perd plus les paquets ; le flush automatique (online/visibility/5 min)
+    // les remontera au pont dès qu'un canal existe.
+    await outbox.enqueueMany(
+      newPkts.map((p) => ({
+        id: p.id,
+        base64: p.base64,
+        trace: `${p.typeName}${p.fragLabel ? ` ${p.fragLabel}` : ""}`,
+        meta: {
+          preview: p.preview,
+          hops: String(p.hops),
+          meshLatencyMs: String(p.meshLatencyMs),
+          ...(p.fragLabel ? { fragLabel: p.fragLabel } : {}),
+        },
+      }))
+    );
     setShowHex(newPkts[0].id);
     setDraft("");
     const totalBytes = newPkts.reduce((a, p) => a + p.bytes, 0);
@@ -210,58 +271,59 @@ export function BitChatBridge() {
       {
         description:
           hops > 0
-            ? `≈ ${newPkts[0].meshLatencyMs} ms de gigue cumulée sur ${hops} saut(s)`
-            : "remis directement à la passerelle",
+            ? `≈ ${newPkts[0].meshLatencyMs} ms de gigue cumulée sur ${hops} saut(s) · écrit(s) dans l'outbox durable`
+            : `remis directement à la passerelle · outbox durable (${outbox.storageKind})`,
       }
     );
   };
 
   /** Étape 2 : le routeur DORS trouve un canal → chaque paquet est routé
    *  individuellement (BLE indisponible côté web → Internet ou outbox) et la
-   *  décision est journalisée dans le panneau Routeur. */
+   *  décision est journalisée dans le panneau Routeur. P2 : les paquets sans
+   *  canal DORMENT dans l'outbox durable (spray-and-wait) — reflush auto sur
+   *  regain réseau / foreground / timer, purge par ack du pont. */
   const transmit = async () => {
     if (queue.length === 0 || sending) return;
     setSending(true);
     try {
-      const { router, bridge } = getWebRouter();
+      const { router } = getWebRouter();
       const results: { hash: string; status: string; detail?: string }[] = [];
-      const remaining: QueuedPacket[] = [];
 
       for (const p of queue) {
         const d = await router.submit(base64ToBytes(p.base64), {
           trace: `${p.typeName}${p.fragLabel ? ` ${p.fragLabel}` : ""}`,
         });
         if (d.action === "queued") {
-          // aucun canal : le paquet attend dans la mémoire locale (store-and-forward)
+          // aucun canal : le paquet DORT dans l'outbox durable (backoff P2)
           results.push({ hash: p.hash, status: "outbox", detail: d.detail });
-          remaining.push(p);
+          await outbox.recordAttempt(p.id, false, d.detail);
         } else if (d.delivered) {
           results.push({
             hash: p.hash,
             status: d.detail.includes("déjà connu") ? "duplicate" : "accepted",
             detail: d.detail,
           });
+          await outbox.recordAttempt(p.id, true); // ack = purge durable
         } else {
           // paquet refusé par le pont (invalid) : purgé, comme côté natif
           results.push({ hash: p.hash, status: "invalid", detail: d.detail });
+          await outbox.recordAttempt(p.id, true);
         }
       }
 
-      bridge.setQueueDepth(remaining.length);
       setJournal(results);
       const accepted = results.filter((r) => r.status === "accepted").length;
       const duplicates = results.filter((r) => r.status === "duplicate").length;
       const queuedN = results.filter((r) => r.status === "outbox").length;
       toast.success(
-        `${accepted + duplicates} acheminé(s) via le routeur · ${queuedN} en outbox`,
+        `${accepted + duplicates} acheminé(s) via le routeur · ${queuedN} en outbox durable`,
         {
           description:
             queuedN > 0
-              ? "Le store-and-forward garde les paquets jusqu'à un canal disponible."
+              ? "Les paquets en attente survivent au rechargement — flush auto dès qu'un canal revient."
               : "Le VPS a dédupliqué et injecté les publications dans le fil global.",
         }
       );
-      setQueue(remaining);
       if (accepted > 0) await qc.invalidateQueries({ queryKey: ["feed"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Échec de transmission");
@@ -411,14 +473,17 @@ export function BitChatBridge() {
           </section>
 
           {/* ② passerelle */}
-          <section className="rounded-xl border p-4" aria-label="File locale de la passerelle">
+          <section className="rounded-xl border p-4" aria-label="Outbox durable de la passerelle">
             <div className="flex items-center justify-between">
               <h4 className="flex items-center gap-1.5 text-sm font-semibold">
                 <Router className="size-4 text-primary" aria-hidden="true" />
-                ② Mémoire locale de la passerelle
+                ② Outbox durable de la passerelle
               </h4>
-              <Badge variant="outline" className="font-mono text-[10px]">
+              <Badge variant="outline" className="gap-1.5 font-mono text-[10px]">
                 GW {gatewayId.slice(0, 8)}
+                {outboxKind && (
+                  <span className="border-l pl-1.5 text-primary">{outboxKind}</span>
+                )}
               </Badge>
             </div>
 
@@ -426,8 +491,9 @@ export function BitChatBridge() {
               <div className="mt-3 flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-center">
                 <PackageOpen className="size-6 text-muted-foreground" aria-hidden="true" />
                 <p className="text-xs text-muted-foreground">
-                  Aucun paquet en file.<br />Encapsulez un message ci-contre : il patientera ici,
-                  comme sur un vrai téléphone sans internet.
+                  Outbox vide.<br />Encapsulez un message ci-contre : il sera écrit
+                  durablement ({outboxKind || "IndexedDB"}) et patientera ici même après un
+                  rechargement, comme sur un vrai téléphone sans internet.
                 </p>
               </div>
             ) : (
@@ -448,13 +514,21 @@ export function BitChatBridge() {
                         variant="ghost"
                         size="icon"
                         className="size-6"
-                        onClick={() => setQueue((qs) => qs.filter((x) => x.id !== p.id))}
+                        onClick={() => void outbox.purge([p.id])}
                         aria-label={`Retirer le paquet ${i + 1}`}
                       >
                         <Trash2 className="size-3.5" aria-hidden="true" />
                       </Button>
                     </div>
                     <p className="mt-1 truncate text-xs text-muted-foreground">« {p.preview} »</p>
+                    {p.attempts > 0 && (
+                      <p className="mt-1 font-mono text-[10px] text-amber-500">
+                        backoff P2 : {p.attempts} échec{p.attempts > 1 ? "s" : ""} · reflush
+                        {p.nextAttemptAt > Date.now()
+                          ? ` dans ${Math.ceil((p.nextAttemptAt - Date.now()) / 1000)} s`
+                          : " iminent"}
+                      </p>
+                    )}
                     {showHex === p.id && (
                       <pre className="mt-2 max-h-32 overflow-auto scrollbar-thin rounded bg-zinc-950 p-2 font-mono text-[10px] leading-relaxed text-emerald-300">
 {hexDump(base64ToBytes(p.base64))}
@@ -481,15 +555,20 @@ export function BitChatBridge() {
                 Transmettre {queue.length > 0 ? `${queue.length} paquet${queue.length > 1 ? "s" : ""}` : ""} au VPS
               </Button>
               {queue.length > 0 && (
-                <Button variant="outline" onClick={() => setQueue([])} aria-label="Vider la file">
+                <Button
+                  variant="outline"
+                  onClick={() => void outbox.clear()}
+                  aria-label="Vider l'outbox durable"
+                >
                   <Trash2 className="size-4" aria-hidden="true" />
-                  <span className="sr-only">Vider la file</span>
+                  <span className="sr-only">Vider l&apos;outbox durable</span>
                 </Button>
               )}
             </div>
             <p className="mt-2 text-[10px] text-muted-foreground">
-              Store-and-forward : la passerelle garde les paquets aussi longtemps que nécessaire,
-              puis les remonte en HTTPS dès qu&apos;elle trouve une connexion.
+              Store-and-forward durable : les paquets sont écrits sur disque ({outboxKind || "IndexedDB"}),
+              purgés par ack du pont, et reflushés automatiquement sur regain réseau,
+              retour au premier plan ou toutes les 5 minutes (backoff 30 s → 15 min).
             </p>
           </section>
         </div>

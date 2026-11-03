@@ -49,7 +49,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 export default function MeshScreen() {
-  const { meshState, peers, logs, transport, routeDecisions } = useApp();
+  const { meshState, peers, logs, transport, routeDecisions, bridgeQueueSize } = useApp();
   const color = stateColor(meshState);
   const health = transport.healthSnapshot();
 
@@ -111,6 +111,10 @@ export default function MeshScreen() {
         ))}
         <Text style={styles.line}>
           BLE si ≥ 1 voisin → sinon pont VPS (sonde 30 s) → sinon outbox.
+        </Text>
+        <Text style={styles.line}>
+          Outbox durable (SQLite) : {bridgeQueueSize} paquet(s) — survit au
+          redémarrage · backoff 30 s → 15 min · purge par ack du pont.
         </Text>
       </Card>
 

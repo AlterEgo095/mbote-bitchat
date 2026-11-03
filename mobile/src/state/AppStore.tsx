@@ -101,6 +101,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     transport.onPeersChange = (p) => setPeers(p);
     transport.onRouteDecision = (d) =>
       setRouteDecisions((prev) => [d, ...prev].slice(0, MAX_DECISIONS));
+    // P2 : compteur réactif de l'outbox durable (sqlite)
+    transport.onOutboxChange = (n) => setBridgeQueueSize(n);
 
     transport.onEvent = (ev: MeshEvent, meta: MeshMeta) => {
       if (ev.kind === "post") {

@@ -1,32 +1,20 @@
 /**
  * ─────────────────────────────────────────────────────────────────────────────
- *  Singleton routeur web — une seule instance partagée entre les composants :
- *  BitChatBridge soumet ses paquets, RouteurPanel observe les décisions.
+ *  Point d'entrée des transports web (pile hybride Mbote)
+ * ─────────────────────────────────────────────────────────────────────────────
+ *  P1 : contrat Transport, TransportRouter (DORS), transport pont navigateur.
+ *  P2 : outbox durable (IndexedDB + repli localStorage) + déclencheurs.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-
-import { TransportRouter } from "./router";
-import { WebBridgeTransport } from "./web-bridge-transport";
 
 export * from "./types";
 export { TransportRouter } from "./router";
 export { WebBridgeTransport } from "./web-bridge-transport";
+export { getWebRouter, type WebRouterBundle } from "./web-router";
 
-export interface WebRouterBundle {
-  router: TransportRouter;
-  bridge: WebBridgeTransport;
-}
-
-let instance: WebRouterBundle | null = null;
-
-export function getWebRouter(): WebRouterBundle {
-  if (!instance) {
-    const bridge = new WebBridgeTransport();
-    const router = new TransportRouter({ sendTimeoutMs: 8000 });
-    // Côté web, un seul canal : l'Internet (le BLE est le transport natif de
-    // l'app mobile — voir mobile/src/transport/ble-transport.ts).
-    router.register(bridge);
-    instance = { router, bridge };
-  }
-  return instance;
-}
+export * from "./outbox-core";
+export {
+  IndexedDbOutboxStorage,
+  LocalStorageOutboxStorage,
+} from "./web-outbox-storage";
+export { getWebOutbox } from "./web-outbox";
