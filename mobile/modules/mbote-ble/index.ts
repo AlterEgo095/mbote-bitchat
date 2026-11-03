@@ -22,7 +22,13 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { requireNativeModule, EventEmitter, Subscription } from "expo-modules-core";
+import {
+  requireNativeModule,
+  type EventSubscription,
+} from "expo-modules-core";
+// Barrel expo-modules-core : EventEmitter n'y est exporté que comme valeur.
+// On importe le TYPE générique depuis sa déclaration source.
+import type { EventEmitter } from "expo-modules-core/build/ts-declarations/EventEmitter";
 import { bytesToBase64, base64ToBytes } from "./ble-base64";
 
 export const MBOTE_SERVICE_UUID = "F7C41D5A-9C6B-4E4F-8D2A-3B1E0C5A6D7F";
@@ -59,6 +65,15 @@ export interface PermissionResult {
   missing: string[];
 }
 
+/** Carte des événements émis par le moteur natif (valeurs = signatures de listeners) */
+type MboteBleEvents = {
+  onPacket: (pkt: NativePacket) => void;
+  onPeerConnected: (e: { peerId: string }) => void;
+  onPeerDisconnected: (e: { peerId: string }) => void;
+  onStateChanged: (e: MeshStateEvent) => void;
+  onLog: (e: { msg: string }) => void;
+};
+
 interface MboteBleNativeModule {
   isSupported(): boolean;
   start(): Promise<{ running: boolean }>;
@@ -69,7 +84,9 @@ interface MboteBleNativeModule {
 }
 
 const MboteBle = requireNativeModule<MboteBleNativeModule>("MboteBle");
-const emitter = new EventEmitter(MboteBle);
+
+/** Depuis Expo SDK 52, le module natif EST déjà un EventEmitter — on le retape. */
+const emitter = MboteBle as unknown as EventEmitter<MboteBleEvents>;
 
 export interface MeshStateEvent {
   state:
@@ -98,15 +115,15 @@ export const BleMesh = {
   peers: (): PeerInfo[] => (MboteBle.peers() ?? []) as PeerInfo[],
   requestPermissions: (): Promise<PermissionResult> => MboteBle.requestPermissions(),
 
-  onPacket: (cb: (pkt: NativePacket) => void): Subscription =>
+  onPacket: (cb: (pkt: NativePacket) => void): EventSubscription =>
     emitter.addListener("onPacket", cb),
-  onPeerConnected: (cb: (e: { peerId: string }) => void): Subscription =>
+  onPeerConnected: (cb: (e: { peerId: string }) => void): EventSubscription =>
     emitter.addListener("onPeerConnected", cb),
-  onPeerDisconnected: (cb: (e: { peerId: string }) => void): Subscription =>
+  onPeerDisconnected: (cb: (e: { peerId: string }) => void): EventSubscription =>
     emitter.addListener("onPeerDisconnected", cb),
-  onStateChanged: (cb: (e: MeshStateEvent) => void): Subscription =>
+  onStateChanged: (cb: (e: MeshStateEvent) => void): EventSubscription =>
     emitter.addListener("onStateChanged", cb),
-  onLog: (cb: (e: { msg: string }) => void): Subscription =>
+  onLog: (cb: (e: { msg: string }) => void): EventSubscription =>
     emitter.addListener("onLog", cb),
 };
 

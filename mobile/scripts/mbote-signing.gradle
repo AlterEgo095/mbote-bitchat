@@ -1,0 +1,32 @@
+// Mbote BitChat — signature release injectée par la CI (voir docs/CI-CD.md)
+//
+// Ce fichier est copié dans android/app/ par le workflow GitHub Actions après
+// `expo prebuild`. Il est AUTO-DÉSACTIVÉ si app/keystore.properties est absent :
+// dans ce cas l'APK release reste signé avec la clé debug (comportement Expo),
+// ce qui reste installable en sideload — parfait pour tester.
+//
+// Production : la CI dépose app/keystore.properties + app/mbote-release.keystore
+// (décodés depuis les GitHub Secrets) et ce bloc prend le relais.
+
+def keystorePropsFile = file("keystore.properties")
+if (keystorePropsFile.exists()) {
+    def keystoreProps = new Properties()
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+
+    android {
+        signingConfigs {
+            mboteRelease {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+        buildTypes {
+            release {
+                // Surcharge la config Expo (clé debug) par le vrai keystore
+                signingConfig signingConfigs.mboteRelease
+            }
+        }
+    }
+}

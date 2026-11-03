@@ -105,9 +105,11 @@ const g = globalThis as any;
 if (!g.crypto) g.crypto = {};
 if (typeof g.crypto.getRandomValues !== "function") {
   g.crypto.getRandomValues = (array: ArrayBufferView): ArrayBufferView => {
-    const bytes = new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
-    const rnd = ExpoCrypto.getRandomValues(bytes.length);
-    bytes.set(rnd);
+    // expo-crypto.getRandomValues remplit le typed array en place
+    // (signature WebCrypto : typedArray => typedArray rempli)
+    ExpoCrypto.getRandomValues(
+      new Uint8Array(array.buffer, array.byteOffset, array.byteLength),
+    );
     return array;
   };
 }

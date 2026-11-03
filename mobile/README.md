@@ -108,6 +108,23 @@ le pont VPS l'ingère tel quel (`gatewayId` = préfixe de clé publique).
 7. **Sans internet de bout en bout** : couper le Wi-Fi/données sur tous les
    appareils → tout continue de fonctionner.
 
+## CI/CD — builds automatiques
+
+Les APK/IPA sont **compilés par GitHub Actions** à chaque push — aucun
+Android Studio ni Mac requis :
+
+| Workflow | Produit |
+|---|---|
+| `build-android.yml` | APK release signé (clé debug par défaut → installable ; keystore production via Secrets) |
+| `build-ios.yml` | IPA signée si certificats Apple configurés, sinon build simulateur |
+
+- Chaque tag `v*.*.*` publie une **GitHub Release** avec les binaires :
+  `github.com/AlterEgo095/mbote-bitchat/releases/latest`
+- `versionCode`/build = nombre de commits (croissant → mises à jour sideload OK)
+- Portail qualité : `tsc --noEmit` strict avant tout build
+- Secrets optionnels (keystore Android, certificats Apple) : **docs/CI-CD.md**
+- Le déploiement du web/VPS est automatisé par `deploy-vps.yml`
+
 ## Roadmap
 
 - DM scellés mobile (crypto `sealMessage/openMessage` déjà prête dans
