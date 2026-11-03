@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Mbote BitChat",
+    "slug": "mbote-bitchat",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0B0F0E",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "bundleIdentifier": "org.mbote.bitchat",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Mbote BitChat utilise le Bluetooth pour échanger des messages chiffrés avec les téléphones voisins, sans internet.",
+        "NSBluetoothPeripheralUsageDescription": "Mbote BitChat utilise le Bluetooth pour échanger des messages chiffrés avec les téléphones voisins, sans internet.",
+        "UIBackgroundModes": ["bluetooth-central", "bluetooth-peripheral"]
+      }
+    },
+    "android": {
+      "package": "org.mbote.bitchat",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_CONNECTED_DEVICE",
+        "POST_NOTIFICATIONS"
+      ]
+    }
+  }
+}

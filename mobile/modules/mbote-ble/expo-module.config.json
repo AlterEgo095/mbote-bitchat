@@ -1,0 +1,9 @@
+{
+  "platforms": ["android", "ios"],
+  "android": {
+    "modules": ["expo.modules.mboteble.MboteBleModule"]
+  },
+  "ios": {
+    "modules": ["MboteBleModule"]
+  }
+}

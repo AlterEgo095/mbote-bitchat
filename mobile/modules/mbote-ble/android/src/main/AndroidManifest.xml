@@ -1,0 +1,25 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Le scan BLE est déclaré "neverForLocation" : aucun scan dérivé de la position. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- Android ≤ 10 : le scan BLE exige la localisation au niveau système. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+
+    <application>
+        <service
+            android:name="expo.modules.mboteble.MeshForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+    </application>
+</manifest>
