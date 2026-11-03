@@ -48,7 +48,6 @@ import {
   fragmentPayload,
   fnv64,
   hexDump,
-  randomBytes,
   retransmitJitter,
   senderIdFromPubkey,
   shortSenderId,
@@ -56,7 +55,7 @@ import {
   type MeshEvent,
 } from "@/lib/mbote/bitchat-protocol";
 import { CITY_PRESETS } from "@/lib/mbote/constants";
-import { signPayload } from "@/lib/mbote/crypto";
+import { generateKeyBundle, signPayload } from "@/lib/mbote/crypto";
 import { encodeGeohash } from "@/lib/mbote/geohash";
 import { loadIdentity } from "@/lib/mbote/identity";
 import { getWebOutbox, type OutboxItem } from "@/lib/mbote/transports";
@@ -159,28 +158,29 @@ export function BitChatBridge() {
     []
   );
 
-  /** identité de l'émetteur : réelle si l'utilisateur en a une, sinon éphémère (rotative, fidèle BitChat) */
+  /** identité de l'émetteur : réelle si l'utilisateur en a une, sinon pair
+   *  éphémère (rotative, fidèle BitChat) — mais TOUJOURS munie d'une vraie
+   *  paire P-256 et d'une signature valide : le pont refuse désormais tout
+   *  post non signé (F-01). L'horodatage signé est en MILLISECONDES (ms),
+   *  comme partout ailleurs (alignement F-16 côté émission). */
   const resolveSender = async () => {
+    const ts = Date.now();
     const id = loadIdentity();
     if (id) {
-      const ts = Math.floor(Date.now() / 1000);
-      let signature: string | null = null;
-      try {
-        signature = await signPayload(id.signPrivJwk, `${id.pubkey}|${draft.trim()}|${ts}`);
-      } catch {
-        /* signature optionnelle */
-      }
-      return { pubkey: id.pubkey, nickname: id.nickname, ecdhPub: id.ecdhPub, signature };
+      const signature = await signPayload(id.signPrivJwk, `${id.pubkey}|${draft.trim()}|${ts}`);
+      return { pubkey: id.pubkey, nickname: id.nickname, ecdhPub: id.ecdhPub, signature, ts };
     }
-    const raw = bytesToBase64(randomBytes(32))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
+    const bundle = await generateKeyBundle();
+    const signature = await signPayload(
+      bundle.signPrivJwk,
+      `${bundle.pubkey}|${draft.trim()}|${ts}`
+    );
     return {
-      pubkey: raw,
-      nickname: `pair-${shortSenderId(senderIdFromPubkey(raw))}`,
-      ecdhPub: undefined as string | undefined,
-      signature: null as string | null,
+      pubkey: bundle.pubkey,
+      nickname: `pair-${shortSenderId(senderIdFromPubkey(bundle.pubkey))}`,
+      ecdhPub: bundle.ecdhPub,
+      signature,
+      ts,
     };
   };
 
@@ -195,7 +195,9 @@ export function BitChatBridge() {
     const content = draft.trim();
     if (!content) return;
     const sender = await resolveSender();
-    const ts = Math.floor(Date.now() / 1000);
+    // en-tête de paquet : secondes unix (protocole) — l'événement signé, lui,
+    // porte l'horodatage ms de la signature (sender.ts)
+    const tsSec = Math.floor(Date.now() / 1000);
     const jitterChain = Array.from({ length: hops }, () => retransmitJitter());
     const ev: MeshEvent = {
       kind: "post",
@@ -208,7 +210,7 @@ export function BitChatBridge() {
       precision: channel === CANAL_NONE ? null : 5,
       parentId: null,
       signature: sender.signature,
-      ts,
+      ts: sender.ts,
     };
     const ttl = Math.max(1, ttlEff - hops);
     const senderId = senderIdFromPubkey(sender.pubkey);
@@ -224,7 +226,7 @@ export function BitChatBridge() {
         type: PKT_PUBLIC,
         ttl,
         senderId,
-        timestamp: ts,
+        timestamp: tsSec,
         payloadLen: chunk.length,
         payload: chunk,
       });

@@ -27,6 +27,9 @@ export function apiUpsertIdentity(payload: {
   nickname: string;
   bio?: string;
   ecdhPub: string;
+  /** preuve de possession (F-01) : horodatage signé + signature ECDSA */
+  ts: number;
+  signature: string;
 }) {
   return jsonFetch<{ user: UserPublic }>("/api/identity", {
     method: "POST",
@@ -92,7 +95,13 @@ export function apiCreatePost(payload: {
   });
 }
 
-export function apiToggleLike(payload: { pubkey: string; postId: string }) {
+export function apiToggleLike(payload: {
+  pubkey: string;
+  postId: string;
+  /** preuve de possession (F-01) */
+  ts: number;
+  signature: string;
+}) {
   return jsonFetch<{ liked: boolean; likeCount: number }>("/api/posts/like", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -101,7 +110,14 @@ export function apiToggleLike(payload: { pubkey: string; postId: string }) {
 
 // ---------- follows ----------
 
-export function apiSetFollow(payload: { followerPub: string; targetPub: string; action: "follow" | "unfollow" }) {
+export function apiSetFollow(payload: {
+  followerPub: string;
+  targetPub: string;
+  action: "follow" | "unfollow";
+  /** preuve de possession (F-01) */
+  ts: number;
+  signature: string;
+}) {
   return jsonFetch<{ following: boolean }>("/api/follows", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -122,7 +138,15 @@ export function apiGetConversation(me: string, peer: string) {
   );
 }
 
-export function apiSendDm(payload: { senderKey: string; recipientKey: string; iv: string; ciphertext: string }) {
+export function apiSendDm(payload: {
+  senderKey: string;
+  recipientKey: string;
+  iv: string;
+  ciphertext: string;
+  /** preuve de possession (F-01) */
+  ts: number;
+  signature: string;
+}) {
   return jsonFetch<{ message: DirectMessageDto }>("/api/dms", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -151,12 +175,6 @@ export function apiFetchChannels(precision?: number) {
 
 export function apiFetchStats() {
   return jsonFetch<NetworkStats>("/api/stats");
-}
-
-// ---------- seed ----------
-
-export function apiSeed() {
-  return jsonFetch<{ seeded: boolean }>("/api/seed", { method: "POST" });
 }
 
 // ---------- passerelle BitChat (mesh ↔ VPS) ----------

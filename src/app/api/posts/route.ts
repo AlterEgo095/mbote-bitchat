@@ -7,6 +7,7 @@ import {
   getRateStore,
   trackApiRequest,
 } from "@/lib/mbote/state-store";
+import { isValidPubkeyFormat } from "@/lib/mbote/proof";
 import { verifyPostSignature } from "@/lib/mbote/verify";
 
 export const dynamic = "force-dynamic";
@@ -155,8 +156,8 @@ export async function GET(req: NextRequest) {
 }
 
 /** POST /api/posts — publier (ou répondre)
- *  D4 : signature ECDSA vérifiée serveur quand présente ; idempotence par
- *  signature (même événement → même post) ; rate limit par pubkey + IP.
+ *  D4 + F-01 : signature ECDSA OBLIGATOIRE et vérifiée serveur ; idempotence
+ *  par signature (même événement → même post) ; rate limit par pubkey + IP.
  */
 export async function POST(req: NextRequest) {
   const done = trackApiRequest("posts.post");
@@ -164,8 +165,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { pubkey, content, geohash, precision, parentId, signature, ts } = body ?? {};
 
-    if (!pubkey || typeof pubkey !== "string") {
-      return NextResponse.json({ error: "pubkey requis" }, { status: 400 });
+    if (!isValidPubkeyFormat(pubkey)) {
+      return NextResponse.json(
+        { error: "pubkey invalide (clé publique P-256 brute base64url attendue)" },
+        { status: 400 }
+      );
     }
     const text = String(content ?? "").trim();
     if (!text || text.length > 500) {
@@ -191,20 +195,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── vérification de signature (D4) : rejet immédiat si invalide ──
-    if (typeof signature === "string" && signature.length > 0) {
-      const check = await verifyPostSignature({
-        pubkey,
-        content: String(content ?? ""), // la chaîne signée = contenu BRUT tel qu'émis
-        ts,
-        signature,
-      });
-      if (!check.valid) {
-        return NextResponse.json(
-          { error: `Signature refusée : ${check.reason ?? "invalide"}` },
-          { status: 400 }
-        );
-      }
+    // ── vérification de signature (D4 + F-01) : OBLIGATOIRE, rejet immédiat ──
+    if (typeof signature !== "string" || signature.length === 0) {
+      return NextResponse.json(
+        { error: "Signature ECDSA requise — les publications non signées sont refusées" },
+        { status: 400 }
+      );
+    }
+    const check = await verifyPostSignature({
+      pubkey,
+      content: String(content ?? ""), // la chaîne signée = contenu BRUT tel qu'émis
+      ts,
+      signature,
+    });
+    if (!check.valid) {
+      return NextResponse.json(
+        { error: `Signature refusée : ${check.reason ?? "invalide"}` },
+        { status: 401 }
+      );
     }
 
     const author = await db.user.findUnique({ where: { pubkey } });
@@ -228,7 +236,7 @@ export async function POST(req: NextRequest) {
       geohash: geohash ?? null,
       precision: precision != null ? parseInt(String(precision), 10) : null,
       parentId: parentId ?? null,
-      signature: typeof signature === "string" && signature.length > 0 ? signature : null,
+      signature,
     };
 
     try {
@@ -268,8 +276,7 @@ export async function POST(req: NextRequest) {
         typeof err === "object" &&
         err !== null &&
         "code" in err &&
-        (err as { code?: string }).code === "P2002" &&
-        data.signature
+        (err as { code?: string }).code === "P2002"
       ) {
         const existing = await db.post.findUnique({
           where: { signature: data.signature },

@@ -25,6 +25,8 @@ import {
   getRateStore,
   trackApiRequest,
 } from "@/lib/mbote/state-store";
+import { isValidPubkeyFormat } from "@/lib/mbote/proof";
+import { verifyPostSignature } from "@/lib/mbote/verify";
 
 export const dynamic = "force-dynamic";
 
@@ -143,9 +145,49 @@ export async function POST(req: NextRequest) {
           event = decodeMeshEvent(full);
         }
 
-        if (event.kind === "announce" || event.kind === "post") {
-          // ANNOUNCE implicite : l'événement porte l'identité complète
-          await db.user.upsert({
+        if (event.kind === "announce") {
+          // F-01 : un announce mesh n'est PAS signé (protocole v1) → création
+          // seule : jamais d'écrasement d'une identité existante (usurpation
+          // du pseudo/bio/ecdhPub par un tiers). Les identités prouvées
+          // (posts signés, /api/identity) restent les seules voies de mise à jour.
+          if (!isValidPubkeyFormat(event.pubkey)) {
+            throw new Error("clé publique d'émetteur invalide");
+          }
+          const existing = await db.user.findUnique({ where: { pubkey: event.pubkey } });
+          if (!existing) {
+            await db.user.create({
+              data: {
+                pubkey: event.pubkey,
+                nickname: event.nickname.slice(0, 32) || "pair-mesh",
+                ecdhPub: event.ecdhPub ?? null,
+              },
+            });
+          }
+        }
+
+        if (event.kind === "post") {
+          // F-01 : signature ECDSA OBLIGATOIRE et vérifiée pour toute
+          // publication entrant par le pont — sinon rejet du paquet.
+          if (typeof event.signature !== "string" || event.signature.length === 0) {
+            throw new Error("publication non signée (rejetée)");
+          }
+          const sigCheck = await verifyPostSignature({
+            pubkey: event.pubkey,
+            content: String(event.content ?? ""),
+            ts: event.ts,
+            signature: event.signature,
+          });
+          if (!sigCheck.valid) {
+            throw new Error(`signature refusée : ${sigCheck.reason ?? "invalide"}`);
+          }
+
+          const text = String(event.content ?? "").trim();
+          if (!text || text.length > 500) throw new Error("contenu invalide");
+          if (event.geohash && !GEOHASH_RE.test(event.geohash)) {
+            throw new Error("geohash invalide");
+          }
+          // Identité PROUVÉE par la signature ci-dessus → upsert complet autorisé
+          const author = await db.user.upsert({
             where: { pubkey: event.pubkey },
             update: {
               nickname: event.nickname.slice(0, 32),
@@ -157,16 +199,6 @@ export async function POST(req: NextRequest) {
               ecdhPub: event.ecdhPub ?? null,
             },
           });
-        }
-
-        if (event.kind === "post") {
-          const text = String(event.content ?? "").trim();
-          if (!text || text.length > 500) throw new Error("contenu invalide");
-          if (event.geohash && !GEOHASH_RE.test(event.geohash)) {
-            throw new Error("geohash invalide");
-          }
-          const author = await db.user.findUnique({ where: { pubkey: event.pubkey } });
-          if (!author) throw new Error("identité introuvable après upsert");
 
           // idempotence inter-canaux (D4) : le même événement signé arrivé
           // à la fois par le web et par une passerelle mesh = UN seul post.

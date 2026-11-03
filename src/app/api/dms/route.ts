@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { relayNotify } from "@/lib/mbote/relay-notify";
 import { clientIp, getRateStore, trackApiRequest } from "@/lib/mbote/state-store";
+import { dmProofMessage, verifySignedMessage } from "@/lib/mbote/proof";
 
 export const dynamic = "force-dynamic";
 
@@ -42,15 +43,33 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** POST /api/dms — dépose une enveloppe chiffrée (boîte aux lettres aveugle) */
+/** POST /api/dms — dépose une enveloppe chiffrée (boîte aux lettres aveugle)
+ *  F-01 : preuve de possession obligatoire — signature ECDSA sur
+ *  `${senderKey}|dm|${recipientKey}|${iv}|${ciphertext}|${ts}` → impossible de
+ *  déposer une enveloppe au nom d'un autre expéditeur.
+ */
 export async function POST(req: NextRequest) {
   const done = trackApiRequest("dms.post");
   try {
-    const { senderKey, recipientKey, iv, ciphertext } = await req.json();
+    const { senderKey, recipientKey, iv, ciphertext, ts, signature } = await req.json();
     if (!senderKey || !recipientKey || !iv || !ciphertext) {
       return NextResponse.json(
         { error: "senderKey, recipientKey, iv, ciphertext requis" },
         { status: 400 }
+      );
+    }
+
+    // F-01 : preuve de possession de la clé de l'expéditeur (avant tout write)
+    const check = await verifySignedMessage({
+      message: dmProofMessage(String(senderKey), String(recipientKey), String(iv), String(ciphertext), ts),
+      pubkey: String(senderKey),
+      ts,
+      signature,
+    });
+    if (!check.valid) {
+      return NextResponse.json(
+        { error: `Preuve de possession refusée : ${check.reason ?? "invalide"}` },
+        { status: 401 }
       );
     }
 

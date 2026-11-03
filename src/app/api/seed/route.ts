@@ -1,13 +1,24 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { encodeGeohash } from "@/lib/mbote/geohash";
 
 export const dynamic = "force-dynamic";
 
 /**
- * POST /api/seed — données de démonstration (idempotent).
- * Utilisateurs de démo (pubkeys fixes factices), bot avec vraie paire ECDH,
- * publications réparties sur des canaux géohash réels, réponses, likes, follows.
+ * POST /api/seed — données de démonstration (idempotent).  [F-02, audit Vague 1]
+ *
+ * Corrections apportées :
+ *  1. SIGNATURES UNIQUES par post (`demo-signature-seed-<n>`) — l'ancienne
+ *     signature commune violait `Post.signature @unique` → P2002 au 2ᵉ post
+ *     → seed partiel PERMANENT sur toute base fraîche.
+ *  2. COMPTEURS cohérents : replyCount / likeCount incrémentés à la création.
+ *  3. GARDE : endpoint réservé au développement, ou aux opérateurs munis du
+ *     secret `x-seed-secret: $SEED_SECRET` en production. Plus d'auto-seed
+ *     déclenché par chaque visiteur (retiré du client).
+ *
+ * Utilisateurs de démo (pubkeys fixes factices, jamais utilisées par l'API —
+ * elles n'ont pas de clé privée), bot avec vraie paire ECDH, publications
+ * réparties sur des canaux géohash réels, réponses, likes, follows.
  */
 
 const subtle = () => globalThis.crypto.subtle;
@@ -115,8 +126,20 @@ function buildPosts() {
   );
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
+    // ── Garde (F-02) : développement seulement, ou secret opérateur ──
+    const secret = process.env.SEED_SECRET;
+    const provided = req.headers.get("x-seed-secret");
+    const isDev = process.env.NODE_ENV !== "production";
+    const isOperator = !!secret && provided === secret;
+    if (!isDev && !isOperator) {
+      return NextResponse.json(
+        { error: "Seed désactivé en production (x-seed-secret requis)" },
+        { status: 403 }
+      );
+    }
+
     buildPosts();
 
     // 1) utilisateurs : bot (clé ECDH réelle) + comptes démo — créés s'ils manquent
@@ -166,51 +189,76 @@ export async function POST() {
       });
     }
 
+    // 3) publications racine — signature UNIQUE par post (F-01 : le champ est
+    // @unique ; un doublon faisait échouer tout le seed en P2002)
     const createdPosts: { id: string; authorIdx: number }[] = [];
-    for (const p of DEMO_POSTS) {
+    for (let i = 0; i < DEMO_POSTS.length; i++) {
+      const p = DEMO_POSTS[i];
       const post = await db.post.create({
         data: {
           authorId: users[p.authorIdx + 1].id, // +1 : index 0 = bot
           content: p.content,
           geohash: p.geohash,
           precision: p.precision,
-          signature: "demo-signature-seed",
+          signature: `demo-signature-seed-${i}`,
         },
       });
       createdPosts.push({ id: post.id, authorIdx: p.authorIdx });
     }
 
-    // 4) réponses
-    await db.post.create({
-      data: {
+    // 4) réponses — avec incrément du replyCount du parent (compteurs D5 cohérents)
+    const replies: { parentIdx: number; authorId: string; content: string; geohash: string; precision: number }[] = [
+      {
+        parentIdx: 0,
         authorId: users[2].id, // Bofenda
         content: "Confirmé ! Je contourne par Kasa-Vubu, 10 minutes de gagnées. Merci chef 🙏",
-        parentId: createdPosts[0].id,
         geohash: DEMO_POSTS[0].geohash,
         precision: DEMO_POSTS[0].precision,
       },
-    });
-    await db.post.create({
-      data: {
+      {
+        parentIdx: 5,
         authorId: users[1].id, // Mapendo
         content: "Excellent initiative ! Je peux fournir 12 vieux téléphones de l'hôpital. Je t'écris en DM chiffré.",
-        parentId: createdPosts[5].id,
         geohash: DEMO_POSTS[5].geohash,
         precision: DEMO_POSTS[5].precision,
       },
-    });
+    ];
+    for (const r of replies) {
+      await db.$transaction([
+        db.post.create({
+          data: {
+            authorId: r.authorId,
+            content: r.content,
+            parentId: createdPosts[r.parentIdx].id,
+            geohash: r.geohash,
+            precision: r.precision,
+            signature: `demo-signature-seed-reply-${r.parentIdx}`,
+          },
+        }),
+        db.post.update({
+          where: { id: createdPosts[r.parentIdx].id },
+          data: { replyCount: { increment: 1 } },
+        }),
+      ]);
+    }
 
-    // 5) likes + follows
+    // 5) likes — avec incrément du likeCount (compteurs D5 cohérents)
     const likeTargets = createdPosts.slice(0, 5);
     for (let i = 0; i < likeTargets.length; i++) {
       const liker = users[(i % (users.length - 1)) + 1];
-      await db.like.upsert({
-        where: {
-          postId_userId: { postId: likeTargets[i].id, userId: liker.id },
-        },
-        update: {},
-        create: { postId: likeTargets[i].id, userId: liker.id },
-      });
+      await db.$transaction([
+        db.like.upsert({
+          where: {
+            postId_userId: { postId: likeTargets[i].id, userId: liker.id },
+          },
+          update: {},
+          create: { postId: likeTargets[i].id, userId: liker.id },
+        }),
+        db.post.update({
+          where: { id: likeTargets[i].id },
+          data: { likeCount: { increment: 1 } },
+        }),
+      ]);
     }
 
     const followPairs: [number, number][] = [
@@ -229,7 +277,7 @@ export async function POST() {
     return NextResponse.json({
       seeded: true,
       users: users.length,
-      posts: createdPosts.length + 2,
+      posts: createdPosts.length + replies.length,
     });
   } catch (e) {
     console.error("POST /api/seed", e);

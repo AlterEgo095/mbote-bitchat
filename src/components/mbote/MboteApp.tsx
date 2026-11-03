@@ -40,12 +40,12 @@ import {
   apiFetchChannels,
   apiFetchStats,
   apiGetConversations,
-  apiSeed,
   apiSendDm,
   apiToggleLike,
   apiUpsertIdentity,
 } from "@/lib/mbote/api";
 import { generateKeyBundle, signPayload } from "@/lib/mbote/crypto";
+import { identityProofMessage, likeProofMessage } from "@/lib/mbote/proof";
 import {
   enqueueOutbox,
   loadForceOffline,
@@ -102,7 +102,6 @@ export function MboteApp() {
   const [realtimeOk, setRealtimeOk] = useState(false);
   const [presence, setPresence] = useState(0);
   const flushingRef = useRef(false);
-  const seededRef = useRef(false);
 
   // ---------- initialisation ----------
   useEffect(() => {
@@ -113,10 +112,8 @@ export function MboteApp() {
     setOutbox(loadOutbox());
     setMounted(true);
     if (!id) setOnboardingOpen(true);
-    if (!seededRef.current) {
-      seededRef.current = true;
-      apiSeed().catch(() => undefined);
-    }
+    // F-02 : plus d'auto-seed déclenché par chaque visiteur — le seed est un
+    // geste opérateur (POST /api/seed, garde env/secret côté serveur).
   }, []);
 
   // ---------- connexion en ligne / hors-ligne ----------
@@ -293,26 +290,34 @@ export function MboteApp() {
         saveIdentity(stored);
         setIdentity(stored);
         setOnboardingOpen(false);
-        try {
-          await apiUpsertIdentity({
-            pubkey: bundle.pubkey,
-            nickname,
-            bio: bio || undefined,
-            ecdhPub: bundle.ecdhPub,
-          });
-          toast.success("Identité créée et publiée", {
-            description: "Tes clés privées ne quitteront jamais cet appareil.",
-          });
-        } catch {
-          enqueueOutbox({
-            type: "identity",
-            payload: {
+        // F-01 : preuve de possession signée AVANT tout — envoyée maintenant,
+        // ou conservée telle quelle dans la file locale (courrier) pour être
+        // re-jouée au retour du réseau (tolérance offline 7 j côté serveur).
+        const ts = Date.now();
+        const identityPayload = {
+          pubkey: bundle.pubkey,
+          nickname,
+          bio: bio || undefined,
+          ecdhPub: bundle.ecdhPub,
+          ts,
+          signature: await signPayload(
+            bundle.signPrivJwk,
+            identityProofMessage({
               pubkey: bundle.pubkey,
               nickname,
               bio: bio || undefined,
               ecdhPub: bundle.ecdhPub,
-            },
+              ts,
+            })
+          ),
+        };
+        try {
+          await apiUpsertIdentity(identityPayload);
+          toast.success("Identité créée et publiée", {
+            description: "Tes clés privées ne quitteront jamais cet appareil.",
           });
+        } catch {
+          enqueueOutbox({ type: "identity", payload: identityPayload });
           setOutbox(loadOutbox());
           toast.info("Clés créées localement", {
             description: "Ton profil sera publié au retour du réseau.",
@@ -375,9 +380,22 @@ export function MboteApp() {
   );
 
   const like = useCallback(
-    (postId: string, _liked: boolean) => {
+    async (postId: string, _liked: boolean) => {
       if (!identity) return;
-      const payload = { pubkey: identity.pubkey, postId };
+      // F-01 : le like est signé AVANT l'envoi (ou la mise en file) — preuve
+      // de possession vérifiée côté serveur à l'arrivée comme au flush.
+      const ts = Date.now();
+      let signature: string;
+      try {
+        signature = await signPayload(
+          identity.signPrivJwk,
+          likeProofMessage(identity.pubkey, postId, ts)
+        );
+      } catch {
+        toast.error("Signature impossible — like non envoyé");
+        return;
+      }
+      const payload = { pubkey: identity.pubkey, postId, ts, signature };
       if (canSend) {
         apiToggleLike(payload)
           .then(() => {

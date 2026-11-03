@@ -40,7 +40,8 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetchFeed, apiGetUser, apiUpsertIdentity } from "@/lib/mbote/api";
-import { shortKey } from "@/lib/mbote/crypto";
+import { shortKey, signPayload } from "@/lib/mbote/crypto";
+import { identityProofMessage } from "@/lib/mbote/proof";
 import type { StoredIdentity } from "@/lib/mbote/identity";
 import { MboteAvatar } from "./Avatar";
 import { PostCard } from "./PostCard";
@@ -86,12 +87,20 @@ export function ProfileView({
   const saveProfile = async () => {
     setSaving(true);
     try {
-      await apiUpsertIdentity({
+      // F-01 : preuve de possession — la mise à jour du profil est signée par
+      // la clé privée locale, vérifiée par le serveur (anti-usurpation).
+      const ts = Date.now();
+      const payload = {
         pubkey: myPub,
         nickname: nickname.trim(),
         bio: bio.trim(),
         ecdhPub: identity.ecdhPub,
-      });
+      };
+      const signature = await signPayload(
+        identity.signPrivJwk,
+        identityProofMessage({ ...payload, ts })
+      );
+      await apiUpsertIdentity({ ...payload, ts, signature });
       await qc.invalidateQueries({ queryKey: ["me", myPub] });
       await qc.invalidateQueries({ queryKey: ["feed"] });
       toast.success("Profil mis à jour");

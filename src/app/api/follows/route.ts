@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { followProofMessage, verifySignedMessage } from "@/lib/mbote/proof";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +22,32 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** POST /api/follows — follow / unfollow */
+/** POST /api/follows — follow / unfollow
+ *  F-01 : preuve de possession obligatoire — signature ECDSA sur
+ *  `${followerPub}|follow|${action}|${targetPub}|${ts}`.
+ */
 export async function POST(req: NextRequest) {
   try {
-    const { followerPub, targetPub, action } = await req.json();
+    const { followerPub, targetPub, action, ts, signature } = await req.json();
     if (!followerPub || !targetPub || followerPub === targetPub) {
       return NextResponse.json({ error: "Paramètres invalides" }, { status: 400 });
+    }
+    if (action !== "follow" && action !== "unfollow") {
+      return NextResponse.json({ error: "action doit être follow ou unfollow" }, { status: 400 });
+    }
+
+    // F-01 : preuve de possession de la clé du follower (avant toute écriture)
+    const check = await verifySignedMessage({
+      message: followProofMessage(String(followerPub), String(targetPub), action, ts),
+      pubkey: String(followerPub),
+      ts,
+      signature,
+    });
+    if (!check.valid) {
+      return NextResponse.json(
+        { error: `Preuve de possession refusée : ${check.reason ?? "invalide"}` },
+        { status: 401 }
+      );
     }
     const [follower, target] = await Promise.all([
       db.user.findUnique({ where: { pubkey: followerPub } }),

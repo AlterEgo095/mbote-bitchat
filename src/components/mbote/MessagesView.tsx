@@ -35,7 +35,8 @@ import {
   apiListUsers,
   apiSendDm,
 } from "@/lib/mbote/api";
-import { openMessage, sealMessage, shortKey } from "@/lib/mbote/crypto";
+import { openMessage, sealMessage, shortKey, signPayload } from "@/lib/mbote/crypto";
+import { dmProofMessage } from "@/lib/mbote/proof";
 import type { DirectMessageDto, UserPublic } from "@/lib/mbote/types";
 import type { StoredIdentity } from "@/lib/mbote/identity";
 import { MboteAvatar } from "./Avatar";
@@ -139,11 +140,19 @@ export function MessagesView({ identity, isOnline, forceOffline }: MessagesViewP
       if (peer.isBot) {
         await apiBotReply({ meKey: myPub, iv: sealed.iv, ciphertext: sealed.ciphertext });
       } else {
+        // F-01 : l'enveloppe est signée par l'expéditeur (preuve de possession)
+        const ts = Date.now();
+        const signature = await signPayload(
+          identity.signPrivJwk,
+          dmProofMessage(myPub, peer.pubkey, sealed.iv, sealed.ciphertext, ts)
+        );
         await apiSendDm({
           senderKey: myPub,
           recipientKey: peer.pubkey,
           iv: sealed.iv,
           ciphertext: sealed.ciphertext,
+          ts,
+          signature,
         });
       }
       setDraft("");

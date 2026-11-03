@@ -31,13 +31,20 @@ import { AppState, type AppStateStatus } from "react-native";
 
 import {
   DedupCache,
+  PAYLOAD_MAX_BYTES,
   PKT_ANNOUNCE,
   PKT_PUBLIC,
+  PROTOCOL_VERSION,
   buildPacket,
   decodeMeshEvent,
   decodePacket,
+  encodeMeshEvent,
+  encodePacket,
+  fnv64,
+  fragmentPayload,
   forwardPacket,
   retransmitJitter,
+  senderIdFromPubkey,
   ttlForDensity,
   type MeshEvent,
 } from "../core/bitchat-protocol";
@@ -226,20 +233,43 @@ export class MeshTransport {
   /**
    * Publie un événement social signé via le routeur DORS (post, DM…).
    * Renvoie la décision de routage (affichable dans l'UI).
+   *
+   * F-03 (audit Vague 1) : un payload signé dépasse souvent PAYLOAD_MAX_BYTES
+   * (452 o) — il est désormais FRAGMENTÉ (§2 whitepaper, format identique au
+   * web et au pont) au lieu de faire échouer buildPacket. Chaque fragment
+   * suit le même chemin routeur/outbox ; le réassemblage se fait à l'arrivée
+   * (pairs BitChat et /api/mesh/bridge).
    */
   async publish(ev: MeshEvent, type: number = PKT_PUBLIC): Promise<RouteDecision> {
     if (!this.identity) throw new Error("transport non démarré");
     const ttl = ttlForDensity(BleMesh.peers().length);
-    const packet = buildPacket(type, this.identity.pubkey, ev, { ttl });
-    // marqué comme vu : les échos de nos voisins seront ignorés
-    this.dedup.checkAndRecord(packet);
-    const decision = await this.router.submit(packet, { trace: ev.kind });
-    if (decision.copyToOutbox) {
-      // §3.1 : copie outbox durable tant qu'aucun canal confirmé n'a porté le paquet
-      await this.outbox.enqueue(bytesToBase64(packet), { trace: ev.kind });
-      this.scheduleBridgeFlush();
+    const payload = encodeMeshEvent(ev);
+    const chunks =
+      payload.length <= PAYLOAD_MAX_BYTES
+        ? [payload]
+        : fragmentPayload(payload, parseInt(fnv64(payload).slice(0, 4), 16));
+
+    let decision: RouteDecision | null = null;
+    for (const chunk of chunks) {
+      const packet = encodePacket({
+        version: PROTOCOL_VERSION,
+        type,
+        ttl,
+        senderId: senderIdFromPubkey(this.identity.pubkey),
+        timestamp: Math.floor(Date.now() / 1000),
+        payloadLen: chunk.length,
+        payload: chunk,
+      });
+      // marqué comme vu : les échos de nos voisins seront ignorés
+      this.dedup.checkAndRecord(packet);
+      decision = await this.router.submit(packet, { trace: ev.kind });
+      if (decision.copyToOutbox) {
+        // §3.1 : copie outbox durable tant qu'aucun canal confirmé n'a porté le paquet
+        await this.outbox.enqueue(bytesToBase64(packet), { trace: ev.kind });
+        this.scheduleBridgeFlush();
+      }
     }
-    return decision;
+    return decision as RouteDecision;
   }
 
   /** Annonce de présence (nickname + clés publiques) — geste local BLE. */

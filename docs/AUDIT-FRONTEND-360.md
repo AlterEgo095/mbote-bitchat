@@ -352,3 +352,31 @@ Upload d'images/vidéos, notifications push (web + app), recherche d'utilisateur
 4. **Charge** : montée à ~100 posts/min via pont (rate limits + N+1 channels), FragmentAssembler sous flood de fragments orphelins.
 5. **Accessibilité** : audit axe/Lighthouse + lecteur d'écran (VoiceOver/TalkBack) — NON EXÉCUTÉ dans cet audit.
 6. **Compatibilité** : Safari iOS WebView, Firefox, Chrome Android — matrice non testée.
+
+---
+
+## 16. JOURNAL D'EXÉCUTION — VAGUE 1 (P0) ✅ EXÉCUTÉE ET VALIDÉE
+
+**Statut au moment de l'audit** : les 3 P0 étaient confirmés (preuves §12). **Correctifs appliqués puis validés** :
+
+### F-01 — Usurpation d'identité (cluster) — CORRIGÉ
+- **Nouveau module isomorphe `src/lib/mbote/proof.ts`** : chaînes canoniques signées (identity / like / follow / dm), vérification ECDSA P-256 + fraîcheur (7 j offline-first, alignée posts), validation de format de clé (65 octets bruts, préfixe 0x04).
+- `POST /api/identity` : preuve de possession OBLIGATOIRE (`${pubkey}|identity|…|${ts}`) → 401 sans/mauvaise preuve, 400 si format de clé invalide.
+- `POST /api/posts` : signature ECDSA OBLIGATOIRE (400 si absente, 401 si invalide) — plus aucun post anonyme.
+- `POST /api/mesh/bridge` : posts mesh rejetés sans signature valide (« publication non signée (rejetée) » / « signature refusée ») ; **announce non signé = création seule, jamais d'écrasement** d'une identité existante (pseudo/ecdhPub protégés).
+- `POST /api/posts/like`, `/api/follows`, `/api/dms` : preuve de possession obligatoire (401).
+- **Client web adapté** : identité (création + édition profil), likes, follows, DM — tous signés localement avant envoi **et** avant mise en file hors-ligne (la preuve part dans l'outbox, tolérance 7 j).
+- **Tunnel BitChat web aligné** : signature en millisecondes (une seule valeur ts partagée signature/événement) et pair éphémère muni d'une vraie paire P-256 jetable (fini l'anonymat non signé) — compatible pont durci.
+
+**Validation hostile (23 tests HTTP, script WebCrypto réel)** : identity sans preuve → 401 · signature d'autrui → 401 · format clé invalide → 400 · preuve valide → 200 ; posts sans signature → 400, forgé → 401, rejeu → idempotent ; like/follow/dm idem ; pont : paquet signé → accepted (+ réassembly fragmenté), même paquet → duplicate, non signé → invalid, forgé → invalid, announce non signé n'écrase PAS l'identité (nickname/ecdhPub intacts). **22 PASS + 1 faux négatif d'assertion (paquet forgé fragmenté : 1 frag en attente + 1 invalid = post bien rejeté)**.
+
+### F-02 — Seed cassé + auto-seed public — CORRIGÉ
+- Signatures démo **uniques** (`demo-signature-seed-<n>`) → plus de P2002 ; compteurs `replyCount`/`likeCount` incrémentés à la création ; **garde** : dev uniquement, ou `x-seed-secret: $SEED_SECRET` en production (403 sinon) ; auto-seed client retiré (`apiSeed` supprimée de l'UI et de `api.ts`).
+- **Validation DB vierge** : `{"seeded":true,"users":6,"posts":9}` ; cohérence compteurs ΣreplyCount=2=réponses, ΣlikeCount=7=likes ; signatures uniques.
+
+### F-03 — Publication mobile impossible — CORRIGÉ (code ; E2E appareil restant)
+- `mobile/src/transport/MeshTransport.publish` **fragmente désormais** le payload signé via `fragmentPayload` (§2 whitepaper, format identique web/pont) avant `encodePacket` ; chaque fragment suit routeur/outbox. Typecheck mobile ✅. **Reste NOT VERIFIED sur appareil physique** (§15.1) — la chaîne de fragmentation/réassembly est elle validée côté pont (test paquet fragmenté → accepted).
+
+### Golden path navigateur (re-vérifié après correctifs)
+Identité signée créée (preuve acceptée, ecdhPub enregistré) → post signé publié et visible → like signé persisté (likeCount=1) → DM E2E bot (enveloppe signée acceptée, réponse du bot **déchiffrée** dans l'UI) → **tunnel mesh : paquet signé → pont → signature vérifiée → post ingéré (origine mesh)**. Zéro erreur console/page. Lint ✅ · tsc web ✅ · tsc mobile ✅.
+
