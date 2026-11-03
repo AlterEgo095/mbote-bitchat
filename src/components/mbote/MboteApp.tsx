@@ -45,7 +45,12 @@ import {
   apiUpsertIdentity,
 } from "@/lib/mbote/api";
 import { generateKeyBundle, signPayload } from "@/lib/mbote/crypto";
-import { identityProofMessage, likeProofMessage } from "@/lib/mbote/proof";
+import {
+  dmReadProofMessage,
+  identityProofMessage,
+  likeProofMessage,
+  relayHelloProofMessage,
+} from "@/lib/mbote/proof";
 import {
   enqueueOutbox,
   loadForceOffline,
@@ -67,6 +72,7 @@ import {
   type RealtimePresencePayload,
 } from "@/lib/mbote/socket";
 import type { ActiveChannel, PendingPost, ViewKey } from "@/lib/mbote/types";
+import { closeWebOutbox } from "@/lib/mbote/transports/web-outbox";
 
 import { MboteAvatar } from "./Avatar";
 import { ChannelsView } from "./ChannelsView";
@@ -105,15 +111,24 @@ export function MboteApp() {
 
   // ---------- initialisation ----------
   useEffect(() => {
-    const id = loadIdentity();
-    setIdentity(id);
-    setForceOffline(loadForceOffline());
-    setIsOnline(navigator.onLine);
-    setOutbox(loadOutbox());
-    setMounted(true);
-    if (!id) setOnboardingOpen(true);
+    let cancelled = false;
+    (async () => {
+      // F-06 : les clés privées (non-extractibles) viennent du coffre IndexedDB,
+      // avec migration automatique de l'ancien stockage JWK en clair.
+      const id = await loadIdentity();
+      if (cancelled) return;
+      setIdentity(id);
+      setForceOffline(loadForceOffline());
+      setIsOnline(navigator.onLine);
+      setOutbox(loadOutbox());
+      setMounted(true);
+      if (!id) setOnboardingOpen(true);
+    })();
     // F-02 : plus d'auto-seed déclenché par chaque visiteur — le seed est un
     // geste opérateur (POST /api/seed, garde env/secret côté serveur).
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ---------- connexion en ligne / hors-ligne ----------
@@ -196,7 +211,13 @@ export function MboteApp() {
 
   const unread = useQuery({
     queryKey: ["conversations", identity?.pubkey],
-    queryFn: () => apiGetConversations(identity!.pubkey),
+    // F-07 : chaque lecture de boîte DM est signée (preuve courte durée)
+    queryFn: async () => {
+      const id = identity!;
+      const ts = Date.now();
+      const signature = await signPayload(id.signPriv, dmReadProofMessage(id.pubkey, "*", ts));
+      return apiGetConversations(id.pubkey, { ts, signature });
+    },
     enabled: mounted && !!identity,
     refetchInterval: 30000,
   });
@@ -216,14 +237,32 @@ export function MboteApp() {
   useEffect(() => {
     if (!mounted) return;
     const s = getSocket();
-    const hello = () =>
-      s.emit("hello", {
-        pubkey: identity?.pubkey ?? null,
-        nickname: identity?.nickname ?? null,
-      });
+    // F-08 : le hello ouvre la boîte DM `dm:<pubkey>` UNIQUEMENT avec une
+    // preuve de possession signée courte durée — sans identité (ou en cas
+    // d'échec de signature), la connexion reste dans le fil public.
+    const hello = async () => {
+      if (!identity) {
+        s.emit("hello", { pubkey: null, nickname: null });
+        return;
+      }
+      try {
+        const ts = Date.now();
+        const signature = await signPayload(
+          identity.signPriv,
+          relayHelloProofMessage(identity.pubkey, ts)
+        );
+        s.emit("hello", {
+          pubkey: identity.pubkey,
+          nickname: identity.nickname,
+          dmAuth: { ts, signature },
+        });
+      } catch {
+        s.emit("hello", { pubkey: null, nickname: identity.nickname });
+      }
+    };
     const onConnect = () => {
       setRealtimeOk(true);
-      hello();
+      void hello();
     };
     const onDisconnect = () => setRealtimeOk(false);
     const onPresence = (p: RealtimePresencePayload) =>
@@ -262,7 +301,7 @@ export function MboteApp() {
     // identité créée pendant que le socket est déjà connecté → re-hello
     if (s.connected) {
       setRealtimeOk(true);
-      hello();
+      void hello();
     }
 
     return () => {
@@ -287,7 +326,7 @@ export function MboteApp() {
           nickname,
           bio: bio || undefined,
         };
-        saveIdentity(stored);
+        await saveIdentity(stored);
         setIdentity(stored);
         setOnboardingOpen(false);
         // F-01 : preuve de possession signée AVANT tout — envoyée maintenant,
@@ -301,7 +340,7 @@ export function MboteApp() {
           ecdhPub: bundle.ecdhPub,
           ts,
           signature: await signPayload(
-            bundle.signPrivJwk,
+            bundle.signPriv,
             identityProofMessage({
               pubkey: bundle.pubkey,
               nickname,
@@ -343,7 +382,7 @@ export function MboteApp() {
       // chaîne canonique du protocole (§ bitchat-protocol) : `${pubkey}|${content}|${ts}`
       // — le serveur VÉRIFIE cette signature (D4) : ne pas modifier la forme.
       const signature = await signPayload(
-        identity.signPrivJwk,
+        identity.signPriv,
         `${identity.pubkey}|${input.content}|${ts}`
       );
       const payload = { pubkey: identity.pubkey, ...input, signature, ts };
@@ -388,7 +427,7 @@ export function MboteApp() {
       let signature: string;
       try {
         signature = await signPayload(
-          identity.signPrivJwk,
+          identity.signPriv,
           likeProofMessage(identity.pubkey, postId, ts)
         );
       } catch {
@@ -442,8 +481,11 @@ export function MboteApp() {
     setOutbox(items);
   }, []);
 
-  const doPanicWipe = useCallback(() => {
-    panicWipe();
+  const doPanicWipe = useCallback(async () => {
+    // F-11 : efface TOUT l'état local promis (clés IndexedDB, outbox binaire,
+    // repli LS, thème) — voir identity.ts panicWipe.
+    closeWebOutbox(); // libère la connexion IndexedDB avant deleteDatabase
+    await panicWipe();
     setIdentity(null);
     setPendingPosts([]);
     setOutbox([]);
@@ -655,7 +697,7 @@ export function MboteApp() {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onClick={doPanicWipe}
+                    onClick={() => void doPanicWipe()}
                     className="text-destructive focus:text-destructive"
                   >
                     <Flame className="size-4" aria-hidden="true" />

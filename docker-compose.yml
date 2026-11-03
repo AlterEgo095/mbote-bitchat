@@ -1,6 +1,12 @@
 services:
   mbote:
-    build: .
+    # F-09 : NEXT_PUBLIC_SOCKET_URL doit être présente AU MOMENT du build
+    # (elle est inlinée dans le bundle client Next). Elle provient du .env
+    # écrit sur le VPS par la CI (cf. .github/workflows/deploy-vps.yml).
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:-}
     container_name: mbote-mesh
     ports:
       - "3000:3000"
@@ -36,6 +42,9 @@ services:
     # 3031 (endpoint interne /emit) n'est PAS publié : réseau Docker interne.
     ports:
       - "127.0.0.1:3030:3030"
+    # F-09 : origine autorisée par le relay (CORS), lue depuis le .env du VPS.
+    environment:
+      - RELAY_ALLOWED_ORIGIN=${RELAY_ALLOWED_ORIGIN:-}
     restart: unless-stopped
     healthcheck:
       test:

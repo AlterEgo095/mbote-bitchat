@@ -113,6 +113,27 @@ porte l'expérience native complète.
 | `VPS_PORT` | `22` | optionnel (défaut 22) |
 | `VPS_DEPLOY_DIR` | `/opt/mbote-bitchat` | optionnel (défaut `/opt/mbote-bitchat`) |
 
+### Variables de build temps réel (F-09)
+
+`NEXT_PUBLIC_SOCKET_URL` est lue **à l'étape build** : elle est inlinée dans le
+bundle client Next. Elle est donc transmise à toute la chaîne — secret GitHub →
+`.env` sur le VPS (écrit par la CI via ssh + stdin, les secrets ne passent jamais
+dans la ligne de commande distante) → `build.args` Docker → `ARG`/`ENV` du
+Dockerfile.
+
+Nouveaux **GitHub Secrets** à créer (Settings → Secrets and variables → Actions,
+suite de l'environnement `VPS_HOST` / `VPS_USER` existant) :
+
+| Secret | Exemple | Rôle |
+|---|---|---|
+| `NEXT_PUBLIC_SOCKET_URL` | `https://socket.mondomaine.tld` (ou l'URL du site si le hub est proxifié par Caddy) | URL publique du hub socket.io sur le VPS — sans elle, le bundle embarque le mode sandbox (`XTransformPort`) et le temps réel est hors service en prod |
+| `RELAY_ALLOWED_ORIGIN` | `https://mbote.mondomaine.tld` | Origine autorisée par le relay (CORS), passée en `environment` au service `relay` |
+| `SEED_SECRET` | chaîne aléatoire longue | Secret de l'endpoint de seed `/api/seed` |
+
+> ⚠️ Modifier le secret ne suffit pas : il faut **rebuilder** l'image
+> (`docker compose up -d --build`, ce que fait la CI à chaque push) pour que
+> la nouvelle valeur soit inlinée dans le bundle.
+
 ### Préparation du VPS (une seule fois)
 ```bash
 # sur le VPS
@@ -129,9 +150,11 @@ Caddy reste sur l'hôte (443 → 127.0.0.1:3000), cf. `Caddyfile` / `DEPLOY-VPS.
 2. **rsync** du commit exact vers `$VPS_DIR` (`--delete`, exclusions :
    `node_modules`, `.next`, `mobile/`, `db/`, `.env`…) — un `.env` placé
    manuellement sur le VPS n'est **pas** écrasé ni supprimé ;
-3. `docker compose up -d --build` — si le build échoue, **les conteneurs
+3. **écriture du `.env`** sur le VPS (variables de build temps réel, cf.
+   « Variables de build temps réel (F-09) » ci-dessus) ;
+4. `docker compose up -d --build` — si le build échoue, **les conteneurs
    précédents continuent de tourner** (zéro downtime accidentel) ;
-4. Health check : `GET /api/stats` doit répondre 200, puis `docker compose ps`.
+5. Health check : `GET /api/stats` doit répondre 200, puis `docker compose ps`.
 
 ---
 

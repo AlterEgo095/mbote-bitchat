@@ -134,6 +134,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setNicknameState(storedNick || `mbote-${bundle.pubkey.slice(0, 4)}`);
         setBridgeUrlState(storedUrl || "");
         pushLog("identité chargée (clés locales)");
+        // F-05 : l'URL du pont persistée est réappliquée AU TRANSPORT avant le
+        // démarrage — l'outbox et le downlink survivent au redémarrage de l'app.
+        transport.setBridgeUrl(storedUrl || "");
         await transport.start({
           pubkey: bundle.pubkey,
           nickname: storedNick || `mbote-${bundle.pubkey.slice(0, 4)}`,
@@ -168,7 +171,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const clean = u.trim();
     setBridgeUrlState(clean);
     await AsyncStorage.setItem(BRIDGE_URL_KEY, clean);
-  }, []);
+    // F-05 : le transport est configuré immédiatement (outbox + downlink vivants
+    // sans attendre une sync manuelle)
+    transport.setBridgeUrl(clean);
+  }, [transport]);
 
   const sendPost = useCallback(
     async (content: string) => {
@@ -217,11 +223,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const resetIdentity = useCallback(async () => {
     transport.stop();
+    // F-11 : la promesse UI « tout est détruit » est tenue —
+    //  · coffre SecureStore + vestiges AsyncStorage (wipeIdentity)
+    //  · outbox durable SQLite (et son repli AsyncStorage)
+    //  · nickname, URL du pont, messages, décisions de routage
     await wipeIdentity();
+    try {
+      await transport.outbox.clear();
+    } catch {
+      /* outbox déjà vide / store absent */
+    }
+    try {
+      await AsyncStorage.multiRemove([
+        NICK_KEY,
+        BRIDGE_URL_KEY,
+        "mbote.outbox.packets.v1", // repli AsyncStorage de l'outbox durable
+      ]);
+    } catch {
+      /* rien à effacer */
+    }
+    transport.setBridgeUrl("");
     setMessages([]);
     setPeers([]);
     setIdentity(null);
-    pushLog("identité effacée — redémarrez l'app");
+    setNicknameState("mbote");
+    setBridgeUrlState("");
+    setBridgeQueueSize(0);
+    setRouteDecisions([]);
+    pushLog("identité et état local effacés — redémarrez l'app");
   }, [transport, pushLog]);
 
   const refreshPeers = useCallback(() => {

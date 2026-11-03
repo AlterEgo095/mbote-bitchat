@@ -1,32 +1,173 @@
 "use client";
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ *  identité locale — web (F-06 + F-11, audit Vague 2)
+ * ─────────────────────────────────────────────────────────────────────────────
+ *  • Métadonnées PUBLIQUES (pubkey, ecdhPub, nickname, bio) → localStorage.
+ *  • Clés PRIVÉES (CryptoKey non-extractibles) → IndexedDB `mbote-secure`
+ *    (secure-keys.ts) — plus jamais de JWK `d` en clair dans localStorage.
+ *  • Migration automatique : une identité legacy (JWK en clair) est réimportée
+ *    comme non-extractible puis son matériel privé est détruit du localStorage.
+ *  • Panic wipe (F-11) : efface TOUT l'état local promis par l'UI — clés
+ *    (IndexedDB + localStorage), outbox sociale (LS), outbox durable binaire
+ *    (IndexedDB `mbote-outbox` + repli LS), mode mesh forcé, thème.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
 import { LS_IDENTITY, LS_OUTBOX, LS_FORCE_OFFLINE } from "./constants";
-import type { KeyBundle } from "./crypto";
+import { importLegacyKeyBundle, type KeyBundle } from "./crypto";
+import { clearSecureKeys, getSecureKeys, putSecureKeys } from "./secure-keys";
 
 export interface StoredIdentity extends KeyBundle {
   nickname: string;
   bio?: string;
 }
 
-export function loadIdentity(): StoredIdentity | null {
+/** Métadonnées publiques uniquement (localStorage — aucun matériel privé). */
+export interface StoredIdentityMeta {
+  pubkey: string;
+  ecdhPub: string;
+  nickname: string;
+  bio?: string;
+}
+
+/** Ancien format (Vague 1 et avant) : JWK privées en clair — migration F-06. */
+interface LegacyStoredIdentity extends StoredIdentityMeta {
+  signPrivJwk?: JsonWebKey;
+  ecdhPrivJwk?: JsonWebKey;
+}
+
+function defaultNickname(pubkey: string): string {
+  return `mbote-${pubkey.slice(0, 4)}`;
+}
+
+/** Lecture SYNCHRONE des métadonnées publiques (pour les IDs de passerelle…). */
+export function loadIdentityMeta(): StoredIdentityMeta | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(LS_IDENTITY);
-    return raw ? (JSON.parse(raw) as StoredIdentity) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LegacyStoredIdentity;
+    if (!parsed?.pubkey) return null;
+    return {
+      pubkey: parsed.pubkey,
+      ecdhPub: parsed.ecdhPub ?? "",
+      nickname: parsed.nickname || defaultNickname(parsed.pubkey),
+      bio: parsed.bio,
+    };
   } catch {
     return null;
   }
 }
 
-export function saveIdentity(identity: StoredIdentity): void {
-  localStorage.setItem(LS_IDENTITY, JSON.stringify(identity));
+/**
+ * Charge l'identité complète (métadonnées + clés privées non-extractibles).
+ * Effectue la migration legacy F-06 au premier passage :
+ * JWK en clair dans localStorage → import non-extractible en IndexedDB,
+ * puis réécriture du localStorage SANS matériel privé.
+ */
+export async function loadIdentity(): Promise<StoredIdentity | null> {
+  if (typeof window === "undefined") return null;
+
+  // ── migration legacy (F-06) : détruire les JWK en clair si présentes ──
+  const raw = localStorage.getItem(LS_IDENTITY);
+  if (raw && raw.includes("signPrivJwk")) {
+    try {
+      const legacy = JSON.parse(raw) as LegacyStoredIdentity;
+      if (legacy.signPrivJwk && legacy.ecdhPrivJwk) {
+        const bundle = await importLegacyKeyBundle(legacy.signPrivJwk, legacy.ecdhPrivJwk);
+        await putSecureKeys(bundle);
+        const metaOnly: StoredIdentityMeta = {
+          pubkey: bundle.pubkey,
+          ecdhPub: bundle.ecdhPub,
+          nickname: legacy.nickname || defaultNickname(bundle.pubkey),
+          bio: legacy.bio,
+        };
+        localStorage.setItem(LS_IDENTITY, JSON.stringify(metaOnly));
+      } else {
+        localStorage.removeItem(LS_IDENTITY); // legacy corrompu → repartir propre
+      }
+    } catch {
+      localStorage.removeItem(LS_IDENTITY); // legacy illisible → repartir propre
+    }
+  }
+
+  const meta = loadIdentityMeta();
+  const keys = await getSecureKeys();
+
+  if (keys && (!meta || keys.pubkey !== meta.pubkey)) {
+    // clés sans métadonnées (ou divergence) → les clés font foi, on reconstruit
+    const rebuilt: StoredIdentityMeta = {
+      pubkey: keys.pubkey,
+      ecdhPub: keys.ecdhPub,
+      nickname: meta?.nickname && meta.pubkey === keys.pubkey
+        ? meta.nickname
+        : defaultNickname(keys.pubkey),
+      bio: meta?.pubkey === keys.pubkey ? meta.bio : undefined,
+    };
+    try {
+      localStorage.setItem(LS_IDENTITY, JSON.stringify(rebuilt));
+    } catch {
+      /* quota : l'identité reste utilisable en mémoire */
+    }
+    return { ...rebuilt, signPriv: keys.signPriv, ecdhPriv: keys.ecdhPriv };
+  }
+
+  if (keys && meta) {
+    return { ...meta, signPriv: keys.signPriv, ecdhPriv: keys.ecdhPriv };
+  }
+
+  return null; // pas de clés → onboarding (les métadonnées orphelines seront écrasées)
 }
 
-/** Panic wipe : efface identité, outbox et tout état local */
-export function panicWipe(): void {
+/** Persiste identité complète : clés privées en IndexedDB, public en LS. */
+export async function saveIdentity(identity: StoredIdentity): Promise<void> {
+  await putSecureKeys(identity);
+  const metaOnly: StoredIdentityMeta = {
+    pubkey: identity.pubkey,
+    ecdhPub: identity.ecdhPub,
+    nickname: identity.nickname,
+    bio: identity.bio,
+  };
+  localStorage.setItem(LS_IDENTITY, JSON.stringify(metaOnly));
+}
+
+// ---------- panic wipe (F-11 : complet, aligné sur la promesse UI) ----------
+
+function deleteDb(name: string): Promise<void> {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.deleteDatabase(name);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve(); // best effort : on part quand même
+      req.onblocked = () => resolve(); // un autre onglet — la base sera purgée à sa fermeture
+    } catch {
+      resolve();
+    }
+  });
+}
+
+/**
+ * Panic wipe : « Clés, file locale et état local détruits » — la promesse est
+ * désormais tenue (F-11) :
+ *  - identité : LS + coffre IndexedDB `mbote-secure` ;
+ *  - outbox sociale (LS) ;
+ *  - outbox durable binaire : IndexedDB `mbote-outbox` + repli LS
+ *    `mbote.outbox.packets.v1` ;
+ *  - mode mesh forcé + thème (état local).
+ */
+export async function panicWipe(): Promise<void> {
+  if (typeof window === "undefined") return;
   localStorage.removeItem(LS_IDENTITY);
   localStorage.removeItem(LS_OUTBOX);
   localStorage.removeItem(LS_FORCE_OFFLINE);
+  localStorage.removeItem("theme"); // next-themes (storageKey par défaut)
+  localStorage.removeItem("mbote.outbox.packets.v1"); // repli LS de l'outbox binaire
+  // Ordre important (F-11) : purge du record AVANT la suppression des bases —
+  // clearSecureKeys ré-ouvrirait sinon la base juste après deleteDatabase.
+  await clearSecureKeys();
+  await Promise.all([deleteDb("mbote-secure"), deleteDb("mbote-outbox")]);
 }
 
 // ---------- outbox (file d'attente "courrier" hors-ligne) ----------

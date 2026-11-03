@@ -2,22 +2,89 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { relayNotify } from "@/lib/mbote/relay-notify";
 import { clientIp, getRateStore, trackApiRequest } from "@/lib/mbote/state-store";
-import { dmProofMessage, verifySignedMessage } from "@/lib/mbote/proof";
+import {
+  dmProofMessage,
+  dmReadProofMessage,
+  READ_MAX_AGE_MS,
+  READ_FUTURE_TOLERANCE_MS,
+  verifySignedMessage,
+} from "@/lib/mbote/proof";
 
 export const dynamic = "force-dynamic";
 
 const DMS_PER_MIN_PER_KEY = 30;
 const DMS_PER_MIN_PER_IP = 90;
+const DM_READ_PER_MIN_PER_KEY = 60;
+const DM_READ_PER_MIN_PER_IP = 180;
 const RATE_WINDOW_MS = 60_000;
 
-/** GET /api/dms?me=&peer= — conversation (le serveur ne lit jamais le contenu) */
+/**
+ * F-07 : pré-authentification commune aux lectures de boîte DM — le lecteur
+ * `me` doit prouver la possession de SA clé (signature courte durée sur
+ * `${me}|dm-read|${peer}|${ts}`). Sans preuve valide : 401, et surtout
+ * AUCUN effet de bord (pas de marquage « lu »).
+ */
+async function requireDmReadProof(
+  me: string,
+  peer: string,
+  ts: unknown,
+  signature: unknown
+): Promise<NextResponse | null> {
+  const check = await verifySignedMessage({
+    message: dmReadProofMessage(me, peer, ts as number),
+    pubkey: me,
+    ts,
+    signature,
+    maxAgeMs: READ_MAX_AGE_MS,
+    futureToleranceMs: READ_FUTURE_TOLERANCE_MS,
+  });
+  if (!check.valid) {
+    return NextResponse.json(
+      { error: `Lecture refusée (preuve requise) : ${check.reason ?? "invalide"}` },
+      { status: 401 }
+    );
+  }
+  return null;
+}
+
+function dmReadRateLimited(me: string, ip: string): NextResponse | null {
+  const rates = getRateStore();
+  const byKey = rates.hit(`dm-read:${me}`, DM_READ_PER_MIN_PER_KEY, RATE_WINDOW_MS);
+  const byIp = rates.hit(`dm-read-ip:${ip}`, DM_READ_PER_MIN_PER_IP, RATE_WINDOW_MS);
+  if (!byKey.allowed || !byIp.allowed) {
+    const retry = Math.ceil(Math.max(byKey.retryAfterMs, byIp.retryAfterMs) / 1000);
+    return NextResponse.json(
+      { error: "Trop de lectures — ralentissez" },
+      { status: 429, headers: { "Retry-After": String(retry || 60) } }
+    );
+  }
+  return null;
+}
+
+/** GET /api/dms?me=&peer=&ts=&signature= — conversation (le serveur ne lit jamais le contenu)
+ *  F-07 : lecture authentifiée par preuve de possession courte durée —
+ *  impossible de lire la boîte d'autrui ni de marquer ses messages comme lus.
+ */
 export async function GET(req: NextRequest) {
+  const done = trackApiRequest("dms.get");
   try {
-    const me = req.nextUrl.searchParams.get("me");
-    const peer = req.nextUrl.searchParams.get("peer");
+    const sp = req.nextUrl.searchParams;
+    const me = sp.get("me");
+    const peer = sp.get("peer");
     if (!me || !peer) {
       return NextResponse.json({ error: "me et peer requis" }, { status: 400 });
     }
+
+    const limited = dmReadRateLimited(me, clientIp(req.headers));
+    if (limited) return limited;
+
+    const unauthorized = await requireDmReadProof(
+      me,
+      peer,
+      sp.get("ts"),
+      sp.get("signature")
+    );
+    if (unauthorized) return unauthorized;
 
     const messages = await db.directMessage.findMany({
       where: {
@@ -30,7 +97,7 @@ export async function GET(req: NextRequest) {
       take: 200,
     });
 
-    // marquer comme lus les messages reçus
+    // marquer comme lus les messages reçus (lecteur authentifié)
     await db.directMessage.updateMany({
       where: { senderKey: peer, recipientKey: me, readAt: null },
       data: { readAt: new Date() },
@@ -40,6 +107,8 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     console.error("GET /api/dms", e);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  } finally {
+    done();
   }
 }
 

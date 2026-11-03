@@ -57,7 +57,7 @@ import {
 import { CITY_PRESETS } from "@/lib/mbote/constants";
 import { generateKeyBundle, signPayload } from "@/lib/mbote/crypto";
 import { encodeGeohash } from "@/lib/mbote/geohash";
-import { loadIdentity } from "@/lib/mbote/identity";
+import { loadIdentity, loadIdentityMeta } from "@/lib/mbote/identity";
 import { getWebOutbox, type OutboxItem } from "@/lib/mbote/transports";
 import { getWebRouter } from "@/lib/mbote/transports";
 
@@ -121,7 +121,8 @@ export function BitChatBridge() {
   const [hasIdentity, setHasIdentity] = useState(false);
 
   useEffect(() => {
-    setHasIdentity(!!loadIdentity());
+    // F-06 : lecture publique synchronisée (les clés privées sont en IndexedDB)
+    setHasIdentity(!!loadIdentityMeta());
   }, []);
 
   // P2 : la file affichée EST l'outbox durable (source unique)
@@ -165,14 +166,14 @@ export function BitChatBridge() {
    *  comme partout ailleurs (alignement F-16 côté émission). */
   const resolveSender = async () => {
     const ts = Date.now();
-    const id = loadIdentity();
+    const id = await loadIdentity();
     if (id) {
-      const signature = await signPayload(id.signPrivJwk, `${id.pubkey}|${draft.trim()}|${ts}`);
+      const signature = await signPayload(id.signPriv, `${id.pubkey}|${draft.trim()}|${ts}`);
       return { pubkey: id.pubkey, nickname: id.nickname, ecdhPub: id.ecdhPub, signature, ts };
     }
     const bundle = await generateKeyBundle();
     const signature = await signPayload(
-      bundle.signPrivJwk,
+      bundle.signPriv,
       `${bundle.pubkey}|${draft.trim()}|${ts}`
     );
     return {
@@ -185,7 +186,7 @@ export function BitChatBridge() {
   };
 
   const gatewayId = useMemo(() => {
-    const id = loadIdentity();
+    const id = loadIdentityMeta();
     return bytesToHex(senderIdFromPubkey(id?.pubkey ?? "mbote-browser-gateway")).toUpperCase();
   }, []);
 

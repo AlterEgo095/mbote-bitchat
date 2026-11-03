@@ -16,6 +16,12 @@ RUN bun install --frozen-lockfile
 # sources
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# F-09 : NEXT_PUBLIC_SOCKET_URL est inlinée dans le bundle client à la
+# compilation. Vide en sandbox (mode passerelle Caddy XTransformPort),
+# fournie par docker-compose (build.args) / CI en prod VPS.
+ARG NEXT_PUBLIC_SOCKET_URL=""
+ENV NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL}
 RUN bun run db:generate && bun run build
 
 # ------------------------------------------------------------

@@ -48,7 +48,7 @@ import {
   ttlForDensity,
   type MeshEvent,
 } from "../core/bitchat-protocol";
-import { bytesToBase64 } from "../../modules/mbote-ble/ble-base64";
+import { base64ToBytes, bytesToBase64 } from "../../modules/mbote-ble/ble-base64";
 import { BleMesh, type MeshStateEvent, type PeerInfo } from "../../modules/mbote-ble/index";
 
 import { BleTransport } from "./ble-transport";
@@ -84,6 +84,10 @@ const BRIDGE_BATCH = 64;
 const FLUSH_DEBOUNCE_MS = 3000;
 /** Déclencheur P2 : timer périodique de flush (spéc P2). */
 const PERIODIC_FLUSH_MS = 5 * 60_000;
+/** F-04 : downlink — polling du pont (paquets BitChat à redistribuer en BLE). */
+const DOWNLINK_POLL_MS = 60_000;
+/** F-04 : fenêtre initiale du downlink au démarrage (rejoue 5 min d'historique). */
+const DOWNLINK_WINDOW_MS = 5 * 60_000;
 
 export class MeshTransport {
   private dedup = new DedupCache();
@@ -94,6 +98,10 @@ export class MeshTransport {
   private identity: { pubkey: string; nickname: string; ecdhPub?: string } | null = null;
   private started = false;
   private lastBridgeUrl = "";
+  /** F-04 : curseur temporel du downlink (ISO) + timer de polling. */
+  private lastDownlinkSince = new Date(Date.now() - DOWNLINK_WINDOW_MS).toISOString();
+  private downlinkTimer: ReturnType<typeof setInterval> | null = null;
+  private pollingDownlink = false;
 
   /** transports + routeur DORS (P1) */
   readonly router: TransportRouter;
@@ -209,6 +217,12 @@ export class MeshTransport {
     this.announceTimer = setInterval(() => {
       this.announce().catch(() => undefined);
     }, ANNOUNCE_INTERVAL_MS);
+
+    // F-04 : downlink — premier tir + polling périodique du pont
+    void this.pollDownlink();
+    this.downlinkTimer = setInterval(() => {
+      void this.pollDownlink();
+    }, DOWNLINK_POLL_MS);
   }
 
   stop(): void {
@@ -218,6 +232,8 @@ export class MeshTransport {
     this.flushTimer = null;
     if (this.periodicTimer) clearInterval(this.periodicTimer);
     this.periodicTimer = null;
+    if (this.downlinkTimer) clearInterval(this.downlinkTimer);
+    this.downlinkTimer = null;
     this.netUnsub?.();
     this.netUnsub = null;
     this.appStateEmitter?.remove();
@@ -347,10 +363,114 @@ export class MeshTransport {
     this.onPeersChange?.(BleMesh.peers());
   }
 
-  // ───────────────────────── Pont VPS (outbox durable + flush) ─────────────────────────
+  // ───────────────────────── Pont VPS (outbox durable + flush + downlink) ─────────────────────────
 
   get bridgeQueueSize(): number {
     return this.outbox.count();
+  }
+
+  /**
+   * F-05 : configure (ou reconfigure) l'URL du pont — APPELÉ AU DÉMARRAGE avec
+   * l'URL persistée (AsyncStorage) pour que l'outbox et le downlink survivent
+   * au redémarrage de l'app (fini le `lastBridgeUrl=""` inerte).
+   */
+  setBridgeUrl(baseUrl: string): void {
+    const clean = baseUrl.trim().replace(/\/+$/, "");
+    if (clean === this.lastBridgeUrl) return;
+    this.lastBridgeUrl = clean;
+    this.net.configure(clean);
+    // nouveau pont → fenêtre downlink courte (ne pas rejouer un ancien historique)
+    this.lastDownlinkSince = new Date(Date.now() - 60_000).toISOString();
+    this.onLog?.(clean ? `pont configuré : ${clean}` : "pont déconfiguré");
+  }
+
+  /**
+   * F-04 : récupère les paquets BitChat récents du pont (GET /api/mesh/bridge
+   * ?gatewayId=&since=) et les redistribue localement — affichage + re-broadcast
+   * BLE aux voisins hors-ligne. JAMAIS re-montés vers le pont (ils en viennent).
+   */
+  async pollDownlink(): Promise<number> {
+    if (!this.started || !this.lastBridgeUrl || this.pollingDownlink) return 0;
+    this.pollingDownlink = true;
+    try {
+      const url = this.lastBridgeUrl;
+      const gatewayId = encodeURIComponent(
+        this.identity?.pubkey.slice(0, 16) ?? "mbote-mobile"
+      );
+      const since = encodeURIComponent(this.lastDownlinkSince);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      let json: { since?: string; packets?: { base64: string }[] };
+      try {
+        const res = await fetch(`${url}/api/mesh/bridge?gatewayId=${gatewayId}&since=${since}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) return 0;
+        json = (await res.json()) as { since?: string; packets?: { base64: string }[] };
+      } finally {
+        clearTimeout(timer);
+      }
+      if (json.since) this.lastDownlinkSince = json.since;
+      let delivered = 0;
+      for (const p of json.packets ?? []) {
+        try {
+          if (this.handleDownlinkPacket(base64ToBytes(p.base64))) delivered++;
+        } catch {
+          /* paquet illisible — ignorer */
+        }
+      }
+      if (delivered > 0) {
+        this.onLog?.(`downlink : ${delivered} paquet(s) redistribué(s) depuis le pont`);
+      }
+      return delivered;
+    } catch {
+      return 0; // pont injoignable : le prochain tick réessaiera
+    } finally {
+      this.pollingDownlink = false;
+    }
+  }
+
+  /**
+   * Traitement d'un paquet VENU DU PONT (downlink) : dédup → affichage →
+   * redistribution BLE (TTL−1 après gigue). Pas de re-montée pont : le paquet
+   * en provient — éviter la boucle et la pollution des statistiques.
+   */
+  private handleDownlinkPacket(bytes: Uint8Array): boolean {
+    if (!this.dedup.checkAndRecord(bytes)) return false; // déjà vu (BLE ou poll précédent)
+
+    let packet;
+    try {
+      packet = decodePacket(bytes);
+    } catch {
+      return false;
+    }
+
+    let ev: MeshEvent | null = null;
+    try {
+      ev = decodeMeshEvent(packet.payload);
+    } catch {
+      /* payload scellé/opaque (DM brut) */
+    }
+
+    if (this.identity && ev && "pubkey" in ev && ev.pubkey === this.identity.pubkey) {
+      return false; // notre propre publication revenue par le downlink
+    }
+
+    if (ev) this.onEvent?.(ev, {
+      peerId: "pont-vps",
+      rssi: 0,
+      hops: Math.max(0, 7 - packet.ttl),
+      at: Date.now(),
+    });
+
+    // redistribution BLE locale (le downlink est là pour les hors-ligne à portée)
+    const forwarded = forwardPacket(packet);
+    if (forwarded) {
+      setTimeout(() => {
+        BleMesh.send(forwarded).catch(() => undefined);
+      }, retransmitJitter());
+    }
+    return true;
   }
 
   /** Photo de santé de tous les transports (routeur ↔ UI, source unique). */
@@ -386,6 +506,9 @@ export class MeshTransport {
         if (o.failed > 0) parts.push(`${o.failed} en backoff`);
         this.onLog?.(`flush outbox : ${parts.join(", ")}`);
       }
+      // F-04 : notre upload peut déclencher du contenu chez d'autres —
+      // en profiter pour tirer le downlink immédiatement.
+      if (o.accepted > 0) void this.pollDownlink();
       return o;
     } catch {
       return null; // l'outbox ne lève jamais ; ce catch est un filet
@@ -428,8 +551,8 @@ export class MeshTransport {
       return { ok: false, accepted: 0, duplicate: 0, invalid: 0, error: "URL du pont non configurée" };
     }
 
-    this.lastBridgeUrl = url;
-    this.net.configure(url);
+    // F-05 : même chemin que la restauration au démarrage (URL + sonde + downlink)
+    this.setBridgeUrl(url);
     await this.outbox.ready();
 
     const o = await this.outbox.flush(true);

@@ -36,7 +36,7 @@ import {
   apiSendDm,
 } from "@/lib/mbote/api";
 import { openMessage, sealMessage, shortKey, signPayload } from "@/lib/mbote/crypto";
-import { dmProofMessage } from "@/lib/mbote/proof";
+import { dmProofMessage, dmReadProofMessage } from "@/lib/mbote/proof";
 import type { DirectMessageDto, UserPublic } from "@/lib/mbote/types";
 import type { StoredIdentity } from "@/lib/mbote/identity";
 import { MboteAvatar } from "./Avatar";
@@ -54,7 +54,15 @@ export function MessagesView({ identity, isOnline, forceOffline }: MessagesViewP
 
   const conversations = useQuery({
     queryKey: ["conversations", myPub],
-    queryFn: () => apiGetConversations(myPub),
+    // F-07 : la liste des conversations exige une preuve de possession courte durée
+    queryFn: async () => {
+      const ts = Date.now();
+      const signature = await signPayload(
+        identity.signPriv,
+        dmReadProofMessage(myPub, "*", ts)
+      );
+      return apiGetConversations(myPub, { ts, signature });
+    },
     refetchInterval: canUseNetwork ? 25000 : false, // fallback : dm:new pousse en direct
   });
 
@@ -78,7 +86,15 @@ export function MessagesView({ identity, isOnline, forceOffline }: MessagesViewP
 
   const messages = useQuery({
     queryKey: ["dms", myPub, selectedPub],
-    queryFn: () => apiGetConversation(myPub, selectedPub!),
+    // F-07 : lecture authentifiée — preuve signée à chaque poll/refetch
+    queryFn: async () => {
+      const ts = Date.now();
+      const signature = await signPayload(
+        identity.signPriv,
+        dmReadProofMessage(myPub, selectedPub!, ts)
+      );
+      return apiGetConversation(myPub, selectedPub!, { ts, signature });
+    },
     enabled: !!selectedPub,
     refetchInterval: canUseNetwork && selectedPub ? 20000 : false, // fallback : dm:new pousse en direct
   });
@@ -101,7 +117,7 @@ export function MessagesView({ identity, isOnline, forceOffline }: MessagesViewP
       if (identity && peer?.ecdhPub) {
         for (const m of list) {
           try {
-            next[m.id] = await openMessage(identity.ecdhPrivJwk, peer.ecdhPub, {
+            next[m.id] = await openMessage(identity.ecdhPriv, peer.ecdhPub, {
               iv: m.iv,
               ciphertext: m.ciphertext,
             });
@@ -136,14 +152,14 @@ export function MessagesView({ identity, isOnline, forceOffline }: MessagesViewP
     }
     setSending(true);
     try {
-      const sealed = await sealMessage(identity.ecdhPrivJwk, peer.ecdhPub, text);
+      const sealed = await sealMessage(identity.ecdhPriv, peer.ecdhPub, text);
       if (peer.isBot) {
         await apiBotReply({ meKey: myPub, iv: sealed.iv, ciphertext: sealed.ciphertext });
       } else {
         // F-01 : l'enveloppe est signée par l'expéditeur (preuve de possession)
         const ts = Date.now();
         const signature = await signPayload(
-          identity.signPrivJwk,
+          identity.signPriv,
           dmProofMessage(myPub, peer.pubkey, sealed.iv, sealed.ciphertext, ts)
         );
         await apiSendDm({

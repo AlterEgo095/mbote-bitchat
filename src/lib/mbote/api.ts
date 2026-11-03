@@ -132,10 +132,22 @@ export function apiGetFollow(followerPub: string, targetPub: string) {
 
 // ---------- DMs ----------
 
-export function apiGetConversation(me: string, peer: string) {
-  return jsonFetch<{ messages: DirectMessageDto[] }>(
-    `/api/dms?me=${encodeURIComponent(me)}&peer=${encodeURIComponent(peer)}`
-  );
+/** F-07 : preuve de possession requise pour TOUTE lecture de boîte DM. */
+export interface DmReadProof {
+  /** horodatage de la signature (ms) — fenêtre courte côté serveur */
+  ts: number;
+  /** signature ECDSA sur `${me}|dm-read|${peer ou *}|${ts}` */
+  signature: string;
+}
+
+export function apiGetConversation(me: string, peer: string, proof: DmReadProof) {
+  const q = new URLSearchParams({
+    me,
+    peer,
+    ts: String(proof.ts),
+    signature: proof.signature,
+  });
+  return jsonFetch<{ messages: DirectMessageDto[] }>(`/api/dms?${q.toString()}`);
 }
 
 export function apiSendDm(payload: {
@@ -153,10 +165,15 @@ export function apiSendDm(payload: {
   });
 }
 
-export function apiGetConversations(me: string) {
+export function apiGetConversations(me: string, proof: DmReadProof) {
+  const q = new URLSearchParams({
+    me,
+    ts: String(proof.ts),
+    signature: proof.signature,
+  });
   return jsonFetch<{
     conversations: { peer: UserPublic; last: DirectMessageDto | null; unread: number }[];
-  }>(`/api/dms/conversations?me=${encodeURIComponent(me)}`);
+  }>(`/api/dms/conversations?${q.toString()}`);
 }
 
 export function apiBotReply(payload: { meKey: string; iv: string; ciphertext: string }) {

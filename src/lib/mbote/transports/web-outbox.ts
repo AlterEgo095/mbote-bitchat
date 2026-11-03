@@ -16,7 +16,7 @@
  */
 
 import { bytesToHex, senderIdFromPubkey } from "@/lib/mbote/bitchat-protocol";
-import { loadIdentity } from "@/lib/mbote/identity";
+import { loadIdentityMeta } from "@/lib/mbote/identity";
 
 import { AsyncFallbackOutboxStorage, DurableOutbox } from "./outbox-core";
 import { getWebRouter } from "./web-router";
@@ -26,7 +26,8 @@ const PERIODIC_FLUSH_MS = 5 * 60_000; // timer périodique §P2
 
 /** Envoi de lot au pont VPS — statuts alignés sur le lot (contrat OutboxSender). */
 async function webOutboxSend(base64Batch: string[]) {
-  const id = loadIdentity();
+  // F-06 : lecture publique seule — les clés privées restent dans le coffre
+  const id = loadIdentityMeta();
   const gatewayId = bytesToHex(
     senderIdFromPubkey(id?.pubkey ?? "mbote-browser-gateway")
   ).toUpperCase();
@@ -45,12 +46,14 @@ async function webOutboxSend(base64Batch: string[]) {
 }
 
 let instance: DurableOutbox | null = null;
+let indexedStorage: IndexedDbOutboxStorage | null = null;
 
 export function getWebOutbox(): DurableOutbox {
   if (instance) return instance;
 
+  indexedStorage = new IndexedDbOutboxStorage();
   const storage = new AsyncFallbackOutboxStorage(
-    new IndexedDbOutboxStorage(),
+    indexedStorage,
     new LocalStorageOutboxStorage()
   );
   instance = new DurableOutbox(storage, { send: webOutboxSend });
@@ -90,4 +93,15 @@ export function getWebOutbox(): DurableOutbox {
   }
 
   return instance;
+}
+
+/**
+ * Ferme le singleton outbox (panic wipe F-11) : libère la connexion IndexedDB
+ * pour que `deleteDatabase("mbote-outbox")` ne soit pas bloquée par l'onglet
+ * courant. Un nouvel appel à getWebOutbox() recrée proprement l'instance.
+ */
+export function closeWebOutbox(): void {
+  indexedStorage?.close();
+  indexedStorage = null;
+  instance = null;
 }

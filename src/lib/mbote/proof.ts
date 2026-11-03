@@ -25,8 +25,18 @@
 /** Tolérance de fraîcheur des preuves d'action (hors-ligne 7 j, comme les posts) */
 export const ACTION_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 
-/** Dérive horloge acceptée dans le futur */
+/** Dérive horloge acceptée dans le futur (actions hors-ligne) */
 export const ACTION_FUTURE_TOLERANCE_MS = 60_000;
+
+/**
+ * F-07 : fraîcheur des preuves de LECTURE (DM) — une lecture est un geste
+ * en ligne (jamais mise en file) → fenêtre courte pour limiter la fenêtre
+ * de rejeu d'une preuve interceptée.
+ */
+export const READ_MAX_AGE_MS = 15 * 60_000;
+
+/** Dérive horloge acceptée dans le futur pour les preuves de lecture */
+export const READ_FUTURE_TOLERANCE_MS = 2 * 60_000;
 
 // ───────────────────────── Chaînes canoniques ─────────────────────────
 
@@ -64,6 +74,25 @@ export function dmProofMessage(
   ts: number
 ): string {
   return `${senderKey}|dm|${recipientKey}|${iv}|${ciphertext}|${ts}`;
+}
+
+/**
+ * F-07 : chaîne canonique pour la preuve de LECTURE d'une conversation DM.
+ * `peer` = clé publique du pair, ou `"*"` pour la liste des conversations.
+ * Signée par la clé du lecteur (`me`) — sans elle, pas de lecture ni de
+ * marquage « lu » (suppression de l'IDOR).
+ */
+export function dmReadProofMessage(me: string, peer: string, ts: number): string {
+  return `${me}|dm-read|${peer}|${ts}`;
+}
+
+/**
+ * F-08 : chaîne canonique pour la preuve de JOIN relay d'une boîte DM
+ * (`dm:<pubkey>`) — signée par le propriétaire de la boîte au moment du
+ * `hello` socket.io. Sans preuve, le relay n'ouvre que la salle `feed`.
+ */
+export function relayHelloProofMessage(pubkey: string, ts: number): string {
+  return `${pubkey}|relay-hello|${ts}`;
 }
 
 /** Chaîne canonique des publications (historique, inchangée) */
@@ -115,16 +144,26 @@ export interface SignatureCheck {
   reason?: string;
 }
 
-function checkFreshness(ts: unknown): { tsNum: number } | SignatureCheck {
+function checkFreshness(
+  ts: unknown,
+  maxAgeMs: number = ACTION_MAX_AGE_MS,
+  futureToleranceMs: number = ACTION_FUTURE_TOLERANCE_MS
+): { tsNum: number } | SignatureCheck {
   const tsNum = typeof ts === "number" ? ts : Number(ts);
   if (!Number.isFinite(tsNum) || tsNum <= 0) {
     return { valid: false, reason: "ts invalide" };
   }
   const age = Date.now() - tsNum;
-  if (age > ACTION_MAX_AGE_MS) {
-    return { valid: false, reason: "preuve trop ancienne (hors tolérance offline)" };
+  if (age > maxAgeMs) {
+    return {
+      valid: false,
+      reason:
+        maxAgeMs === ACTION_MAX_AGE_MS
+          ? "preuve trop ancienne (hors tolérance offline)"
+          : "preuve expirée (fenêtre courte de lecture)",
+    };
   }
-  if (age < -ACTION_FUTURE_TOLERANCE_MS) {
+  if (age < -futureToleranceMs) {
     return { valid: false, reason: "ts dans le futur" };
   }
   return { tsNum };
@@ -140,6 +179,9 @@ export async function verifySignedMessage(params: {
   pubkey: string;
   ts: unknown;
   signature: unknown;
+  /** F-07 : fraîcheur sur mesure (READ_MAX_AGE_MS pour les lectures) */
+  maxAgeMs?: number;
+  futureToleranceMs?: number;
 }): Promise<SignatureCheck> {
   const { message, pubkey, ts, signature } = params;
   const subtle = globalThis.crypto?.subtle;
@@ -151,7 +193,7 @@ export async function verifySignedMessage(params: {
     return { valid: false, reason: "format de clé publique invalide (65 octets attendus)" };
   }
 
-  const fresh = checkFreshness(ts);
+  const fresh = checkFreshness(ts, params.maxAgeMs, params.futureToleranceMs);
   if ("valid" in fresh) return fresh;
 
   const pubBytes = b64urlToBytes(pubkey);

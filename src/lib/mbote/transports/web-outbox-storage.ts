@@ -45,6 +45,12 @@ export class IndexedDbOutboxStorage implements OutboxStorage {
     return this.db.transaction(STORE, mode).objectStore(STORE);
   }
 
+  /** Ferme la connexion (panic wipe F-11 : débloque deleteDatabase). */
+  close(): void {
+    this.db?.close();
+    this.db = null;
+  }
+
   private wrap<T>(req: IDBRequest<T>): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       req.onsuccess = () => resolve(req.result);

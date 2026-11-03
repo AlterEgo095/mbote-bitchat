@@ -314,7 +314,7 @@ Upload d'images/vidéos, notifications push (web + app), recherche d'utilisateur
 3. F-03 : fragmentation dans `MeshTransport.publish` (réutiliser `fragmentPayload` déjà présent).
 → Validation : tests HTTP hostiles + post mobile E2E réel.
 
-**Vague 2 — Fiabilité produit (P1) : F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11**
+**Vague 2 — Fiabilité produit (P1) : F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11** ✅ exécutée et validée (§17)
 4. Mobile : downlink polling + restauration URL pont (fait re-vivre l'outbox P2).
 5. Stockage clés chiffré (web passphrase/non-extractible, mobile SecureStore).
 6. Auth lecture DM (challenge) + CORS relay restreint.
@@ -380,3 +380,55 @@ Upload d'images/vidéos, notifications push (web + app), recherche d'utilisateur
 ### Golden path navigateur (re-vérifié après correctifs)
 Identité signée créée (preuve acceptée, ecdhPub enregistré) → post signé publié et visible → like signé persisté (likeCount=1) → DM E2E bot (enveloppe signée acceptée, réponse du bot **déchiffrée** dans l'UI) → **tunnel mesh : paquet signé → pont → signature vérifiée → post ingéré (origine mesh)**. Zéro erreur console/page. Lint ✅ · tsc web ✅ · tsc mobile ✅.
 
+
+---
+
+## 17. JOURNAL D'EXÉCUTION — VAGUE 2 (P1) ✅ EXÉCUTÉE ET VALIDÉE
+
+**Périmètre** : F-04 → F-11 (8 anomalies majeures). **Statut : 8/8 corrigées**, validations détaillées ci-dessous.
+
+### F-04 — Downlink mobile inexistant — CORRIGÉ
+- `MeshTransport.pollDownlink()` : GET `/api/mesh/bridge?gatewayId=&since=` (curseur ISO persisté en mémoire, AbortController 8 s, anti-réentrance) — premier tir au démarrage, puis polling 60 s, plus tir immédiat après chaque flush accepté.
+- Nouveau `handleDownlinkPacket()` : dédup → affichage (`peerId: "pont-vps"`) → **redistribution BLE** (TTL−1 après gigue) aux voisins hors-ligne. Les paquets venus du pont ne sont **jamais re-montés** (pas de boucle, pas de pollution des stats).
+- Validation : route downlink interrogée (réponse `packets[]` nominale) ; le chemin complet BLE→UI reste NOT VERIFIED sur appareil (§15.1).
+
+### F-05 — URL du pont perdue au redémarrage — CORRIGÉ
+- Nouveau `MeshTransport.setBridgeUrl()` (URL + sonde + reset curseur downlink) ; `AppStore` l'appelle **avant** `transport.start()` avec l'URL persistée AsyncStorage → l'outbox durable et le downlink repartent vivants après un kill de l'app.
+- `setBridgeUrl` (UI) configure désormais le transport immédiatement (fini l'outbox inerte en attendant une sync manuelle) ; `syncBridge` passe par le même chemin.
+
+### F-06 — Clés privées en clair — CORRIGÉ (web + mobile)
+- **Web** : clés générées `extractable: false` ; privées persistées comme objets CryptoKey (structured-clone) dans IndexedDB `mbote-secure` (nouveau module `secure-keys.ts`) ; localStorage ne contient plus que les métadonnées publiques (pubkey/ecdhPub/nickname/bio). `signPayload`/`sealMessage`/`openMessage` signent/dérivent directement sur les CryptoKey — plus aucune importation JWK à chaque usage.
+- **Migration automatique** : une identité legacy (JWK `d` en clair) est réimportée NON-extractible via `importLegacyKeyBundle()`, réécrite en LS sans matériel privé. Validée en navigateur : identité legacy écrite à la main → rechargement → identité conservée, LS sans JWK, signature hello relay **acceptée** (la clé migrée signe correctement).
+- **Mobile** : `expo-secure-store@~14.0.1` (Keychain/Keystore) — identité stockée en SecureStore, ancien AsyncStorage migré puis EFFACÉ ; repli session-only si SecureStore indisponible (jamais de re-persistance insécurisée).
+- Vérifié navigateur : `localStorage` sans `signPrivJwk` ; `indexedDB.databases() == ["mbote-secure"]`.
+
+### F-07 — IDOR DM — CORRIGÉ
+- `proof.ts` : nouvelle chaîne `${me}|dm-read|${peer ou *}|${ts}` + fenêtre courte dédiée (`READ_MAX_AGE_MS` 15 min, tolérance futur 2 min) ; `verifySignedMessage` accepte une fraîcheur paramétrable.
+- `GET /api/dms` et `GET /api/dms/conversations` exigent la preuve (401 sinon, **avant** tout effet de bord : le marquage « lu » ne se produit que pour un lecteur authentifié) + rate limit dédié (60/min/clé, 180/min/IP).
+- Client : `apiGetConversation`/`apiGetConversations` signent à chaque poll/refetch (react-query).
+- **Validation hostile (9/9 PASS, script WebCrypto)** : sans preuve → 401 · signature d'autrui → 401 · preuve expirée → 401 · preuve valide → 200 + `messages[]`/`conversations[]`.
+
+### F-08 — Relay CORS `*` + join dm:* anonyme — CORRIGÉ
+- CORS : `origin: false` par défaut (même origine via Caddy n'a pas besoin de CORS) ; `RELAY_ALLOWED_ORIGIN` (liste) pour ouvrir explicitement — passée au conteneur via docker-compose (F-09). Vérifié : requête avec `Origin: https://evil.example` → **aucun** header `Access-Control-Allow-Origin`.
+- `dm:<pubkey>` exigée désormais une preuve ECDSA courte durée (`${pubkey}|relay-hello|${ts}`) — vérificateur autonome dans le relay (contexte Docker isolé, miroir de proof.ts). Sans preuve valide : feed seul + **pas de présence revendiquée**. `subscribe` refuse tout `dm:*`.
+- **Validation** : hello signé via navigateur → `identitiesOnline: 1`, badge « 1 en direct » ; hello usurpateur sans preuve → `identitiesOnline` inchangé ; `subscribe dm:*` filtré.
+
+### F-09 — NEXT_PUBLIC_SOCKET_URL jamais transmis — CORRIGÉ
+- Chaîne complète : `ARG/ENV` dans le Dockerfile (avant `next build`) → `build.args` docker-compose (`${NEXT_PUBLIC_SOCKET_URL:-}`) → étape CI « Environnement de build » qui écrit `.env` sur le VPS via ssh+stdin (secrets jamais en ligne de commande) depuis les secrets GitHub `NEXT_PUBLIC_SOCKET_URL`, `RELAY_ALLOWED_ORIGIN`, `SEED_SECRET` (documenté dans docs/CI-CD.md). Le bundle embarquera l'URL publique du hub au lieu du mode sandbox `XTransformPort`.
+- NOT VERIFIED sur VPS réel (déploiement à la prochaine release) — les secrets GitHub restent à créer par l'opérateur.
+
+### F-10 — Aucune error boundary — CORRIGÉ
+- `src/app/error.tsx` (carte de panne, « Réessayer »/« Recharger la page », digest loggé), `src/app/global-error.tsx` (minimaliste, autonome, `<html>` inclus), `src/app/not-found.tsx` (404 française « Ce fil n'existe pas ou a été emporté par le mesh »). Validé navigateur : `/page-inexistante` → 404 rendue.
+
+### F-11 — Panic wipe incomplet — CORRIGÉ (web + mobile)
+- **Web** `panicWipe()` (async) : LS identité + outbox sociale + mode mesh + **thème** + repli LS `mbote.outbox.packets.v1` ; suppression des bases IndexedDB `mbote-secure` (coffre) **et** `mbote-outbox` (outbox binaire) — ordre corrigé (purge du record avant `deleteDatabase`) et nouveau `closeWebOutbox()` qui libère la connexion du singleton pour ne pas bloquer la suppression.
+- **Mobile** `resetIdentity` : coffre SecureStore + vestiges AsyncStorage, outbox SQLite (`outbox.clear()`), repli AsyncStorage, nickname, URL du pont, messages, décisions de routage.
+- Validé navigateur (thème volontairement modifié avant test) : après wipe → `localStorage` intégralement vide, `indexedDB.databases() == []`, onboarding relancé.
+
+### Golden path navigateur (re-vérifié après Vague 2, via gateway :81)
+Identité créée (clés non-extractibles) → post signé publié → DM bot : envoi chiffré (ECDH CryptoKey) → lecture conversation **authentifiée** (preuve signée, HTTP 200) → réponse du bot déchiffrée dans l'UI → hello relay signé → présence comptée (« 1 en direct ») → panic wipe → état local intégralement détruit. Zéro erreur console/page. Lint ✅ · tsc web ✅ · tsc mobile ✅.
+
+### Restant NOT VERIFIED (appareils/infra réels, §15)
+1. F-03 + F-04/F-05 : publication et downlink sur Android/iOS physiques (BLE réel).
+2. F-06 mobile : persistance SecureStore après kill/relance de l'app (rebuild dev-client requis — nouveau module natif).
+3. F-09 : déploiement VPS avec secrets GitHub configurés (badge socket en prod).

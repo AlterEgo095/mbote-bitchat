@@ -13,8 +13,10 @@
  *      → identique à WebCrypto deriveBits(ECDH, 256) + AES-GCM
  *    • Clés publiques : point non compressé 65 octets (0x04‖X‖Y), base64url
  *
- *  Les clés privées ne quittent JAMAIS l'appareil (AsyncStorage chiffré par
- *  le système de sandbox applicative).
+ *  F-06 (audit Vague 2) : les clés privées ne résident plus dans AsyncStorage
+ *  (lisible par tout le sandbox JS, commentaire « chiffré » inexact) mais dans
+ *  expo-secure-store — Keychain iOS / Keystore Android (matériel chiffré).
+ *  Migration automatique de l'ancien stockage AsyncStorage au premier lancement.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -22,6 +24,7 @@ import { p256 } from "@noble/curves/p256";
 import { sha256 } from "@noble/hashes/sha256";
 import { gcm } from "@noble/ciphers/aes";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 
 import { bytesToBase64, base64ToBytes, utf8Encode, utf8Decode, randomBytes, bytesToHex, hexToBytes } from "./bitchat-protocol";
 
@@ -58,6 +61,8 @@ export interface KeyBundle {
 }
 
 const STORAGE_KEY = "mbote.identity.v1";
+/** Ancien emplacement AsyncStorage (F-06) — même nom, autre store ; migré puis supprimé. */
+const LEGACY_ASYNC_KEY = "mbote.identity.v1";
 
 export async function generateKeyBundle(): Promise<KeyBundle> {
   const signPriv = p256.utils.randomPrivateKey();
@@ -73,24 +78,66 @@ export async function generateKeyBundle(): Promise<KeyBundle> {
   };
 }
 
-/** Charge l'identité persistée ou en crée une neuve (idempotent) */
+/**
+ * Charge l'identité persistée ou en crée une neuve (idempotent).
+ * F-06 : stockage via expo-secure-store (Keychain/Keystore) ; une identité
+ * legacy trouvée dans AsyncStorage est migrée puis EFFACÉE de AsyncStorage.
+ */
 export async function loadOrCreateKeyBundle(): Promise<KeyBundle> {
-  const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  if (raw) {
-    try {
+  // 1) chemin nominal : SecureStore
+  try {
+    const raw = await SecureStore.getItemAsync(STORAGE_KEY);
+    if (raw) {
       const parsed = JSON.parse(raw) as KeyBundle;
       if (parsed.pubkey && parsed.signPrivHex) return parsed;
-    } catch {
-      /* identité corrompue → régénération */
     }
+  } catch {
+    /* SecureStore indisponible (Expo Go web ?) → repli legacy ci-dessous */
   }
+
+  // 2) migration legacy : AsyncStorage (ancien stockage en clair)
+  try {
+    const legacyRaw = await AsyncStorage.getItem(LEGACY_ASYNC_KEY);
+    if (legacyRaw) {
+      const parsed = JSON.parse(legacyRaw) as KeyBundle;
+      if (parsed.pubkey && parsed.signPrivHex) {
+        try {
+          await SecureStore.setItemAsync(STORAGE_KEY, legacyRaw);
+        } catch {
+          /* pas de SecureStore : on garde le bundle en mémoire pour cette session */
+          return parsed;
+        }
+        await AsyncStorage.removeItem(LEGACY_ASYNC_KEY); // le matériel privé quitte AsyncStorage
+        return parsed;
+      }
+      await AsyncStorage.removeItem(LEGACY_ASYNC_KEY); // corrompu → repartir propre
+    }
+  } catch {
+    /* AsyncStorage indisponible : continuer */
+  }
+
+  // 3) création fraîche
   const fresh = await generateKeyBundle();
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
+  try {
+    await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(fresh));
+  } catch {
+    /* repli : session-only (pas de persistance insécurisée) */
+  }
   return fresh;
 }
 
+/** Panic wipe : efface le coffre ET tout vestige legacy AsyncStorage (F-11). */
 export async function wipeIdentity(): Promise<void> {
-  await AsyncStorage.removeItem(STORAGE_KEY);
+  try {
+    await SecureStore.deleteItemAsync(STORAGE_KEY);
+  } catch {
+    /* déjà absent / store indisponible */
+  }
+  try {
+    await AsyncStorage.removeItem(LEGACY_ASYNC_KEY);
+  } catch {
+    /* déjà absent */
+  }
 }
 
 /** Signe une charge utile — signature brute r‖s (64 octets), compatible WebCrypto */

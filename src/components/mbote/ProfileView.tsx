@@ -97,7 +97,7 @@ export function ProfileView({
         ecdhPub: identity.ecdhPub,
       };
       const signature = await signPayload(
-        identity.signPrivJwk,
+        identity.signPriv,
         identityProofMessage({ ...payload, ts })
       );
       await apiUpsertIdentity({ ...payload, ts, signature });

@@ -16,7 +16,7 @@ import {
   bytesToHex,
   senderIdFromPubkey,
 } from "@/lib/mbote/bitchat-protocol";
-import { loadIdentity } from "@/lib/mbote/identity";
+import { loadIdentityMeta } from "@/lib/mbote/identity";
 
 import type {
   PacketMeta,
@@ -109,9 +109,10 @@ export class WebBridgeTransport implements Transport {
     return () => undefined;
   }
 
-  /** ID de passerelle : identité réelle si disponible, sinon éphémère stable. */
+  /** ID de passerelle : identité réelle si disponible, sinon éphémère stable.
+   *  F-06 : lecture publique seule — pas de clé privée ici. */
   private gatewayId(): string {
-    const id = loadIdentity();
+    const id = loadIdentityMeta();
     return bytesToHex(senderIdFromPubkey(id?.pubkey ?? "mbote-browser-gateway")).toUpperCase();
   }
 
