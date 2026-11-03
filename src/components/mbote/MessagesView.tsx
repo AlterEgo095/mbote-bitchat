@@ -7,6 +7,7 @@ import { fr } from "date-fns/locale";
 import {
   AlertTriangle,
   Bot,
+  Clock,
   KeyRound,
   Lock,
   Loader2,
@@ -38,16 +39,27 @@ import {
 import { openMessage, sealMessage, shortKey, signPayload } from "@/lib/mbote/crypto";
 import { dmProofMessage, dmReadProofMessage } from "@/lib/mbote/proof";
 import type { DirectMessageDto, UserPublic } from "@/lib/mbote/types";
-import type { StoredIdentity } from "@/lib/mbote/identity";
+import { enqueueOutbox, type StoredIdentity } from "@/lib/mbote/identity";
 import { MboteAvatar } from "./Avatar";
+
+/** F-15 : DM mis en file hors-ligne (bulle « En attente » de la conversation) */
+interface QueuedDm {
+  clientRef: string;
+  recipientKey: string;
+  iv: string;
+  text: string;
+  queuedAt: number;
+}
 
 interface MessagesViewProps {
   identity: StoredIdentity;
   isOnline: boolean;
   forceOffline: boolean;
+  /** F-15 : délègue la mise en file à MboteApp (propriétaire de l'outbox). */
+  onQueueDm?: (payload: Record<string, unknown>, clientRef: string) => void;
 }
 
-export function MessagesView({ identity, isOnline, forceOffline }: MessagesViewProps) {
+export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: MessagesViewProps) {
   const qc = useQueryClient();
   const myPub = identity.pubkey;
   const canUseNetwork = isOnline && !forceOffline;
@@ -99,6 +111,26 @@ export function MessagesView({ identity, isOnline, forceOffline }: MessagesViewP
     refetchInterval: canUseNetwork && selectedPub ? 20000 : false, // fallback : dm:new pousse en direct
   });
 
+  // F-15 : courriers DM en attente (mode mesh) — bulles locales, par conversation
+  const [queued, setQueued] = useState<QueuedDm[]>([]);
+  const queuedForPeer = useMemo(
+    () => queued.filter((item) => item.recipientKey === selectedPub),
+    [queued, selectedPub]
+  );
+
+  // F-15 : purge des bulles en attente — quand la conversation est refetchée et
+  // que le serveur renvoie une enveloppe avec le MÊME IV, le courrier est bien
+  // parti (flushOutbox a re-joué l'outbox) : la bulle cède sa place au vrai message.
+  useEffect(() => {
+    const list = messages.data?.messages;
+    if (!list?.length) return;
+    const sentIvs = new Set(list.map((m) => m.iv));
+    setQueued((q) => {
+      const next = q.filter((item) => !sentIvs.has(item.iv));
+      return next.length === q.length ? q : next;
+    });
+  }, [messages.data]);
+
   // sélection par défaut : le bot
   useEffect(() => {
     if (!selectedPub && users.data) {
@@ -135,7 +167,7 @@ export function MessagesView({ identity, isOnline, forceOffline }: MessagesViewP
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.data?.messages.length, plain]);
+  }, [messages.data?.messages.length, plain, queuedForPeer.length]);
 
   const send = async () => {
     const text = draft.trim();
@@ -144,17 +176,54 @@ export function MessagesView({ identity, isOnline, forceOffline }: MessagesViewP
       toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
       return;
     }
-    if (!canUseNetwork) {
-      toast.info("Les enveloppes DM exigent une connexion — réessaie au retour du réseau", {
-        description: "Comme chez BitChat : les courriers ne portent que le trafic mesh.",
-      });
-      return;
-    }
     setSending(true);
     try {
       const sealed = await sealMessage(identity.ecdhPriv, peer.ecdhPub, text);
       if (peer.isBot) {
+        // F-15 : le bot répond en ligne par design — pas de courrier pour lui
+        if (!canUseNetwork) {
+          toast.info("Mbote (bot) est joignable seulement une fois reconnecté au réseau", {
+            description: "Ses réponses partent du serveur : le mode mesh ne peut pas les porter.",
+          });
+          return;
+        }
         await apiBotReply({ meKey: myPub, iv: sealed.iv, ciphertext: sealed.ciphertext });
+        setDraft("");
+        await qc.invalidateQueries({ queryKey: ["dms", myPub, peer.pubkey] });
+        await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
+      } else if (!canUseNetwork) {
+        // F-15 : DM hors-ligne → courrier. On scelle ET on signe maintenant (la
+        // preuve F-01 part dans l'outbox, tolérée 7 j côté serveur comme les posts) ;
+        // flushOutbox re-jouera cet item tel quel via apiSendDm au retour du réseau.
+        const ts = Date.now();
+        const signature = await signPayload(
+          identity.signPriv,
+          dmProofMessage(myPub, peer.pubkey, sealed.iv, sealed.ciphertext, ts)
+        );
+        const clientRef = `pending-dm-${ts}-${Math.random().toString(36).slice(2, 7)}`;
+        const payload = {
+          senderKey: myPub,
+          recipientKey: peer.pubkey,
+          iv: sealed.iv,
+          ciphertext: sealed.ciphertext,
+          ts,
+          signature,
+          clientRef,
+        };
+        if (onQueueDm) {
+          onQueueDm(payload, clientRef);
+        } else {
+          // défensif : propriétaire outbox absent — on ne perd JAMAIS le courrier
+          enqueueOutbox({ type: "dm", payload });
+          toast.error("File locale indisponible — courrier conservé sur l'appareil", {
+            description: "Il partira dès que la synchronisation redeviendra possible.",
+          });
+        }
+        setQueued((q) => [
+          ...q,
+          { clientRef, recipientKey: peer.pubkey, iv: sealed.iv, text, queuedAt: ts },
+        ]);
+        setDraft("");
       } else {
         // F-01 : l'enveloppe est signée par l'expéditeur (preuve de possession)
         const ts = Date.now();
@@ -170,10 +239,10 @@ export function MessagesView({ identity, isOnline, forceOffline }: MessagesViewP
           ts,
           signature,
         });
+        setDraft("");
+        await qc.invalidateQueries({ queryKey: ["dms", myPub, peer.pubkey] });
+        await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
       }
-      setDraft("");
-      await qc.invalidateQueries({ queryKey: ["dms", myPub, peer.pubkey] });
-      await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
     } catch (e) {
       toast.error("Échec d'envoi", {
         description: e instanceof Error ? e.message : undefined,
@@ -310,7 +379,7 @@ export function MessagesView({ identity, isOnline, forceOffline }: MessagesViewP
                     Array.from({ length: 3 }).map((_, i) => (
                       <Skeleton key={i} className={`h-10 ${i % 2 ? "ml-auto w-2/3" : "w-2/3"}`} />
                     ))
-                  ) : (messages.data?.messages.length ?? 0) === 0 ? (
+                  ) : (messages.data?.messages.length ?? 0) === 0 && queuedForPeer.length === 0 ? (
                     <p className="py-8 text-center text-xs text-muted-foreground">
                       Aucun message. Écris le premier — il sera chiffré avant de quitter cet
                       onglet.
@@ -350,6 +419,26 @@ export function MessagesView({ identity, isOnline, forceOffline }: MessagesViewP
                       );
                     })
                   )}
+                  {/* F-15 : courriers en attente — bulles « En attente » (opacité réduite) */}
+                  {queuedForPeer.map((item) => (
+                    <div key={item.clientRef} className="flex justify-end">
+                      <div className="max-w-[85%] rounded-2xl rounded-br-md border border-dashed border-primary/40 bg-primary/5 px-3.5 py-2 text-sm leading-relaxed opacity-70 md:max-w-[75%]">
+                        <p className="whitespace-pre-wrap break-words">{item.text}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <Badge
+                            variant="outline"
+                            className="gap-1 border-amber-500/40 px-1.5 py-0 text-[9px] text-amber-500"
+                          >
+                            <Clock className="size-2.5" aria-hidden="true" />
+                            En attente
+                          </Badge>
+                          <span className="text-[10px] text-muted-foreground">
+                            Sera envoyé dès le retour du réseau
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                   <div ref={bottomRef} />
                 </div>
               </ScrollArea>
@@ -369,7 +458,9 @@ export function MessagesView({ identity, isOnline, forceOffline }: MessagesViewP
                       peer.ecdhPub
                         ? canUseNetwork
                           ? "Message chiffré (ECDH + AES-GCM)…"
-                          : "Hors-ligne — les DM attendent le retour du réseau"
+                          : peer.isBot
+                            ? "Mbote (bot) attend le retour du réseau…"
+                            : "Hors-ligne — ton courrier partira au retour du réseau"
                         : "Contact sans clés ECDH"
                     }
                     disabled={!peer.ecdhPub || sending}

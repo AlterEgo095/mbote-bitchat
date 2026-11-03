@@ -320,7 +320,7 @@ Upload d'images/vidéos, notifications push (web + app), recherche d'utilisateur
 6. Auth lecture DM (challenge) + CORS relay restreint.
 7. Chaîne de build : `NEXT_PUBLIC_SOCKET_URL` (ARG/args/secret) + error boundaries.
 
-**Vague 3 — Complétion fonctionnelle (P2 ciblé) : F-12, F-13, F-14, F-15, F-25, F-27**
+**Vague 3 — Complétion fonctionnelle (P2 ciblé) : F-12, F-13, F-14, F-15, F-25, F-27** ✅ exécutée et validée (§18)
 8. UI follows + scroll infini (backend déjà prêt) + lecture `?view=` + DM hors-ligne via outbox.
 9. Cache de données offline (persistance react-query ou stale-if-error SW) ; icônes/splash/scheme mobile ; harmonisation de marque.
 
@@ -432,3 +432,64 @@ Identité créée (clés non-extractibles) → post signé publié → DM bot : 
 1. F-03 + F-04/F-05 : publication et downlink sur Android/iOS physiques (BLE réel).
 2. F-06 mobile : persistance SecureStore après kill/relance de l'app (rebuild dev-client requis — nouveau module natif).
 3. F-09 : déploiement VPS avec secrets GitHub configurés (badge socket en prod).
+
+---
+
+## 18. JOURNAL D'EXÉCUTION — VAGUE 3 (P2 ciblé) ✅ EXÉCUTÉE ET VALIDÉE
+
+**Périmètre** : F-12, F-13, F-14, F-15, F-25, F-27 (complétion fonctionnelle) + 1 découverte de sécurité traitée en bonus (botPriv exposé). **Statut : 6/6 corrigées + 1 bonus**, validations détaillées ci-dessous.
+
+### F-12 — UI follows — CORRIGÉ
+- **Backend** : `GET /api/users?me=<pubkey>` annote chaque identité d'un booléen `isFollowing` — 2 requêtes au total (findUnique `me` + un seul `findMany` Follow borné aux ids affichés), zéro N+1, réponse rétrocompatible.
+- **NetworkView** : nouvelle section « Identités à suivre » — liste (plafond 100 existant) avec avatar, badge « démo » pour les bots, bio tronquée + compteur de posts ; boutons « Suivre » / « Abonné(e) » ; identité chargée via `loadIdentity()` (aucun couplage ajouté à `MboteApp`) ; empty state sans identité ; liste `max-h-96 overflow-y-auto`.
+- **Preuve follow** : chaîne canonique `${me}|follow|${action}|${target}|${ts}` signée localement (miroir exact du flow like validé Vague 1) → `apiSetFollow` ; mutation **optimiste** (rollback onError) + invalidation `users`/`feed` + toasts.
+- **FeedView** : toggle 2 segments « Tous / Abonnements » (fil global uniquement) — le scope `following` du backend est enfin consommé ; désactivé sans identité (tooltip + aria-label) ; empty state dédié.
+
+**Validation navigateur** : suivi de « Charge Mesh 1 » → POST `/api/follows` 200, état serveur revérifié via API (`isFollowing: true`) ; scope « Abonnements » → le fil n'affiche PLUS que les posts des 2 identités suivies (9 + 9).
+
+### F-13 — Scroll infini — CORRIGÉ
+- `useQuery` → `useInfiniteQuery` v5 (`initialPageParam: undefined`, `getNextPageParam` sur `nextCursor`, `before` passé à l'URL existante) ; aplat des pages **dédupliqué par `id`** ; sentinelle `IntersectionObserver` (rootMargin 400 px) + bouton « Charger plus » (clavier) ; spinner pendant le chargement ; « Tu as atteint le début du fil » en fin. queryKey inclut le scope/canal → reset de pagination automatique. Le scope « Abonnements » pagine aussi.
+
+**Validation navigateur (charge réelle)** : 54 posts signés injectés via script WebCrypto (6 identités « Charge Mesh », sous les rate limits) → page 1 = 50 articles → scroll → **56 articles** + marqueur de fin affiché.
+
+### F-14 — Raccourcis PWA `?view=` — CORRIGÉ
+- Lecture du paramètre dans le `useEffect` de montage, **après** chargement d'identité et décision d'onboarding (l'onboarding reste prioritaire), validé contre une allowlist `VIEW_KEYS` ; valeur inconnue ignorée silencieusement.
+- Nouveau `changeView()` : `setView` + `history.replaceState` (`/?view=<vue>`, `/` pour feed) — tous les handlers de navigation (desktop, mobile, logo, dropdown, panic wipe, openChannel) l'utilisent → **l'URL reflète toujours la vue**, sans entrée d'historique parasite.
+- Hydration-safe : aucune lecture `window` au premier rendu.
+
+**Validation navigateur** : `/?view=network` → vue Réseau directe ; clic « Profil » → URL `/?view=profile`.
+
+### F-15 — DM hors-ligne mis en file (courrier) — CORRIGÉ
+- Branche `!canUseNetwork` de `MessagesView.send()` : plus aucun refus — le DM est **scellé + signé au moment de la mise en file** (tolérance serveur 7 j) puis persisté dans l'outbox sociale (`type: "dm"`, payload aux 6 champs exacts de `apiSendDm` + `clientRef`), pattern identique aux posts en file. MboteApp reste propriétaire de l'état via la nouvelle prop `onQueueDm` (persistance + badge + toast) ; fallback défensif si la prop manque (jamais de perte de courrier).
+- UI : bulle « En attente » (opacité 70 %, bordure pointillée, Badge ambre + `Clock`, « Sera envoyé dès le retour du réseau ») ; purge par IV quand la conversation refetchée contient l'enveloppe.
+- Cas bot hors-ligne : refus explicite conservé (« Mbote (bot) est joignable seulement une fois reconnecté ») — le bot répond en ligne par design.
+
+**Validation navigateur (cycle complet)** : mode mesh ON → envoi → toast « Message mis en file » + bulle « En attente » → mode mesh OFF → `flushOutbox` → **POST `/api/dms` 200** → toast « 1 élément(s) synchronisé(s) » → bulle purgée, message déchiffré visible dans le fil.
+
+### F-25 — Cache de données offline — CORRIGÉ
+- `sw.js` v2 : nouveau cache runtime `mbote-api-v1` (HORS versionnement shell, persiste entre versions, purge par budget 60 entrées) ; **GET /api publics allowlistés** (`/api/posts`, `/api/channels`, `/api/stats`, `/api/users`, frontière de segment) → **network-first strict + stale-if-error** : seule une 200 non-opaque est mise en cache ; réseau échoué → repli cache (clé = URL complète avec querystring) sinon **503 JSON** `{error:"offline"}`.
+- Jamais interceptés ni cachés : `/api/dms*`, `/api/identity`, `/api/mesh/bridge`, `/api/seed`, `/api/follows`, `/api` nu, socket.io/engine.io (données privées / preuves courte durée / temps réel).
+- `PwaRegister` reste **prod-only** par design (HMR) — la validation a été faite en enregistrant le SW réel manuellement dans la page.
+
+**Validation navigateur** : SW enregistré → `mbote-api-v1` rempli (3 entrées dès la première visite) → **offline ON + reload : shell servi du cache, feed = 50 articles rendus intégralement** (screenshot), fetch direct `/api/posts` offline → 200 (5 posts du cache) ; `/api/follows` offline → network-only (TypeError côté client, géré par l'UI) ; badge « Mesh · file locale » affiché. Offline OFF → réseau repris (200).
+
+### F-27 — Identité app mobile — CORRIGÉ (code ; build/appareil NOT VERIFIED)
+- **Assets** (dérivés du logo officiel `public/mbote/logo.png`, via sharp, aucune nouvelle image) : `mobile/assets/icon.png` 1024², `adaptive-icon.png` 1024² (logo à 62 % sur fond `#0a0f0d` — safe zone Android), `splash-icon.png` 512², `favicon.png` 48².
+- **app.json** : `name` « Mbote Mesh » (aligné PWA), `scheme: "mbote"`, `icon`, `splash` (contain, `#0a0f0d`), `android.adaptiveIcon` (foreground + `#0a0f0d`), `backgroundColor` aligné `#0a0f0d`. Conservés : orientation portrait, userInterfaceStyle dark, plugins, iOS bundleIdentifier, android package + permissions.
+- **POST_NOTIFICATIONS demandée au runtime** : `BlePermissions.required()` ajoute `Manifest.permission.POST_NOTIFICATIONS` quand `SDK_INT >= 33` (TIRAMISU) → incluse dans l'invite unique existante avec les permissions BLE ; contrat JS `requestPermissions()` inchangé ; manifest Android non touché (déjà déclarée).
+- **EAS** : `projectId` volontairement NON inventé (nécessite `eas init` — étape opérateur documentée).
+
+### DÉCOUVERTE VAGUE 3 — `botPriv` exposé par l'API publique — CORRIGÉ (bonus sécurité)
+- **Constat** : `GET /api/users`, `GET /api/identity?pubkey=…`, `POST /api/identity` (réponse ET broadcast relay `identity:new`) et `GET /api/dms/conversations` (champ `peer`) renvoyaient la **ligne Prisma brute** → la **clé privée ECDH du bot de démo** (`botPriv`, JWK avec `d`) était lisible par quiconque (décryptage de tous les DM du bot + usurpation). Facette distincte et plus grave que F-29 (stockage DB) : le bot est dans les conversations de tout le monde.
+- **Correctif** : `toUserDto()` dans `dto.ts` — seule sérialisation d'un `User` autorisée vers l'extérieur — appliquée aux 4 points d'émission ; le client `UserPublic` n'a jamais contenu `botPriv` (aucune rupture de contrat).
+
+**Validation live** : `GET /api/users` et `GET /api/identity?pubkey=<bot>` → **`botPriv` absent** des deux réponses ; le flux bot DM (dérivation serveur depuis la DB) inchangé.
+
+### Golden path navigateur (re-vérifié après Vague 3)
+Identité existante conservée → post signé publié → follow signé (état serveur revérifié) → fil « Abonnements » filtré → scroll infini 50→56 + fin de fil → raccourci `/?view=network` + URL sync → DM hors-ligne mis en file → flush au retour réseau (POST 200) → reload offline : shell + 50 articles servis du cache SW → retour en ligne propre. **Zéro erreur console, zéro erreur page.** Lint ✅ · tsc web ✅ · tsc mobile ✅.
+
+### Restant NOT VERIFIED (Vague 3, appareils/infra réels ou charge)
+1. F-12/F-13 : rate-limit follow (429) sous volume — chaîne de preuve identique au flow like déjà validé ; liste d'identités plafonnée à 100 sans pagination (hors périmètre).
+2. F-15 : purge de bulle en cas de rejet 4xx **tardif** (preuve > 7 j) — la bulle reste jusqu'au rechargement.
+3. F-25 : trim à 60 entrées sous trafic soutenu ; SW réellement actif en production (`PwaRegister` prod-only) à revalider au déploiement VPS.
+4. F-27 : build Gradle réel (CI), rendu splash/adaptive-icon sur appareil, `eas init` (opérateur), icône App Store 1024 sans alpha (le logo est opaque ✅).

@@ -90,6 +90,9 @@ const NAV_ITEMS: { key: ViewKey; label: string; icon: typeof Newspaper }[] = [
   { key: "profile", label: "Profil", icon: UserRound },
 ];
 
+/** F-14 : allowlist des valeurs acceptées pour le raccourci PWA `?view=…` */
+const VIEW_KEYS: readonly ViewKey[] = ["feed", "channels", "messages", "network", "profile"];
+
 export function MboteApp() {
   const qc = useQueryClient();
   const { resolvedTheme, setTheme } = useTheme();
@@ -121,6 +124,16 @@ export function MboteApp() {
       setForceOffline(loadForceOffline());
       setIsOnline(navigator.onLine);
       setOutbox(loadOutbox());
+      // F-14 : raccourcis PWA (`/?view=…`) — lecture hydration-safe (dans un
+      // useEffect, jamais au premier rendu) et APRÈS la décision d'onboarding :
+      // sans identité, OnboardingDialog reste prioritaire et le paramètre est
+      // ignoré. Valeur inconnue → ignorée silencieusement (reste sur « feed »).
+      if (id) {
+        const requested = new URLSearchParams(window.location.search).get("view");
+        if (requested && (VIEW_KEYS as readonly string[]).includes(requested)) {
+          setView(requested as ViewKey);
+        }
+      }
       setMounted(true);
       if (!id) setOnboardingOpen(true);
     })();
@@ -140,6 +153,16 @@ export function MboteApp() {
       window.removeEventListener("online", update);
       window.removeEventListener("offline", update);
     };
+  }, []);
+
+  // ---------- navigation (F-14 : l'URL reflète toujours la vue affichée) ----------
+  const changeView = useCallback((v: ViewKey) => {
+    setView(v);
+    try {
+      window.history.replaceState(null, "", v === "feed" ? "/" : `/?view=${v}`);
+    } catch {
+      /* environnement sans historique — la vue change quand même */
+    }
   }, []);
 
   // ---------- flush de la file locale (courrier) ----------
@@ -471,6 +494,18 @@ export function MboteApp() {
     [publish]
   );
 
+  // F-15 : MboteApp reste propriétaire de l'état outbox — MessagesView délègue
+  // la mise en file d'un DM hors-ligne (payload déjà scellé + signé ; le
+  // clientRef transite DANS le payload, comme pour les posts, et est relu par
+  // flushOutbox — le serveur ignore ce champ supplémentaire).
+  const queueDm = useCallback((payload: Record<string, unknown>) => {
+    enqueueOutbox({ type: "dm", payload });
+    setOutbox(loadOutbox());
+    toast.info("Message mis en file — partira au retour du réseau", {
+      description: "Le courrier chiffré attend dans la file locale, comme chez BitChat.",
+    });
+  }, []);
+
   const dismissPending = useCallback((clientRef: string) => {
     setPendingPosts((ps) => ps.filter((p) => p.clientRef !== clientRef));
     // retire aussi l'item correspondant de la file persistante
@@ -491,18 +526,18 @@ export function MboteApp() {
     setOutbox([]);
     setForceOffline(false);
     setActiveChannel(null);
-    setView("feed");
+    changeView("feed");
     qc.clear();
     setOnboardingOpen(true);
     toast.success("Panic wipe exécuté", {
       description: "Clés, file locale et état local détruits sur cet appareil.",
     });
-  }, [qc]);
+  }, [qc, changeView]);
 
   const openChannel = useCallback((channel: ActiveChannel) => {
     setActiveChannel(channel);
-    setView("feed");
-  }, []);
+    changeView("feed");
+  }, [changeView]);
 
   // ---------- rendu ----------
   if (!mounted) {
@@ -542,7 +577,12 @@ export function MboteApp() {
         return <ChannelsView onOpenChannel={openChannel} />;
       case "messages":
         return identity ? (
-          <MessagesView identity={identity} isOnline={isOnline} forceOffline={forceOffline} />
+          <MessagesView
+            identity={identity}
+            isOnline={isOnline}
+            forceOffline={forceOffline}
+            onQueueDm={queueDm}
+          />
         ) : (
           <IdentityCta onOpen={() => setOnboardingOpen(true)} />
         );
@@ -573,7 +613,7 @@ export function MboteApp() {
           <button
             className="flex min-w-0 items-center gap-2"
             onClick={() => {
-              setView("feed");
+              changeView("feed");
               setActiveChannel(null);
             }}
             aria-label="Accueil Mbote Mesh"
@@ -682,7 +722,7 @@ export function MboteApp() {
                     {identity.nickname}
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setView("profile")}>
+                  <DropdownMenuItem onClick={() => changeView("profile")}>
                     <UserRound className="size-4" aria-hidden="true" />
                     Mon profil
                   </DropdownMenuItem>
@@ -722,7 +762,7 @@ export function MboteApp() {
             {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
-                onClick={() => setView(key)}
+                onClick={() => changeView(key)}
                 aria-current={view === key}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
@@ -851,7 +891,7 @@ export function MboteApp() {
           {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
-              onClick={() => setView(key)}
+              onClick={() => changeView(key)}
               aria-current={view === key}
               className={cn(
                 "relative flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium transition-colors",

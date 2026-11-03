@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { toUserDto } from "@/lib/mbote/dto";
 import { relayNotify } from "@/lib/mbote/relay-notify";
 import { identityProofMessage, isValidPubkeyFormat, verifySignedMessage } from "@/lib/mbote/proof";
 
@@ -76,8 +77,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    relayNotify("identity:new", { user }, ["feed"]);
-    return NextResponse.json({ user });
+    // Vague 3 : le broadcast relay et la réponse ne contiennent que les champs
+    // publics — botPriv (clé privée du bot de démo) ne quitte jamais le serveur.
+    const publicUser = toUserDto(user);
+    relayNotify("identity:new", { user: publicUser }, ["feed"]);
+    return NextResponse.json({ user: publicUser });
   } catch (e) {
     console.error("POST /api/identity", e);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
@@ -97,7 +101,7 @@ export async function GET(req: NextRequest) {
         _count: { select: { posts: true, followers: true, following: true } },
       },
     });
-    return NextResponse.json({ user });
+    return NextResponse.json({ user: user ? toUserDto(user) : null });
   } catch (e) {
     console.error("GET /api/identity", e);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });

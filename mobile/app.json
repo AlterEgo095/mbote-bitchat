@@ -1,11 +1,18 @@
 {
   "expo": {
-    "name": "Mbote BitChat",
+    "name": "Mbote Mesh",
     "slug": "mbote-bitchat",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0B0F0E",
+    "backgroundColor": "#0a0f0d",
+    "icon": "./assets/icon.png",
+    "scheme": "mbote",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0f0d"
+    },
     "assetBundlePatterns": ["**/*"],
     "plugins": [
       [
@@ -28,6 +35,10 @@
     },
     "android": {
       "package": "org.mbote.bitchat",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0a0f0d"
+      },
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "FOREGROUND_SERVICE",

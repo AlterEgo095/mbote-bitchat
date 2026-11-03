@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { toUserDto } from "@/lib/mbote/dto";
 import { clientIp, getRateStore, trackApiRequest } from "@/lib/mbote/state-store";
 import {
   dmReadProofMessage,
@@ -86,7 +87,7 @@ export async function GET(req: NextRequest) {
         const user = userByPub.get(peer);
         if (!user) return null;
         return {
-          peer: user,
+          peer: toUserDto(user), // Vague 3 : champs publics uniquement (botPriv jamais exposé)
           last: {
             id: entry.last.id,
             senderKey: entry.last.senderKey,
