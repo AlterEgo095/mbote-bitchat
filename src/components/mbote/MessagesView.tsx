@@ -37,7 +37,8 @@ import {
   apiSendDm,
 } from "@/lib/mbote/api";
 import { openMessage, sealMessage, shortKey, signPayload } from "@/lib/mbote/crypto";
-import { dmProofMessage, dmReadProofMessage } from "@/lib/mbote/proof";
+import { dm2ProofMessage, dmReadProofMessage } from "@/lib/mbote/proof";
+import { newDmMsgId, nextDmSeq } from "@/lib/mbote/dm-sequence";
 import type { DirectMessageDto, UserPublic } from "@/lib/mbote/types";
 import { enqueueOutbox, type StoredIdentity } from "@/lib/mbote/identity";
 import { MboteAvatar } from "./Avatar";
@@ -192,57 +193,54 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
         setDraft("");
         await qc.invalidateQueries({ queryKey: ["dms", myPub, peer.pubkey] });
         await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
-      } else if (!canUseNetwork) {
-        // F-15 : DM hors-ligne → courrier. On scelle ET on signe maintenant (la
-        // preuve F-01 part dans l'outbox, tolérée 7 j côté serveur comme les posts) ;
-        // flushOutbox re-jouera cet item tel quel via apiSendDm au retour du réseau.
+      } else {
+        // A1 : enveloppe v2 — msgId (uuid, idempotence outbox) + seq (monotone
+        // par conversation) couverts par la signature dm2. Le même payload est
+        // utilisé en ligne ET dans l'outbox : le flush rejoue l'identique et le
+        // serveur répond 409 duplicate = succès idempotent.
+        const msgId = newDmMsgId();
+        const seq = nextDmSeq(myPub, peer.pubkey);
         const ts = Date.now();
         const signature = await signPayload(
           identity.signPriv,
-          dmProofMessage(myPub, peer.pubkey, sealed.iv, sealed.ciphertext, ts)
+          dm2ProofMessage(myPub, peer.pubkey, msgId, seq, sealed.iv, sealed.ciphertext, ts)
         );
-        const clientRef = `pending-dm-${ts}-${Math.random().toString(36).slice(2, 7)}`;
         const payload = {
           senderKey: myPub,
           recipientKey: peer.pubkey,
           iv: sealed.iv,
           ciphertext: sealed.ciphertext,
+          msgId,
+          seq,
           ts,
           signature,
-          clientRef,
         };
-        if (onQueueDm) {
-          onQueueDm(payload, clientRef);
+        if (!canUseNetwork) {
+          // F-15 : DM hors-ligne → courrier. Scellé ET signé maintenant (la
+          // preuve dm2 part dans l'outbox, tolérée 7 j côté serveur comme les
+          // posts) ; flushOutbox re-jouera cet item tel quel via apiSendDm.
+          const clientRef = `pending-dm-${ts}-${Math.random().toString(36).slice(2, 7)}`;
+          const queuedPayload = { ...payload, clientRef };
+          if (onQueueDm) {
+            onQueueDm(queuedPayload, clientRef);
+          } else {
+            // défensif : propriétaire outbox absent — on ne perd JAMAIS le courrier
+            enqueueOutbox({ type: "dm", payload: queuedPayload });
+            toast.error("File locale indisponible — courrier conservé sur l'appareil", {
+              description: "Il partira dès que la synchronisation redeviendra possible.",
+            });
+          }
+          setQueued((q) => [
+            ...q,
+            { clientRef, recipientKey: peer.pubkey, iv: sealed.iv, text, queuedAt: ts },
+          ]);
+          setDraft("");
         } else {
-          // défensif : propriétaire outbox absent — on ne perd JAMAIS le courrier
-          enqueueOutbox({ type: "dm", payload });
-          toast.error("File locale indisponible — courrier conservé sur l'appareil", {
-            description: "Il partira dès que la synchronisation redeviendra possible.",
-          });
+          await apiSendDm(payload);
+          setDraft("");
+          await qc.invalidateQueries({ queryKey: ["dms", myPub, peer.pubkey] });
+          await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
         }
-        setQueued((q) => [
-          ...q,
-          { clientRef, recipientKey: peer.pubkey, iv: sealed.iv, text, queuedAt: ts },
-        ]);
-        setDraft("");
-      } else {
-        // F-01 : l'enveloppe est signée par l'expéditeur (preuve de possession)
-        const ts = Date.now();
-        const signature = await signPayload(
-          identity.signPriv,
-          dmProofMessage(myPub, peer.pubkey, sealed.iv, sealed.ciphertext, ts)
-        );
-        await apiSendDm({
-          senderKey: myPub,
-          recipientKey: peer.pubkey,
-          iv: sealed.iv,
-          ciphertext: sealed.ciphertext,
-          ts,
-          signature,
-        });
-        setDraft("");
-        await qc.invalidateQueries({ queryKey: ["dms", myPub, peer.pubkey] });
-        await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
       }
     } catch (e) {
       toast.error("Échec d'envoi", {

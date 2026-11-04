@@ -45,6 +45,7 @@ import {
   apiToggleLike,
   apiUpsertIdentity,
   isDefinitiveApiError,
+  ApiError,
 } from "@/lib/mbote/api";
 import { generateKeyBundle, signPayload } from "@/lib/mbote/crypto";
 import {
@@ -243,6 +244,19 @@ export function MboteApp() {
           const ref = (item.payload as { clientRef?: string }).clientRef;
           if (ref) setPendingPosts((ps) => ps.filter((p) => p.clientRef !== ref));
         } catch (e) {
+          // A1 : un 409 `outcome=duplicate` sur un DM = le message est DÉJÀ
+          // livré (flush outbox rejoué après échec réseau post-write) →
+          // SUCCÈS idempotent : purge de la file, PAS d'erreur.
+          if (
+            item.type === "dm" &&
+            e instanceof ApiError &&
+            e.status === 409
+          ) {
+            removeOutbox(item.id);
+            setOutbox(loadOutbox());
+            synced++;
+            continue;
+          }
           // F-31 : erreur DÉFINITIVE (4xx, hors 429) → enveloppe jetée (le
           // retest est futile : preuve expirée, malformation…). L'ancienne
           // détection par regex /HTTP 4\d\d/ ne matchait presque jamais

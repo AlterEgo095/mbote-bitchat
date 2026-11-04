@@ -107,10 +107,20 @@ mécanisme n'est décrit ici sans référence. Ce qui n'existe pas est marqué *
   (`schema.prisma:101-113` : pas de `@unique` sur `iv`/`ciphertext`) : réinjecter une enveloppe
   interceptée dans la fenêtre de fraîcheur de 7 j (`proof.ts:26`) crée un doublon légitime. Pas de
   compteur d'époque par pair : **ABSENT DU CODE (v1.x)**.
+  **→ CORRIGÉ PAR A1 (feat/a1-anti-replay, en validation)** : garde persistante SHA-256 liée au
+  payload (`ReplayGuard`, TTL 7 j) + compteurs monotones par (conversation, époque de 6 h)
+  (`ReplayCounter`) + chaîne signée `dm2` liant msgId+seq ; transaction garde+message ; harness
+  adversarial 13 tests + E2E 10 scénarios (`tests/anti-replay*`).
 - **L-5 — Dédup mesh en mémoire non cryptographique.** FNV-1a 64 (`bitchat-protocol.ts:122-131`)
   permet des collisions forgées ; seul le pont serveur est passé à SHA-256 (J). La parité
   web/mobile du FNV est même testée (`scripts/check-protocol-parity.ts:111`) — le test verrouille
   l'empreinte faible, pas son remplacement.
+  **→ PARTIELLEMENT CORRIGÉ PAR A1 (feat/a1-anti-replay, en validation)** : `dedupFingerprint()`
+  (SHA-256 tronquée 128 bits, WebCrypto) livrée dans les DEUX miroirs + parité étendue
+  (`check-protocol-parity.ts` : égalité + avalanche). Le FNV-64 subsiste uniquement pour les
+  usages NON-sécurité (fragId de fragmentation, affichage) et le repli documenté hôtes sans
+  WebCrypto ; la migration des appelants mobiles synchrones (MeshTransport, contrainte Hermes)
+  reste à la vague mobile (OD-6 inchangé pour eux).
 - **L-6 — Payload non versionné, pas d'agilité algorithmique.** `MeshEvent` est un JSON brut sans
   champ version ni identifiant d'algorithme (`bitchat-protocol.ts:403-431`) ; seule la couche
   paquet est versionnée (Q). L'enveloppe DM n'a pas non plus de version.
@@ -390,7 +400,7 @@ sur la version déployée + R1 + R2, avec publication de la date de version audi
 | OD-3 | Suite MLS exacte (P-256 vs Curve25519) selon support OpenMLS + cible navigateur (§4.2) | `MLS_128_DHKEMP256_…` vs `…X25519…` | Tech lead crypto | M-G1 |
 | OD-4 | Sauvegarde/restauration locale chiffrée (phrase de récupération) et multi-device | Hors V1 ; risque d'élargir la surface d'attaque | Produit | V2.x |
 | OD-5 | Politique de perte/révocation d'identité (pas de récup serveur, §7.3) | Recréation + parrainage de réputation vs prekey à long terme | Produit | V2 |
-| OD-6 | Remplacement du FNV-64 mémoire (L-5) : SHA-256 tronqué 128 bits, compat des deux dédups pendant transition | Étendre `check-protocol-parity.ts` à la nouvelle empreinte | Dev core mesh | 1 sprint après validation spec |
+| OD-6 | Remplacement du FNV-64 mémoire (L-5) : SHA-256 tronqué 128 bits, compat des deux dédups pendant transition | Étendre `check-protocol-parity.ts` à la nouvelle empreinte | **A1 LIVRÉ (web+miroirs+parité)** — reste la migration des appelants mobiles synchrones | Vague mobile |
 | OD-7 | Transparence de clés : log Merkle hébergé par nous vs témoin tiers (§3.4.4) | Étude P3 | Infra | P3 (post-MLS) |
 | OD-8 | Correctif du commentaire « Noise-X » trompeur (`bitchat-protocol.ts:21`, L-8) et de toute doc sur déclarant du Noise | PR doc 15 min | Dev core mesh | Immédiat (avant audit) |
 | OD-9 | Taille de groupe max pairwise V1 : 20 (§4.1) à confirmer par mesure réelle BLE (duty-cycle) | 15 / 20 / 25 | Mobile + produit | M-G1 |

@@ -26,6 +26,8 @@ import {
   getRateStore,
   trackApiRequest,
 } from "@/lib/mbote/state-store";
+import { checkDmReplay } from "@/lib/mbote/anti-replay";
+import { prismaReplayStore } from "@/lib/mbote/anti-replay-prisma";
 import { isValidPubkeyFormat } from "@/lib/mbote/proof";
 import { verifyPostSignature } from "@/lib/mbote/verify";
 
@@ -264,15 +266,53 @@ export async function POST(req: NextRequest) {
             throw err;
           }
         } else if (event.kind === "dm") {
+          // A1 : anti-rejeu UNIFIÉ — la garde est LIÉE AU PAYLOAD
+          // (sender|recipient|iv|ciphertext) : ré-emballer le même DM dans un
+          // nouveau paquet (nouveau TTL/timestamp, msgId/seq forgés — les
+          // événements dm du pont ne sont pas signés, par conception E2EE)
+          // reste un doublon. Ts hors fenêtre (7 j / futur) → invalid.
+          const verdict = await checkDmReplay(prismaReplayStore(), {
+            senderKey: event.senderPub,
+            recipientKey: event.recipientPub,
+            iv: event.iv,
+            ciphertext: event.ciphertext,
+            ts: event.ts,
+            msgId: event.msgId ?? null,
+            // A1 : seq NON opposable sur le pont — elle n'y est pas couverte par
+            // une signature (événements dm opaques) ; l'imposer permettrait à un
+            // tiers d'empoisonner le compteur de la conversation (DoS). Sur le
+            // pont, la seule barrière est la garde liée au payload. Le seq
+            // transporté reste stocké comme métadonnée.
+            seq: null,
+          });
+          if (!verdict.ok) {
+            if (verdict.outcome === "duplicate") {
+              duplicates++;
+              results.push({
+                hash,
+                status: "duplicate",
+                detail: `anti-rejeu : ${verdict.reason}`,
+              });
+            } else {
+              invalid++;
+              results.push({
+                hash,
+                status: "invalid",
+                detail: `anti-rejeu : ${verdict.reason}`,
+              });
+            }
+            continue;
+          }
           await db.directMessage.create({
             data: {
               senderKey: event.senderPub,
               recipientKey: event.recipientPub,
               iv: event.iv,
               ciphertext: event.ciphertext,
+              ...(event.msgId ? { msgId: event.msgId, seq: event.seq ?? null } : {}),
             },
           });
-          results.push({ hash, status: "accepted", detail: "DM scellé déposé (opaque)" });
+          results.push({ hash, status: "accepted", detail: "DM scellé déposé (opaque, garde anti-rejeu)" });
         } else if (event.kind === "announce") {
           results.push({ hash, status: "accepted", detail: "présence enregistrée" });
         } else {

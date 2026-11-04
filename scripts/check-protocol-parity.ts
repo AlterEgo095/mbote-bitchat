@@ -110,6 +110,18 @@ check("réassembly croisé web→mobile", (() => {
 console.log("── Empreinte FNV-64 (dédup cross-plateforme) ──");
 check("fnv64 identique", web.fnv64(webPkt) === mob.fnv64(mobPkt) && web.fnv64(bigPayload) === mob.fnv64(bigPayload));
 
+console.log("── Empreinte dédup cryptographique (A1/L-5, SHA-256-128) ──");
+const webFp = await web.dedupFingerprint(webPkt);
+const mobFp = await mob.dedupFingerprint(mobPkt);
+check("dedupFingerprint identique (SHA-256 tronquée 128 bits)",
+  webFp === mobFp && webFp.length === 32,
+  `web=${webFp.slice(0, 8)}… mobile=${mobFp.slice(0, 8)}…`);
+// l'empreinte reste sensible au moindre octet (avalanche)
+const flipped = webPkt.slice();
+flipped[flipped.length - 1] ^= 0x01;
+const fpFlipped = await web.dedupFingerprint(flipped);
+check("avalanche (1 bit retourné → empreinte différente)", fpFlipped !== webFp);
+
 console.log("── Backoff outbox (courbe de rejeu) ──");
 let backoffOk = true;
 for (let attempts = 0; attempts <= 12; attempts++) {

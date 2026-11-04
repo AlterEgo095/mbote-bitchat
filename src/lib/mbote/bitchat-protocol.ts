@@ -130,6 +130,26 @@ export function fnv64(bytes: Uint8Array): string {
   return h.toString(16).padStart(16, "0");
 }
 
+/**
+ * A1 / L-5 (crypto spec §lacunes) — empreinte de dédup CRYPTOGRAPHIQUE :
+ * SHA-256 tronquée à 128 bits (hex 32 chars). Remplace le FNV-64 forgable
+ * partout où la synchronicité n'est pas imposée par l'hôte (WebCrypto est
+ * asynchrone). Le FNV-64 reste uniquement pour les usages NON-sécurité
+ * (fragId de fragmentation, affichage) et le repli documenté ci-dessous.
+ * Parité web ↔ mobile verrouillée par scripts/check-protocol-parity.ts.
+ */
+export async function dedupFingerprint(bytes: Uint8Array): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle) {
+    const digest = await subtle.digest("SHA-256", bytes as unknown as BufferSource);
+    return bytesToHex(new Uint8Array(digest).slice(0, 16));
+  }
+  // Repli documenté (hôte sans WebCrypto) : FNV-64 — dégradation ASSUMÉE et
+  // traçable : la dédup mesh n'est qu'un filtre anti-inondation local, la
+  // garantie anti-rejeu forte vit côté serveur (garde persistante SHA-256).
+  return fnv64(bytes);
+}
+
 /** Octets aléatoires isomorphes */
 export function randomBytes(n: number): Uint8Array {
   const out = new Uint8Array(n);
@@ -427,6 +447,11 @@ export type MeshEvent =
       recipientPub: string;
       iv: string;
       ciphertext: string; // opaque pour relais et passerelles
+      /** A1 : identifiant client (uuid) + séquence monotone — signés dm2 côté
+       *  /api/dms ; sur le pont ils ne sont PAS signés (événements opaques) et
+       *  la garde serveur lie au payload, pas à ces métadonnées. */
+      msgId?: string;
+      seq?: number;
       ts: number;
     };
 

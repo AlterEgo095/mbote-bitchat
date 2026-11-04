@@ -191,6 +191,16 @@ async function purgeMeshIngest(): Promise<number> {
   }
 }
 
+/** A1 : purge de la garde anti-rejeu (gardes expirées + compteurs d'époques révolues). */
+async function purgeReplayGuards(): Promise<void> {
+  try {
+    const { prismaReplayStore } = await import("./anti-replay-prisma");
+    await prismaReplayStore().prune(new Date());
+  } catch {
+    /* indisponibilité momentanée — retentée au prochain tour */
+  }
+}
+
 /** Démarre les tâches périodiques UNE FOIS par process (appelé par instrumentation.ts). */
 export function startBackgroundTasks(): void {
   if (g.__mboteBackgroundStarted) return;
@@ -198,6 +208,7 @@ export function startBackgroundTasks(): void {
 
   const tick = () => {
     void purgeMeshIngest();
+    void purgeReplayGuards();
   };
   // premier passage immédiat, puis intervalle
   setTimeout(tick, 5_000);
