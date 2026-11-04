@@ -76,9 +76,18 @@ jobs:
         id: scheme
         run: |
           cd mobile/ios
-          SCHEME=$(xcodebuild -list -json -workspace *.xcworkspace | jq -r '[.workspace.schemes[] | select(test("bitchat"; "i"))][0] // .workspace.schemes[0]')
+          WORKSPACE=$(ls *.xcworkspace | head -n1)
+          # Le prebuild Expo nomme workspace ET schéma d'après app.json →
+          # « MboteMesh ». On ne peut PAS se fier à un filtre « bitchat »
+          # (le slug n'est pas le nom du schéma) : on tombait alors sur le
+          # premier schéma de pod (ex. « boost ») → aucun .app produit.
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          SCHEMES=$(xcodebuild -list -json -workspace "$WORKSPACE" | jq -r '.workspace.schemes[]')
+          if ! grep -qxF "$SCHEME" <<< "$SCHEMES"; then
+            SCHEME=$(echo "$SCHEMES" | grep -v '^Pods' | head -n1)
+          fi
           echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
-          echo "→ schéma : $SCHEME"
+          echo "→ workspace : $WORKSPACE · schéma : $SCHEME"
 
       - name: Build simulateur (sans signature — toujours produit)
         run: |
@@ -91,6 +100,10 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO -quiet build
           APP=$(find build/Build/Products/Release-iphonesimulator -maxdepth 1 -name '*.app' | head -n1)
+          if [ -z "$APP" ]; then
+            echo "❌ aucun .app produit — vérifier le schéma : ${{ steps.scheme.outputs.scheme }}"
+            exit 1
+          fi
           ditto -c -k --keepParent "$APP" \
             "$GITHUB_WORKSPACE/mbote-v${{ steps.version.outputs.version }}-ios-simulateur.zip"
           echo "✅ artefact simulateur : $(basename "$APP")"
