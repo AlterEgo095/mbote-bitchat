@@ -132,9 +132,9 @@ export function ProfileView({
             <MboteAvatar pubkey={myPub} nickname={user?.nickname ?? identity.nickname} size={72} />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-bold">
+                <h1 className="text-lg font-bold">
                   {user?.nickname ?? identity.nickname}
-                </h2>
+                </h1>
                 <span
                   title="Identité = paire de clés locale (ECDSA P-256)"
                   className="inline-flex items-center gap-1 text-[11px] text-primary"
@@ -151,7 +151,7 @@ export function ProfileView({
               <button
                 onClick={copyPubkey}
                 className="mt-2.5 inline-flex max-w-full items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                aria-label="Copier l'empreinte de la clé publique"
+                aria-label={`Copier l'empreinte de la clé publique - ${shortKey(myPub, 14)}`}
               >
                 {copied ? (
                   <Check className="size-3 shrink-0 text-primary" aria-hidden="true" />
@@ -204,9 +204,9 @@ export function ProfileView({
 
       {/* Mes publications */}
       <div>
-        <h3 className="mb-2.5 text-sm font-bold uppercase tracking-wide text-muted-foreground">
+        <h2 className="mb-2.5 text-sm font-bold uppercase tracking-wide text-muted-foreground">
           Mes publications
-        </h3>
+        </h2>
         {myPosts.isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 2 }).map((_, i) => (

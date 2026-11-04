@@ -19,6 +19,8 @@
 | Maturité globale | **POC avancée / démo soignée — NON prête pour la production.** 3 P0, 8 P1, ~22 P2, ~20 P3. |
 
 > **Mise à jour Vagues 1→5 (§16-§20)** : les 54 anomalies ont été **traitées** (53 corrigées, F-51 mitigée) en 5 vagues successives — registre clos, maturité réévaluée à **8/10** (§20). La synthèse ci-dessus décrit l'état AU MOMENT de l'audit (pré-correctifs).
+>
+> **Mise à jour Vague 6 (§21)** — dette technique résiduelle couverte : **F-51 est désormais CORRIGÉE** (allowlist proxy + secret /emit éphémère + hub embarqué supervisé), test de charge §15.4 exécuté et vert (5/5), audit d'accessibilité axe-core réel exécuté et ramené à **0 violation** sur les 5 vues, checklist de production automatisée (`prod-verify`) + protocoles appareils réels (`docs/DEVICE-TEST-PROTOCOL.md`). Registre : **54/54 corrigées**.
 
 ---
 
@@ -301,7 +303,7 @@ Upload d'images/vidéos, notifications push (web + app), recherche d'utilisateur
 | F-48 | Recalcul `describePacket` ×3 par render dans BitChatBridge | `BitChatBridge.tsx:544` |
 | F-49 | Fallback offline SW minimal (503 texte) ; pas de share_target ; PNG maskable sans padding dédié (sans alpha) | `sw.js:76`, `manifest.webmanifest:29-33` |
 | F-50 | CI : `permissions: contents: write` trop large sur PR ; keychain pwd en dur (jetable) ; `ssh-keyscan` TOFU ; deploy-vps sans bloc `permissions:` | `build-android.yml:18-19`, `build-ios.yml:107-112`, `deploy-vps.yml:65` |
-| F-51 | Caddy sandbox = proxy ouvert par query (SSRF de proximité, spécifique sandbox) ; `/emit` :3031 sans token (mitigé) | `Caddyfile:2-13`, `relay index.ts:112-138` |
+| F-51 | ~~Caddy sandbox = proxy ouvert par query (SSRF de proximité, spécifique sandbox) ; `/emit` :3031 sans token~~ **CORRIGÉE (Vague 6)** : allowlist ports {3000, 3030} (403 sinon), hub embarqué bind 127.0.0.1, `/emit` exige un secret éphémère in-process (401 sans token), token env RELAY_EMIT_TOKEN conservé en prod | `Caddyfile`, `src/instrumentation.ts`, `src/lib/mbote/embedded-relay.ts`, `relay-service/hub.ts` |
 | F-52 | `AsyncFallbackOutboxStorage.kind` figé au constructeur (affichage mensongère après bascule) | `outbox-core.ts:77` |
 | F-53 | Zod déclaré, jamais utilisé — validation 100 % manuelle inégale (formats de clés non vérifiés) | `package.json:81`, `identity/route.ts:13` |
 | F-54 | Hero en background-image CSS non priorisé/non optimisé | `FeedView.tsx:73` |
@@ -654,3 +656,107 @@ Identité créée via onboarding → post signé publié et affiché (badges « 
 - **Mitigée : F-51** (token /emit + doc SSRF ; restructuration du proxy sandbox hors périmètre).
 - **TOTAL : 54/54 traitées — REGISTRE CLOS.**
 - **Maturité réévaluée** : web sécurité 7 → **7,5** (rate limits sur toute écriture, dédup cryptographique, botPriv chiffré au repos) ; Architecture 7 → **8** (parité protocole testée en CI, outboxes alignées, code-splitting) ; PWA 7,5 → **8** (mises à jour annoncées) ; Backend 6 → **7,5** (bornes + limites complètes) ; **Global 7 → 8/10 — POC robuste, pilote réel possible. Les NOT VERIFIED restants exigent des appareils/une infra réels ; aucun bloqueur code connu.**
+
+---
+
+## 21. JOURNAL D'EXÉCUTION — VAGUE 6 (dette technique) ✅ EXÉCUTÉE ET VALIDÉE
+
+**Périmètre** : couvrir les dettes restées ouvertes après le registre — F-51 (mitigée),
+charge §15.4, accessibilité §15.5, production VPS §20.2, tests appareils §15.1-15.2.
+**Portes qualité** : lint 0 erreur · tsc web 0 · tsc mobile 0 · E2E pont + canal verts ·
+golden path navigateur sans erreur console.
+
+### F-51 — Proxy SSRF fermé à TROIS couches — CORRIGÉE (fin de la mitigation)
+1. **Caddyfile** : le proxy dynamique `localhost:{query.XTransformPort}` (ouvert à tout
+   port local) devient une **allowlist explicite** {3000, 3030} — matchers `query` exacts,
+   tout autre port → **403**. Le contrat sandbox `XTransformPort` est préservé (seuls ces
+   deux ports sont utilisés par le code, vérifié par grep). ⚠️ Le rechargement de la
+   passerelle est opéré par la plateforme : le 403 s'applique à son prochain reload
+   (config committée, commentaire d'avertissement mis à jour).
+2. **Hub temps réel embarqué supervisé** (dette opérationnelle liée) : en dev/sandbox le
+   hub ne dépend plus d'un mini-service séparé à maintenir en vie (le reaper de la
+   plateforme tue les processus orphelins) — il tourne **dans le processus Next.js**
+   (`src/instrumentation.ts` → `src/lib/mbote/embedded-relay.ts`), bind **127.0.0.1**
+   pour les deux serveurs. Un seul cœur de logique : `relay-service/hub.ts` (rooms,
+   preuve hello F-08, présence) partagé entre le conteneur Docker de production et
+   l'embarqué dev — zéro duplication (leçon F-22). Le mini-service reste l'entrée prod
+   (Dockerfile copie `hub.ts` ; passage 100 % `node:http`, plus de `Bun.serve`).
+3. **Secret /emit éphémère** : en mode embarqué, `/emit` exige un token **généré au boot
+   du processus et partagé in-process** via `globalThis` (lu par `relay-notify.ts`) —
+   une requête proxifiée depuis l'extérieur obtient **401** même si le bind loopback
+   était contourné. En production, le token d'environnement `RELAY_EMIT_TOKEN` reste la
+   voie standard.
+
+**Validation** : `curl /emit?XTransformPort=3031` via la passerelle → **401** ;
+`/emit` direct sans secret → 401 ; socket.io via passerelle (`XTransformPort=3030`) →
+handshake OK ; app 200 ; `bun tests/relay-channel-push.ts` EXIT 0 (join → push reçu,
+unsubscribe → bloqué) ; `bun tests/mesh-bridge-e2e.ts` EXIT 0 (uplink signé, dédup,
+ts ms).
+
+### Charge §15.4 — test automatisé exécuté et VERT (5/5)
+Nouveau `tests/load-bridge.ts` (~90 s, re-runnable) :
+- **A** — montée soutenue **100 posts/min** via pont (10 identités ECDSA réelles) :
+  **100 acceptés, 0 invalide, 100 posts créés**, p50 104 ms / p95 155 ms.
+- **B** — burst 130 lots / même passerelle : plafond 120/min respecté au paquet près
+  (**120 × 200 puis 10 × 429**, `Retry-After: 59`).
+- **C** — flood de **300 fragments orphelins** (borne assembler = 256 IDs actifs, LRU) :
+  absorbés sans erreur, puis **réassembly légitime OK** post-flood — le trafic réel n'est
+  ni bloqué ni corrompu.
+- **D** — burst 120 `POST /api/posts` (20 clés) : plafond IP 60/min exact
+  (**60 acceptées puis 60 × 429**, `Retry-After: 60`, 0 autre statut).
+- **E** — santé post-charge : `/api/stats` 9 ms, `/api/channels` 9 ms (aucune dégradation
+  N+1 observable à cette échelle ; le seuil dure du dev est 1,5 s).
+Découverte au passage (comportement confirmé, non régressif) : le chemin direct
+`/api/posts` exige une identité préexistante (404 « Identité inconnue ») — le test
+enregistre désormais les 20 identités (preuve de possession F-01) avant le burst.
+
+### Accessibilité §15.5 — audit axe-core réel : 12 violations → **0**
+Audit réel (axe-core 4.14 injecté dans le navigateur, 5 vues + état « canal ouvert »).
+Violations corrigées une à une, puis re-audit **0 violation partout** :
+- `label-content-name-mismatch` (53 nœuds au plus haut) : noms accessibles alignés sur le
+  texte visible — like `J'aime · N` (PostCard), avatar `Menu de mon identité - XX`
+  (initiales affichées), bouton « Abonnements », « Charger plus », empreinte de clé.
+  Note empirique : la règle d'axe échoue sur les mots entre parenthèses — séparateur
+  simple requis (`-`).
+- `nested-interactive` + label/name divergents sur les cartes canal : la carte n'est plus
+  un bouton — **un seul élément interactif** (bouton « Ouvrir », libellé explicite).
+- `aria-input-field-name` (4 sliders) : `ui/slider.tsx` porte désormais `id` et
+  `aria-label` sur le **pouce** (`role=slider`) au lieu du Root — les labels visible/HTML
+  restent cohérents.
+- `page-has-heading-one` (4 vues) : `h1` ajouté/promu (Canaux, Messages — y compris l'état
+  vide, Réseau, Profil, titre de canal actif).
+- `heading-order` : `h3` → `h2` sous les nouveaux h1.
+- `color-contrast` (3 nœuds, RouteurPanel) : suppression de l'`opacity-70` qui faisait
+  tomber `text-muted-foreground` sous le seuil AA.
+**Non-régression fonctionnelle vérifiée au navigateur** : like incrémenté (0 → 1),
+« Ouvrir » un canal, zéro erreur console après reload frais.
+
+### Production VPS §20.2 — checklist automatisée
+- **`.env.example`** : les 11 variables documentées (F-02/F-08/F-09/F-29/F-51 + ports/bind).
+- **`scripts/prod-verify.ts`** : 16 contrôles (CSP sans `unsafe-eval`, HSTS, nosniff,
+  X-Frame-Options, Referrer/Permissions-Policy, `/api/stats`, garde seed 403, env
+  critiques, migrations `_prisma_migrations`, botPriv `enc:v1:`). Exécution locale :
+  **10 PASS / 6 WARN / 0 FAIL** — et confirmation live que le `botPriv` est bien
+  chiffré au repos (F-29 actif sur la base réelle). `--local` adoucit les points
+  attendus en dev (HMR, seed, `db push`).
+- **`DEPLOY-VPS.md` §10/§10 bis** : table des variables complétée + checklist
+  opérateur (build-arg F-09, secrets, reverse proxy explicite, prod-verify, golden path).
+
+### Tests appareils réels §15.1-15.2 — protocoles prêts
+**`docs/DEVICE-TEST-PROTOCOL.md`** : checklists exécutables Android (permissions 12+,
+mesh multi-sauts 3 appareils, fragmentation F-03, foreground service, outbox F-05,
+downlink F-04, EAS), iOS (background BLE, TestFlight, APNs), PWA (installation,
+shortcuts F-14, toast SW v4 F-26, share_target F-49, hors-ligne F-25), réseaux dégradés
+(rollback like F-28, timeouts F-32), matrice navigateurs, TalkBack/VoiceOver —
+les NOT VERIFIED passent à VERIFIED case par case.
+
+### Registre — statut final après Vague 6
+- **Corrigées : 54/54** (F-51 passe de « mitigée » à corrigée — trois couches).
+- **Dettes hors registre couvertes** : charge (§15.4 vert 5/5) · accessibilité (§15.5
+  axe 0 violation ; reste le test lecteur d'écran humain, §Device-5) · prod-readiness
+  (checklist automatisée) · protocoles appareils (à exécuter sur matériel).
+- **Reste NOT VERIFIED (exige du matériel/une infra, cf. docs/DEVICE-TEST-PROTOCOL.md)** :
+  BLE réel Android/iOS, builds EAS, PWA installée sur téléphone, charge sur VPS réel,
+  lecteurs d'écran. Aucun bloqueur code connu.
+- **Maturité inchangée à 8/10 sur le code ; la voie de montée à 9 passe par
+  l'exécution du protocole appareils.**

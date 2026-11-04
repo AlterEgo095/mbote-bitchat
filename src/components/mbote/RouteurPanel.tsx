@@ -128,7 +128,9 @@ export function RouteurPanel() {
             </p>
           </div>
 
-          <div className="rounded-xl border bg-background/60 p-3 opacity-70">
+          {/* a11y : plus d'opacity-70 — le muted-foreground à 70 % tombait
+              sous le seuil de contraste WCAG AA (audit axe Vague 6). */}
+          <div className="rounded-xl border bg-background/60 p-3">
             <div className="flex items-center justify-between gap-2">
               <p className="flex items-center gap-1.5 text-sm font-semibold">
                 <Bluetooth className="size-4 text-muted-foreground" aria-hidden="true" />

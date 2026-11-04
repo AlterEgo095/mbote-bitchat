@@ -805,7 +805,10 @@ export function MboteApp() {
             {identity ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Menu de mon identité">
+                  {/* a11y (2.5.3) : les initiales affichées par l'avatar sont le
+                      texte visible — incluses telles quelles dans le nom (une
+                      parenthèse casse la correspondance de mot d'axe). */}
+                  <button className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Menu de mon identité - ${identity.nickname.slice(0, 2).toUpperCase()}`}>
                     <MboteAvatar pubkey={identity.pubkey} nickname={identity.nickname} size={34} />
                   </button>
                 </DropdownMenuTrigger>

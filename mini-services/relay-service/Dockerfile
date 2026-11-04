@@ -3,6 +3,7 @@ FROM oven/bun:1
 WORKDIR /app
 COPY package.json ./
 RUN bun install
+COPY hub.ts ./
 COPY index.ts ./
 EXPOSE 3030 3031
 CMD ["bun", "index.ts"]

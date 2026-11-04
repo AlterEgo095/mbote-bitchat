@@ -1,27 +1,60 @@
-# ⚠️ F-51 (audit) : ce proxy par query `XTransformPort` est un ouvrage de
-# SANDBOX — il autorise toute requête vers n'importe quel port local (SSRF de
-# proximité). Ne JAMAIS réutiliser ce Caddyfile sur un VPS public : y remplacer
-# le bloc @transform_port_query par des routes explicites (3000, 3030) uniquement.
+# ─────────────────────────────────────────────────────────────────────────────
+# F-51 (audit, clôturé Vague 6) : l'ancien `reverse_proxy localhost:{query.port}`
+# était un proxy OUVERT — n'importe quel port local devenait joignable via
+# ?XTransformPort=<port> (SSRF de proximité, ex. /emit :3031).
+#
+# Désormais : ALLOWLIST EXPLICITE — seuls 3000 (Next.js) et 3030 (relay
+# socket.io) sont joignables via la query. Tout autre port → 403.
+# Le contrat sandbox `XTransformPort` est préservé (seuls ces deux ports sont
+# utilisés par le code : src/lib/mbote/socket.ts → 3030, app → 3000).
+#
+# ⚠️ Sur un VPS public : ne PAS réutiliser ce mécanisme par query — lui
+# préférer des routes explicites par chemin (cf. DEPLOY-VPS.md, section proxy).
+# ─────────────────────────────────────────────────────────────────────────────
 :81 {
-        @transform_port_query {
-                query XTransformPort=*
-        }
+	# Matchers — correspondance EXACTE sur la valeur de la query
+	@port_3000 {
+		query XTransformPort=3000
+	}
+	@port_3030 {
+		query XTransformPort=3030
+	}
+	@query_port {
+		query XTransformPort=*
+	}
 
-        handle @transform_port_query {
-                reverse_proxy localhost:{query.XTransformPort} {
-                        header_up Host {host}
-                        header_up X-Forwarded-For {remote_host}
-                        header_up X-Forwarded-Proto {scheme}
-                        header_up X-Real-IP {remote_host}
-                }
-        }
+	# XTransformPort=3000 → application Next.js
+	handle @port_3000 {
+		reverse_proxy localhost:3000 {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
 
-        handle {
-                reverse_proxy localhost:3000 {
-                        header_up Host {host}
-                        header_up X-Forwarded-For {remote_host}
-                        header_up X-Forwarded-Proto {scheme}
-                        header_up X-Real-IP {remote_host}
-                }
-        }
+	# XTransformPort=3030 → hub temps réel socket.io
+	handle @port_3030 {
+		reverse_proxy localhost:3030 {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# tout AUTRE XTransformPort → refus explicite (F-51 : plus de proxy ouvert)
+	handle @query_port {
+		respond "Port non autorisé (allowlist : 3000, 3030) — F-51" 403
+	}
+
+	# sans XTransformPort → application Next.js (chemin par défaut)
+	handle {
+		reverse_proxy localhost:3000 {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
 }

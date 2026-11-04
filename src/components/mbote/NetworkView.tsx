@@ -181,10 +181,10 @@ function FollowSuggestions() {
   return (
     <Card>
       <CardContent className="p-4">
-        <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
           <UsersRound className="size-4 text-primary" aria-hidden="true" />
           Identités à suivre
-        </h3>
+        </h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
           Le graphe de confiance local — tes abonnements alimentent l&apos;onglet
           « Abonnements » du fil global.
@@ -300,7 +300,7 @@ export function NetworkView() {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-lg font-bold tracking-tight">Le réseau, en direct</h2>
+        <h1 className="text-lg font-bold tracking-tight">Le réseau, en direct</h1>
         <p className="mt-0.5 text-xs text-muted-foreground">
           Simulation fidèle des paramètres du protocole BitChat (whitepaper v2.0, domaine
           public) : inondation contrôlée avec TTL et gigue, courriers « spray-and-wait » pour

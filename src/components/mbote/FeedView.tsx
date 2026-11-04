@@ -206,7 +206,8 @@ export function FeedView({
                     size="sm"
                     variant={scope === "following" ? "default" : "ghost"}
                     aria-pressed={scope === "following"}
-                    aria-label="N'afficher que les publications des identités que tu suis"
+                    // a11y (2.5.3) : le nom contient le texte visible « Abonnements »
+                    aria-label="Abonnements — n'afficher que leurs publications"
                     onClick={() => setFeedScope("following")}
                     className="h-7 rounded-md px-3 text-xs"
                   >
@@ -249,7 +250,9 @@ export function FeedView({
               <MapPin className="size-4.5 text-primary" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{activeChannel.label}</p>
+              {/* a11y : en mode canal le hero (h1) est masqué → le titre du
+                  canal devient le h1 de la page (page-has-heading-one) */}
+              <h1 className="truncate text-sm font-semibold">{activeChannel.label}</h1>
               <p className="truncate font-mono text-[11px] text-muted-foreground">
                 #{activeChannel.geohash} · précision {activeChannel.precision}
               </p>
@@ -401,7 +404,7 @@ export function FeedView({
                 variant="outline"
                 size="sm"
                 onClick={() => void feed.fetchNextPage()}
-                aria-label="Charger la suite du fil"
+                aria-label="Charger plus — suite du fil"
               >
                 Charger plus
               </Button>

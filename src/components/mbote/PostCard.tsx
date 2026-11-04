@@ -166,7 +166,13 @@ export function PostCard({
               size="sm"
               onClick={handleLike}
               aria-pressed={liked}
-              aria-label={liked ? "Retirer mon j'aime" : "J'aime"}
+              // a11y (2.5.3 Label in Name) : le nom accessible doit contenir le
+              // texte visible (le compteur) — sinon lecteurs d'écran divisés.
+              aria-label={
+                liked
+                  ? `Retirer mon j'aime · ${likeCount}`
+                  : `J'aime · ${likeCount}`
+              }
               className={`h-8 gap-1.5 px-2 text-xs ${
                 liked ? "text-amber-500 hover:text-amber-500" : "text-muted-foreground"
               }`}

@@ -54,7 +54,7 @@ export function ChannelsView({
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-lg font-bold tracking-tight">Canaux géographiques</h2>
+        <h1 className="text-lg font-bold tracking-tight">Canaux géographiques</h1>
         <p className="mt-0.5 text-xs text-muted-foreground">
           Chaque cellule géohash est un salon public : bloc (~150 m), quartier (~1,2 km),
           ville (~5 km), province (~40 km), pays (~800 km) — comme chez BitChat.
@@ -122,19 +122,12 @@ export function ChannelsView({
                 label: labelFor(ch),
               });
             return (
+              // a11y (Vague 6) : la carte n'est PLUS un bouton — un seul
+              // élément interactif par carte (le bouton « Ouvrir »), fini le
+              // nested-interactive et le label/name divergents.
               <Card
                 key={`${ch.geohash}-${ch.precision}`}
-                role="button"
-                tabIndex={0}
-                aria-label={`Ouvrir le canal ${labelFor(ch)} (#${ch.geohash})`}
-                className="group cursor-pointer transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                onClick={open}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    open();
-                  }
-                }}
+                className="group transition-colors hover:border-primary/40"
               >
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-2">
@@ -172,10 +165,8 @@ export function ChannelsView({
                       size="sm"
                       variant="secondary"
                       className="h-7 text-[11px]"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        open();
-                      }}
+                      aria-label={`Ouvrir le canal ${labelFor(ch)} (#${ch.geohash})`}
+                      onClick={open}
                     >
                       Ouvrir
                     </Button>

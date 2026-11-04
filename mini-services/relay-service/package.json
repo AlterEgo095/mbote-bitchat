@@ -4,7 +4,7 @@
   "private": true,
   "description": "Hub temps réel de Mbote Mesh — diffusion live des publications, DM et présence",
   "scripts": {
-    "dev": "bun --hot index.ts",
+    "dev": "RELAY_EMIT_HOST=127.0.0.1 bun --hot index.ts",
     "start": "bun index.ts"
   },
   "dependencies": {

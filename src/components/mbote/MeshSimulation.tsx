@@ -1356,7 +1356,9 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
             step={1}
             value={[nodeCount]}
             onValueChange={(v) => setNodeCount(v[0] ?? 42)}
-            aria-label="Nombre de nœuds du réseau"
+            // a11y : le nom accessible est porté par le pouce (role=slider) et
+            // contient le texte visible « Nœuds » (règle 2.5.3 Label in Name)
+            aria-label="Nœuds du réseau simulé"
             className="w-24"
           />
           <span className="w-6 text-right font-mono text-xs text-zinc-300">
@@ -1375,7 +1377,7 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
             step={1}
             value={[ttl]}
             onValueChange={(v) => setTtl(v[0] ?? 7)}
-            aria-label="Durée de vie des paquets (TTL, en sauts)"
+            aria-label="TTL des paquets (en sauts)"
             className="w-28"
           />
           <span className="w-6 text-right font-mono text-xs text-zinc-300">

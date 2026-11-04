@@ -1,5 +1,5 @@
 /**
- * Mbote Relay Service — hub temps réel (socket.io)
+ * Mbote Relay Service — hub temps réel (socket.io) — déploiement Docker/VPS
  *
  * Deux ports :
  *  - 3030 (public, via Caddy XTransformPort) : connexions navigateurs socket.io
@@ -14,102 +14,33 @@
  * Événements diffusés :
  *  post:new | post:like | dm:new | identity:new | presence:update
  *
- * F-08 (audit Vague 2) :
- *  - CORS restreint : par défaut AUCUNE origine croisée (le navigateur passe
- *    par la même origine via Caddy — CORS n'est utile qu'aux tiers) ;
- *    `RELAY_ALLOWED_ORIGIN` (liste séparée par des virgules) pour ouvrir
- *    explicitement des origines de confiance.
- *  - `dm:<pubkey>` exige une preuve de possession ECDSA P-256
- *    (`${pubkey}|relay-hello|${ts}`, fenêtre courte) — fini le join
- *    anonyme qui fuyait les métadonnées (timing/paires) cross-origin.
- *    Sans preuve : la connexion reste dans "feed" uniquement et ne
- *    revendique PAS la présence.
+ * NOTE D'ARCHITECTURE (Vague 6) : la logique du hub vit dans `hub.ts`
+ * (runtime-agnostique) — le mode dev/sandbox l'embarque dans le processus
+ * Next.js (src/instrumentation.ts) au lieu de lancer ce conteneur. Ce fichier
+ * reste l'entrée de production (Docker) — 100 % API node:http, plus de
+ * dépendance Bun.serve.
+ *
+ * F-08 : CORS restreint (aucune origine croisée par défaut —
+ * `RELAY_ALLOWED_ORIGIN` pour ouvrir explicitement) + dm:<pubkey> exige une
+ * preuve de possession ECDSA P-256.
+ * F-51 : token /emit (RELAY_EMIT_TOKEN défini = exigé, header x-emit-token) +
+ * bind explicite de l'endpoint interne (RELAY_EMIT_HOST, défaut 0.0.0.0 =
+ * réseau Docker interne ; 127.0.0.1 sur un hôte unique).
  */
 
-import { createServer } from "http";
-import { Server, type Socket } from "socket.io";
+import { createServer, type IncomingMessage, type ServerResponse } from "http";
+import { createRelayHub } from "./hub";
 
-const RELAY_PORT = 3030; // public (navigateurs) — NE PAS changer le path, géré par Caddy
-const EMIT_PORT = 3031; // interne (routes API Next.js → notifications)
+const RELAY_PORT = Number(process.env.RELAY_PORT ?? 3030); // public (navigateurs)
+const EMIT_PORT = Number(process.env.EMIT_PORT ?? 3031); // interne (routes API)
 // F-51 : token optionnel pour /emit — RELAY_EMIT_TOKEN défini = exigé (header
 // x-emit-token) ; vide (défaut sandbox) = contrôle désactivé (réseau Docker interne).
 const EMIT_TOKEN = process.env.RELAY_EMIT_TOKEN ?? "";
-
-// ───────────────────────── F-08 : vérification autonome ─────────────────────────
-// Miroir minimal de src/lib/mbote/proof.ts (le relay est un contexte Docker
-// autonome : pas d'import transversal). WebCrypto uniquement — disponible dans Bun.
-
-const B64_ALPHABET =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-function b64urlToBytes(s: string): Uint8Array | null {
-  if (typeof s !== "string" || s.length === 0) return null;
-  const clean = s.replace(/-/g, "+").replace(/_/g, "/").replace(/=+$/, "");
-  if (clean.length === 0) return null;
-  const out = new Uint8Array(Math.floor((clean.length * 3) / 4));
-  let p = 0;
-  let buf = 0;
-  let bits = 0;
-  for (let i = 0; i < clean.length; i++) {
-    const v = B64_ALPHABET.indexOf(clean[i]);
-    if (v < 0) return null;
-    buf = (buf << 6) | v;
-    bits += 6;
-    if (bits >= 8) {
-      bits -= 8;
-      out[p++] = (buf >> bits) & 0xff;
-    }
-  }
-  return out.subarray(0, p);
-}
-
-function isValidPubkeyFormat(pubkey: unknown): pubkey is string {
-  const bytes = typeof pubkey === "string" ? b64urlToBytes(pubkey) : null;
-  return !!bytes && bytes.length === 65 && bytes[0] === 0x04;
-}
-
-const HELLO_MAX_AGE_MS = 15 * 60_000;
-const HELLO_FUTURE_TOLERANCE_MS = 2 * 60_000;
-
-interface HelloProof {
-  ts?: unknown;
-  signature?: unknown;
-}
-
-async function verifyHelloProof(pubkey: string, proof: HelloProof | undefined): Promise<boolean> {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) return false;
-  const ts = proof?.ts;
-  const signature = proof?.signature;
-  if (typeof signature !== "string" || signature.length === 0) return false;
-  const tsNum = typeof ts === "number" ? ts : Number(ts);
-  if (!Number.isFinite(tsNum) || tsNum <= 0) return false;
-  const age = Date.now() - tsNum;
-  if (age > HELLO_MAX_AGE_MS || age < -HELLO_FUTURE_TOLERANCE_MS) return false;
-
-  const pubBytes = b64urlToBytes(pubkey);
-  const sigBytes = b64urlToBytes(signature);
-  if (!pubBytes || !sigBytes) return false;
-  try {
-    const key = await subtle.importKey(
-      "raw",
-      pubBytes as unknown as BufferSource,
-      { name: "ECDSA", namedCurve: "P-256" },
-      false,
-      ["verify"]
-    );
-    return await subtle.verify(
-      { name: "ECDSA", hash: { name: "SHA-256" } },
-      key,
-      sigBytes as unknown as BufferSource,
-      new TextEncoder().encode(`${pubkey}|relay-hello|${tsNum}`)
-    );
-  } catch {
-    return false;
-  }
-}
-
-// ───────────────────────── serveur socket.io public ─────────────────────────
+// F-51 (Vague 6) : bind explicite de l'endpoint interne. Défaut 0.0.0.0 =
+// requis dans le réseau Docker compose (mbote → relay). Sur un hôte unique
+// (sandbox), démarrer avec RELAY_EMIT_HOST=127.0.0.1 pour que /emit ne soit
+// jamais exposé sur les interfaces externes.
+const EMIT_HOST = process.env.RELAY_EMIT_HOST ?? "0.0.0.0";
 
 /** F-08 : origines croisées autorisées — vide = aucune (même origine via Caddy). */
 const ALLOWED_ORIGINS = (process.env.RELAY_ALLOWED_ORIGIN ?? "")
@@ -117,99 +48,11 @@ const ALLOWED_ORIGINS = (process.env.RELAY_ALLOWED_ORIGIN ?? "")
   .map((s) => s.trim())
   .filter(Boolean);
 
+// ───────────────────────── serveur socket.io public ─────────────────────────
+
 const httpServer = createServer();
-const io = new Server(httpServer, {
-  // DO NOT change the path, it is used by Caddy to forward the request to the correct port
-  path: "/",
-  cors: {
-    origin: ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : false,
-    methods: ["GET", "POST"],
-  },
-  pingTimeout: 60000,
-  pingInterval: 25000,
-});
-
-/** Présence : comptage des identités réellement connectées (1 clé = N onglets) */
-const onlineKeys = new Map<string, Set<string>>(); // pubkey -> socket ids
-
-function countOnline(): number {
-  return onlineKeys.size;
-}
-
-function broadcastPresence(): void {
-  io.emit("presence:update", { online: countOnline() });
-}
-
-function attachPresence(socket: Socket, pubkey: string | null): void {
-  if (!pubkey || typeof pubkey !== "string" || pubkey.length < 8) return;
-  let sockets = onlineKeys.get(pubkey);
-  if (!sockets) {
-    sockets = new Set();
-    onlineKeys.set(pubkey, sockets);
-  }
-  sockets.add(socket.id);
-  broadcastPresence();
-}
-
-function detachPresence(socket: Socket): void {
-  for (const [key, sockets] of onlineKeys) {
-    if (sockets.delete(socket.id) && sockets.size === 0) {
-      onlineKeys.delete(key);
-      broadcastPresence();
-    }
-  }
-}
-
-io.on("connection", (socket) => {
-  socket.on("hello", async (data: {
-    pubkey?: string | null;
-    nickname?: string | null;
-    /** F-08 : preuve de possession pour ouvrir dm:<pubkey> */
-    dmAuth?: { ts?: number; signature?: string };
-  }) => {
-    const pubkey = typeof data?.pubkey === "string" ? data.pubkey : null;
-    // room par défaut : fil public (toujours ouvert)
-    socket.join("feed");
-
-    if (!pubkey) {
-      detachPresence(socket);
-      return;
-    }
-
-    // F-08 : la boîte DM personnelle n'est ouverte qu'avec une preuve signée ;
-    // une clé mal formée ou une preuve absente/échouée → feed seul, pas de
-    // présence revendiquée (pas d'usurpation de compteur de présence).
-    if (!isValidPubkeyFormat(pubkey)) return;
-    const ok = await verifyHelloProof(pubkey, data?.dmAuth);
-    if (!ok) {
-      detachPresence(socket);
-      return;
-    }
-
-    socket.join(`dm:${pubkey}`);
-    // re-hello (ex. après panic wipe) → l'ancienne présence de CE socket est d'abord retirée
-    detachPresence(socket);
-    attachPresence(socket, pubkey);
-  });
-
-  // abonnement à des salles supplémentaires (canaux géohash ouverts…)
-  socket.on("subscribe", (data: { rooms?: string[] }) => {
-    const rooms = Array.isArray(data?.rooms) ? data.rooms.slice(0, 20) : [];
-    for (const room of rooms) {
-      if (typeof room !== "string" || room.length === 0 || room.length >= 64) continue;
-      // F-08 : une boîte DM ne s'ouvre JAMAIS via subscribe — hello signé only
-      if (room.startsWith("dm:")) continue;
-      socket.join(room);
-    }
-  });
-
-  socket.on("unsubscribe", (data: { rooms?: string[] }) => {
-    const rooms = Array.isArray(data?.rooms) ? data.rooms.slice(0, 20) : [];
-    for (const room of rooms) socket.leave(room);
-  });
-
-  socket.on("disconnect", () => detachPresence(socket));
-});
+const hub = createRelayHub(httpServer, { allowedOrigins: ALLOWED_ORIGINS });
+const { io } = hub;
 
 httpServer.listen(RELAY_PORT, () => {
   console.log(`[relay] socket.io hub démarré sur :${RELAY_PORT} (path=/)`);
@@ -220,68 +63,90 @@ httpServer.listen(RELAY_PORT, () => {
 
 // ---------- endpoint interne d'émission (routes API Next.js) ----------
 
-Bun.serve({
-  port: EMIT_PORT,
-  fetch(req) {
-    const url = new URL(req.url);
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (chunk: Buffer) => {
+      data += chunk;
+      if (data.length > 1_000_000) reject(new Error("payload trop grand"));
+    });
+    req.on("end", () => resolve(data));
+    req.on("error", reject);
+  });
+}
 
-    if (req.method === "GET" && url.pathname === "/health") {
-      return Response.json({
-        ok: true,
-        clients: io.engine.clientsCount,
-        identitiesOnline: countOnline(),
-      });
-    }
+function emitEndpoint(req: IncomingMessage, res: ServerResponse): void {
+  const send = (status: number, body: unknown): void => {
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(body));
+  };
 
-    if (req.method === "POST" && url.pathname === "/emit") {
-      if (EMIT_TOKEN && req.headers.get("x-emit-token") !== EMIT_TOKEN) {
-        return Response.json({ error: "token requis" }, { status: 401 });
+  if (EMIT_TOKEN && req.headers["x-emit-token"] !== EMIT_TOKEN) {
+    send(401, { error: "token requis" });
+    return;
+  }
+
+  readBody(req)
+    .then((raw) => JSON.parse(raw) as { event?: unknown; payload?: unknown; rooms?: unknown })
+    .then((body) => {
+      const { event, payload, rooms } = body ?? ({} as typeof body);
+      if (!event || typeof event !== "string") {
+        send(400, { error: "event requis" });
+        return;
       }
-      return req
-        .json()
-        .then(
-          (
-            body:
-              | { event?: string; payload?: unknown; rooms?: string[] }
-              | undefined
-          ) => {
-            const { event, payload, rooms } = body ?? {};
-            if (!event || typeof event !== "string") {
-              return Response.json({ error: "event requis" }, { status: 400 });
-            }
-            const safeRooms = Array.isArray(rooms)
-              ? rooms.filter(
-                  (r): r is string => typeof r === "string" && r.length > 0 && r.length < 64
-                )
-              : undefined;
-            if (safeRooms && safeRooms.length > 0) {
-              io.to(safeRooms).emit(event, payload);
-            } else {
-              io.emit(event, payload);
-            }
-            return Response.json({ ok: true });
-          }
-        )
-        .catch(() => Response.json({ error: "JSON invalide" }, { status: 400 }));
-    }
+      const safeRooms = Array.isArray(rooms)
+        ? rooms.filter(
+            (r): r is string => typeof r === "string" && r.length > 0 && r.length < 64
+          )
+        : undefined;
+      hub.emitEvent(event, payload, safeRooms);
+      send(200, { ok: true });
+    })
+    .catch(() => send(400, { error: "JSON invalide" }));
+}
 
-    return new Response("Not found", { status: 404 });
-  },
+const emitServer = createServer((req, res) => {
+  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+
+  if (req.method === "GET" && url.pathname === "/health") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(hub.health()));
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/emit") {
+    emitEndpoint(req, res);
+    return;
+  }
+
+  res.writeHead(404, { "Content-Type": "text/plain" });
+  res.end("Not found");
 });
 
-console.log(`[relay] endpoint interne d'émission sur :${EMIT_PORT} (/emit, /health)`);
+emitServer.listen(EMIT_PORT, EMIT_HOST, () => {
+  console.log(
+    `[relay] endpoint interne d'émission sur :${EMIT_PORT} (/emit, /health) — bind ${EMIT_HOST}`
+  );
+  if (!EMIT_TOKEN) {
+    console.warn(
+      "[relay] ⚠️ RELAY_EMIT_TOKEN vide : /emit SANS authentification (acceptable réseau Docker interne uniquement — définir le token en production, F-51)"
+    );
+  }
+});
 
 // ---------- arrêt propre ----------
 
+function shutdown(): void {
+  console.log("[relay] arrêt…");
+  io.close();
+  httpServer.close(() => process.exit(0));
+  emitServer.close();
+  setTimeout(() => process.exit(0), 2000);
+}
+
 process.on("SIGTERM", () => {
   console.log("[relay] SIGTERM — arrêt…");
-  io.close();
-  httpServer.close(() => process.exit(0));
-  setTimeout(() => process.exit(0), 2000);
+  shutdown();
 });
 
-process.on("SIGINT", () => {
-  io.close();
-  httpServer.close(() => process.exit(0));
-  setTimeout(() => process.exit(0), 2000);
-});
+process.on("SIGINT", shutdown);

@@ -255,20 +255,24 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
 
   if (!peer && !conversations.isLoading) {
     return (
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
-          <MessageSquarePlus className="size-8 text-muted-foreground" aria-hidden="true" />
-          <p className="text-sm font-semibold">Aucune conversation</p>
-          <p className="max-w-sm text-xs text-muted-foreground">
-            Démarre un dialogue chiffré de bout en bout — essaie d&apos;abord le{" "}
-            <strong>Mbote Bot</strong>, il répond toujours (en ciphertext authentique).
-          </p>
-          <Button size="sm" onClick={() => setNewConvOpen(true)}>
-            <MessageSquarePlus className="size-4" aria-hidden="true" />
-            Nouvelle conversation
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        {/* a11y : l'état vide remplace TOUTE la vue → il porte le h1 aussi */}
+        <h1 className="text-lg font-bold tracking-tight">Messages privés</h1>
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+            <MessageSquarePlus className="size-8 text-muted-foreground" aria-hidden="true" />
+            <p className="text-sm font-semibold">Aucune conversation</p>
+            <p className="max-w-sm text-xs text-muted-foreground">
+              Démarre un dialogue chiffré de bout en bout — essaie d&apos;abord le{" "}
+              <strong>Mbote Bot</strong>, il répond toujours (en ciphertext authentique).
+            </p>
+            <Button size="sm" onClick={() => setNewConvOpen(true)}>
+              <MessageSquarePlus className="size-4" aria-hidden="true" />
+              Nouvelle conversation
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -276,7 +280,7 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-bold tracking-tight">Messages privés</h2>
+          <h1 className="text-lg font-bold tracking-tight">Messages privés</h1>
           <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
             <Lock className="size-3 text-primary" aria-hidden="true" />
             E2E : ECDH P-256 + AES-GCM sur ton appareil — le serveur ne voit que du ciphertext.

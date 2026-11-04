@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 // F-21 : reactStrictMode réactivé (double montage volontaire — révèle les
 // effets non idempotents) ; `typescript.ignoreBuildErrors` supprimé : le
 // build échoue désormais sur toute erreur TS (tsc doit rester vert).
+// Vague 6 : le hub temps réel est EMBARQUÉ dans ce serveur en dev (voir
+// src/instrumentation.ts) — plus de mini-service séparé à superviser.
 
 const isDev = process.env.NODE_ENV !== "production";
 

@@ -167,17 +167,53 @@ docker compose up -d --build     # reconstruit et relance les 2 conteneurs,
 
 ## 10. Variables d'environnement
 
+Modèle complet et commenté : **`.env.example`** (à copier en `.env` sur le VPS).
+
 | Variable                | Défaut                                      | Rôle                                                            |
 | ----------------------- | ------------------------------------------- | --------------------------------------------------------------- |
 | `DATABASE_URL`          | `file:/app/db/custom.db`                    | emplacement SQLite (volume)                                     |
 | `PORT`                  | `3000`                                      | port d'écoute du serveur                                        |
-| `NODE_ENV`              | `production`                                | mode de Next.js                                                 |
+| `NODE_ENV`              | `production`                                | mode de Next.js (désactive le hub embarqué, CSP durcie)         |
 | `RELAY_EMIT_URL`        | `http://127.0.0.1:3031` (compose : `http://relay:3031`) | endpoint interne d'émission du relay (`POST /emit`) |
 | `NEXT_PUBLIC_SOCKET_URL` | (défaut : vide → mode sandbox `XTransformPort=3030`) | URL publique du hub socket.io vue par le navigateur (voir §6) |
+| `RELAY_EMIT_TOKEN`      | vide                                        | **F-51** : token exigé sur `/emit` (header `x-emit-token`) — défini des deux côtés |
+| `RELAY_ALLOWED_ORIGIN`  | vide                                        | **F-08** : origines croisées autorisées par le hub (vide = aucune) |
+| `RELAY_PORT` / `EMIT_PORT` | `3030` / `3031`                          | ports du hub (public / interne)                                 |
+| `RELAY_EMIT_HOST`       | `0.0.0.0`                                   | **F-51** : bind de `/emit` — `127.0.0.1` sur un hôte unique      |
+| `SEED_SECRET`           | vide                                        | **F-02** : protège `POST /api/seed` en production (`x-seed-secret`) |
+| `MBOTE_BOT_KEY`         | vide                                        | **F-29** : chiffre au repos (AES-GCM) le secret du bot          |
 
 Le compose livré positionne déjà `RELAY_EMIT_URL=http://relay:3031` sur le
 service `mbote` ; en dev local (relay lancé à la main), le défaut
 `http://127.0.0.1:3031` convient.
+
+## 10 bis. Checklist de mise en production (Vague 6)
+
+Après le premier déploiement (ou après chaque mise à jour), exécuter :
+
+```bash
+# depuis le conteneur applicatif (accède à la DB et aux env réelles) :
+docker exec mbote-mesh bun scripts/prod-verify.ts https://TON-DOMAINE
+# ou depuis l'hôte (vérifications HTTP seulement) :
+bun scripts/prod-verify.ts https://TON-DOMAINE
+```
+
+Le script contrôle : CSP **sans `unsafe-eval`** + HSTS + nosniff + X-Frame-Options +
+Referrer/Permissions-Policy (F-35) · `/api/stats` 200 · garde du seed 403 (F-02) ·
+présence des variables critiques (F-09/F-51/F-29/F-02) · migrations Prisma
+appliquées (`_prisma_migrations`) · secret du bot chiffré `enc:v1:` (F-29).
+
+**Checklist opérateur avant ouverture publique :**
+
+- [ ] `.env` écrit sur le VPS : `NEXT_PUBLIC_SOCKET_URL=https://…`,
+      `SEED_SECRET`, `MBOTE_BOT_KEY`, `RELAY_EMIT_TOKEN` (tous `openssl rand -hex 32`)
+- [ ] `docker compose build --build-arg NEXT_PUBLIC_SOCKET_URL=…` (F-09 : présent au BUILD)
+- [ ] `docker compose up -d` puis `migrate deploy` exécuté par le CMD avant le boot
+- [ ] reverse proxy HTTPS : routes explicites (jamais de proxy par query sur un VPS — F-51),
+      WebSocket forwardé vers `127.0.0.1:3030`
+- [ ] `prod-verify` : 0 FAIL
+- [ ] golden path navigateur : identité → post signé → like → DM bot → temps réel (§7)
+- [ ] rotation des secrets si jamais passés en clair dans un canal de discussion
 
 ## 11. Architecture de déploiement (et suite mesh)
 
