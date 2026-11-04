@@ -1,0 +1,17 @@
+{
+  "at": "2026-11-04T21:46:06.058589Z",
+  "result": "PASS",
+  "file": "mbote-20261104-214601.db.enc",
+  "sha256": "da27e27bda6427350fde494494ce7917a55514000dce8f1568d0da57e57d9f22",
+  "duration_s": "3",
+  "counts": {
+    "_prisma_migrations": 2,
+    "Post": 1,
+    "Like": 2,
+    "MeshIngest": 0,
+    "GatewayNode": 0,
+    "Follow": 0,
+    "DirectMessage": 0,
+    "User": 2
+  }
+}
