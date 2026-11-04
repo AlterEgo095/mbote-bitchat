@@ -13,7 +13,9 @@ import {
   Loader2,
   MessageSquarePlus,
   Send,
+  ShieldAlert,
   ShieldCheck,
+  ShieldQuestion,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -35,10 +37,16 @@ import {
   apiGetConversations,
   apiListUsers,
   apiSendDm,
+  apiVerifyTrust,
 } from "@/lib/mbote/api";
 import { openMessage, sealMessage, shortKey, signPayload } from "@/lib/mbote/crypto";
-import { dm2ProofMessage, dmReadProofMessage } from "@/lib/mbote/proof";
+import { dm2ProofMessage, dmReadProofMessage, trustVerifyProofMessage } from "@/lib/mbote/proof";
 import { newDmMsgId, nextDmSeq } from "@/lib/mbote/dm-sequence";
+import {
+  confirmLocalTrust,
+  evaluateLocalTrust,
+  type TrustLevel,
+} from "@/lib/mbote/trust-client";
 import type { DirectMessageDto, UserPublic } from "@/lib/mbote/types";
 import { enqueueOutbox, type StoredIdentity } from "@/lib/mbote/identity";
 import { MboteAvatar } from "./Avatar";
@@ -170,6 +178,77 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.data?.messages.length, plain, queuedForPeer.length]);
+
+  // ── A2 : confiance locale — épinglage indépendant du serveur ──
+  const [trust, setTrust] = useState<{
+    level: TrustLevel;
+    safetyNumber: string;
+    firstContact: boolean;
+    keyChanged: boolean;
+  } | null>(null);
+  const [trustDialogOpen, setTrustDialogOpen] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTrust(null);
+    if (!peer?.ecdhPub) return;
+    (async () => {
+      try {
+        const verdict = await evaluateLocalTrust(
+          { pubkey: identity.pubkey, ecdhPub: identity.ecdhPub },
+          peer.pubkey,
+          peer.ecdhPub as string
+        );
+        if (!cancelled) setTrust(verdict);
+      } catch {
+        /* WebCrypto indisponible : pas d'alerte, pas de blocage */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [peer?.pubkey, peer?.ecdhPub, identity.pubkey, identity.ecdhPub]);
+
+  const confirmTrust = async () => {
+    if (!peer?.ecdhPub || !trust) return;
+    setVerifying(true);
+    try {
+      await confirmLocalTrust(
+        { pubkey: identity.pubkey, ecdhPub: identity.ecdhPub },
+        peer.pubkey,
+        peer.ecdhPub,
+        trust.safetyNumber
+      );
+      // audit serveur (best effort — l'épinglage LOCAL fait foi) : le numéro
+      // signé lie quel numéro a été vérifié, quand, par qui
+      try {
+        const ts = Date.now();
+        const signature = await signPayload(
+          identity.signPriv,
+          trustVerifyProofMessage(identity.pubkey, peer.pubkey, trust.safetyNumber, ts)
+        );
+        await apiVerifyTrust({
+          me: identity.pubkey,
+          peer: peer.pubkey,
+          safetyNumber: trust.safetyNumber,
+          ts,
+          signature,
+        });
+      } catch {
+        /* hors-ligne : la confirmation locale reste valide */
+      }
+      setTrust({ ...trust, level: "green", firstContact: false, keyChanged: false });
+      setTrustDialogOpen(false);
+      toast.success("Numéro de sécurité vérifié", {
+        description: "La clé de chiffrement de ce contact est épinglée sur cet appareil.",
+      });
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const trustBlocked = trust?.level === "red";
 
   const send = async () => {
     const text = draft.trim();
@@ -376,6 +455,52 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                 </div>
               )}
 
+              {/* A2 : ALERTE ROUGE BLOQUANTE — substitution de clé détectée */}
+              {trust?.level === "red" && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 border-b border-red-900/40 bg-red-950/40 px-3 py-2.5 text-xs text-red-200"
+                >
+                  <ShieldAlert className="mt-0.5 size-4 shrink-0 text-red-400" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-red-300">
+                      Clé de chiffrement changée — envoi bloqué
+                    </p>
+                    <p className="mt-0.5 text-red-200/90">
+                      La clé de {peer.nickname} diffère de celle épinglée sur cet appareil.
+                      Re-vérifiez le numéro de sécurité en présentiel avant de continuer —
+                      c&apos;est peut-être un nouvel appareil, ou une tentative d&apos;interception.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-2 h-8 border-red-700/60 text-red-200 hover:bg-red-900/40"
+                      onClick={() => setTrustDialogOpen(true)}
+                    >
+                      <KeyRound className="size-3.5" aria-hidden="true" />
+                      Re-vérifier le numéro de sécurité
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* A2 : premier contact — invitation à la vérification (non bloquant) */}
+              {trust?.level === "yellow" && (
+                <button
+                  type="button"
+                  onClick={() => setTrustDialogOpen(true)}
+                  className="flex w-full items-start gap-2 border-b bg-amber-950/30 px-3 py-2 text-left text-[11px] text-amber-200/90 transition-colors hover:bg-amber-950/50"
+                >
+                  <ShieldQuestion className="mt-0.5 size-3.5 shrink-0 text-amber-400" aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    {trust.firstContact
+                      ? "Premier contact — numéro de sécurité non vérifié. Comparez-le en présentiel pour sceller cette conversation."
+                      : "Numéro de sécurité non vérifié — comparez-le en présentiel pour sceller cette conversation."}
+                  </span>
+                  <span className="shrink-0 font-semibold text-amber-300">Vérifier</span>
+                </button>
+              )}
+
               <ScrollArea className="flex-1">
                 <div className="scrollbar-thin space-y-2 p-3">
                   {messages.isLoading ? (
@@ -458,22 +583,24 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                       }
                     }}
                     placeholder={
-                      peer.ecdhPub
-                        ? canUseNetwork
-                          ? "Message chiffré (ECDH + AES-GCM)…"
-                          : peer.isBot
-                            ? "Mbote (bot) attend le retour du réseau…"
-                            : "Hors-ligne — ton courrier partira au retour du réseau"
-                        : "Contact sans clés ECDH"
+                      trustBlocked
+                        ? "Envoi bloqué — re-vérifiez le numéro de sécurité"
+                        : peer.ecdhPub
+                          ? canUseNetwork
+                            ? "Message chiffré (ECDH + AES-GCM)…"
+                            : peer.isBot
+                              ? "Mbote (bot) attend le retour du réseau…"
+                              : "Hors-ligne — ton courrier partira au retour du réseau"
+                          : "Contact sans clés ECDH"
                     }
-                    disabled={!peer.ecdhPub || sending}
+                    disabled={!peer.ecdhPub || sending || trustBlocked}
                     maxLength={2000}
                     className="h-11"
                     aria-label="Message privé"
                   />
                   <Button
                     onClick={send}
-                    disabled={!peer.ecdhPub || !draft.trim() || sending}
+                    disabled={!peer.ecdhPub || !draft.trim() || sending || trustBlocked}
                     className="h-11 shrink-0"
                     aria-label="Envoyer le message chiffré"
                   >
@@ -494,6 +621,48 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
           )}
         </div>
       </div>
+
+      {/* A2 : dialogue du numéro de sécurité (vérification hors-bande) */}
+      <Dialog open={trustDialogOpen} onOpenChange={setTrustDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="size-4 text-primary" aria-hidden="true" />
+              Numéro de sécurité
+            </DialogTitle>
+            <DialogDescription>
+              Comparez ces 60 chiffres avec {peer?.nickname} — en présentiel ou par un canal
+              déjà sûr (voix mesh). Identiques des deux côtés = personne au milieu.
+            </DialogDescription>
+          </DialogHeader>
+          {trust && (
+            <div className="space-y-3">
+              <div
+                className="rounded-lg border bg-muted/60 p-3 text-center font-mono text-sm font-semibold tracking-widest"
+                aria-label="Numéro de sécurité en 12 groupes de 5 chiffres"
+              >
+                <p>{trust.safetyNumber.split(" ").slice(0, 6).join(" ")}</p>
+                <p className="mt-1.5">{trust.safetyNumber.split(" ").slice(6, 12).join(" ")}</p>
+              </div>
+              {trust.keyChanged && (
+                <p className="flex items-start gap-1.5 text-xs text-red-400">
+                  <ShieldAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  Ce numéro diffère du précédent — ne confirmez que si {peer?.nickname}
+                  vous confirme ce NOUVEAU numéro de vive voix.
+                </p>
+              )}
+              <Button className="w-full" onClick={confirmTrust} disabled={verifying}>
+                {verifying ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <ShieldCheck className="size-4" aria-hidden="true" />
+                )}
+                J&apos;ai comparé en présentiel — Sceller
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Dialogue nouvelle conversation */}
       <Dialog open={newConvOpen} onOpenChange={setNewConvOpen}>

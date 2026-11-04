@@ -104,6 +104,29 @@ model ReplayCounter {
   @@index([epoch])
 }
 
+// A2 (recadrage) — épinglage de clés de chiffrement (authentification des clés,
+// lacune L-3 de la crypto spec). Le serveur enregistre l'état de confiance
+// POUR AUDIT ET DÉTECTION DE CHANGEMENT : quand l'ecdhPub servi diverge du
+// dernier épinglé, la ligne passe en `changed` (alerte rouge côté client).
+// L'épinglage local côté appareil (trust-client.ts) reste la barrière
+// indépendante du serveur — contre un serveur pleinement malveillant, la
+// comparaison hors-bande du numéro de sécurité reste l'ultime référence.
+model TrustedKey {
+  id            String    @id @default(cuid())
+  ownerKey      String // pubkey ECDSA de l'identité locale (celle qui épingle)
+  peerKey       String // pubkey ECDSA du pair (identité stable)
+  ecdhPubPinned String // clé ECDH épinglée au moment du contact/vérification
+  safetyNumber  String // 60 chiffres calculés sur les clés des DEUX parties
+  state         String    @default("unverified") // unverified | verified | changed
+  firstSeenAt   DateTime  @default(now())
+  verifiedAt    DateTime?
+  changedAt     DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([ownerKey, peerKey])
+  @@index([ownerKey])
+}
+
 // Nœuds passerelle connus (app native / Raspberry Pi qui relayent mesh ↔ internet)
 model GatewayNode {
   id         String   @id // senderID hex de la passerelle

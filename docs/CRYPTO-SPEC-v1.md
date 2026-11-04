@@ -98,11 +98,23 @@ mécanisme n'est décrit ici sans référence. Ce qui n'existe pas est marqué *
 - **L-2 — Pas d'authentification des clés.** Aucun safety number, aucune empreinte vérifiable,
   aucun QR, aucun indicateur d'état de vérification dans l'UI : **ABSENT DU CODE (v1.x)**. Les
   « empreintes » existantes (`shortKey`, `crypto.ts:202-204`) ne sont que des troncatures d'affichage.
+  **→ CORRIGÉ PAR A2 (feat/a2-key-auth, en validation)** : numéro de sécurité documenté
+  (`docs/SAFETY-NUMBER-SPEC.md`, référence Signal) + indicateur d'état dans l'UI DM
+  (jaune non vérifié / vert scellé / rouge bloquant) + dialogue de comparaison hors-bande.
+  Le QR scan en présentiel (caméra) reste au Bloc 2 phase F — le canal numérique hors-bande
+  (60 chiffres comparables de vive voix) est livré.
 - **L-3 — Substitution de clé par le serveur.** `ecdhPub` est enregistré via une preuve signée
   (`identity/route.ts:61-72`), mais un serveur malveillant peut ensuite servir n'importe quelle
   `ecdhPub` au client (`api.ts` / `/api/identity?pubkey=`) : l'attaquant devient MITM des DM
   **sans détectabilité**. La signature de l'enveloppe (`proof.ts:78-86`) lie l'expéditeur au
   ciphertext, pas le destinataire à la clé de chiffrement.
+  **→ CORRIGÉ PAR A2 (feat/a2-key-auth, en validation)** : numéro de sécurité 60 chiffres
+  (SHA-512 itéré 5200× sur les QUATRE clés, spec Signal — `docs/SAFETY-NUMBER-SPEC.md`,
+  `safety-number.ts` isomorphe) + épinglage LOCAL par appareil (`trust-client.ts` — indépendant
+  du serveur) + registre serveur `TrustedKey` (audit + détection inter-appareils,
+  `GET /api/trust` + `POST /api/trust/verify`) + alerte rouge BLOQUANTE dans l'UI DM
+  (envoi suspendu jusqu'à re-vérification hors-bande). Tests : propriétés du fingerprint
+  (6), flux premier contact/substitution/re-vérification (4), E2E API réel (7 scénarios).
 - **L-4 — Pas d'anti-rejeu DM structuré.** Aucune contrainte d'unicité sur `DirectMessage`
   (`schema.prisma:101-113` : pas de `@unique` sur `iv`/`ciphertext`) : réinjecter une enveloppe
   interceptée dans la fenêtre de fraîcheur de 7 j (`proof.ts:26`) crée un doublon légitime. Pas de
