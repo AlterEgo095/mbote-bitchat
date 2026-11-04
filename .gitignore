@@ -67,3 +67,7 @@ download/
 # Expo CNG — projets natifs régénérés par `expo prebuild` (et par la CI)
 mobile/android/
 mobile/ios/
+
+# sauvegardes locales (ne jamais committer : données chiffrées + clé)
+backups/
+.backup-key

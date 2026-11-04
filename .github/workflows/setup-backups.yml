@@ -1,0 +1,140 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Mbote BitChat — Installation des sauvegardes (condition R1)
+#  ─ Déclenchement MANUEL uniquement (workflow_dispatch) : la condition 8 de la
+#    direction exige une validation humaine avant toute action sur la prod.
+#  ─ Le script scripts/backup-mbote.sh est exécuté tel quel (piped via SSH) :
+#    snapshot → intégrité → chiffrement → TEST DE RESTAURATION → rotation.
+#  ─ Le fichier chiffré est externalisé sur la branche `backups` de ce dépôt
+#    (infrastructure distincte du VPS) ; la clé de chiffrement ne quitte
+#    JAMAIS le VPS — le fichier externalisé est inutilisable sans elle.
+#  ─ Idempotent : relançable sans effet de bord.
+# ─────────────────────────────────────────────────────────────────────────────
+name: Sauvegardes — installation et premier cycle
+
+permissions:
+  contents: write # pousser le fichier chiffré sur la branche `backups`
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: mbote-backup
+  cancel-in-progress: false
+
+jobs:
+  install:
+    name: backup + cron + externalisation
+    runs-on: ubuntu-latest
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+      VPS_DIR: ${{ secrets.VPS_DEPLOY_DIR || '/opt/mbote-bitchat' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (épinglé — supply chain)
+
+      - name: Garde — secrets VPS configurés ?
+        id: guard
+        run: |
+          if [ -n "$VPS_HOST" ] && [ -n "$VPS_USER" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "→ sauvegardes vers $VPS_USER@$VPS_HOST:$VPS_DIR"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Secrets VPS absents — installation impossible."
+          fi
+
+      - name: Clé SSH CI
+        if: steps.guard.outputs.ok == 'true'
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_mbote_ci
+          chmod 600 ~/.ssh/id_mbote_ci
+          ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Cycle de sauvegarde complet (avec test de restauration)
+        if: steps.guard.outputs.ok == 'true'
+        run: |
+          ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes \
+            "$VPS_USER@$VPS_HOST" "cd '$VPS_DIR' && MBOTE_DIR='$VPS_DIR' bash -s" < scripts/backup-mbote.sh
+
+      - name: Installation du cron quotidien (idempotent)
+        if: steps.guard.outputs.ok == 'true'
+        run: |
+          ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes \
+            "$VPS_USER@$VPS_HOST" "cd '$VPS_DIR' && MBOTE_DIR='$VPS_DIR' bash -s -- --install-cron" < scripts/backup-mbote.sh
+
+      - name: Récupération du statut et du fichier chiffré
+        if: steps.guard.outputs.ok == 'true'
+        id: fetch
+        run: |
+          ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes \
+            "$VPS_USER@$VPS_HOST" "cat '$VPS_DIR/backups/last-backup-status.json'" > backup-status.json
+          RESULT=$(python3 -c "import json;print(json.load(open('backup-status.json'))['result'])")
+          LATEST=$(python3 -c "import json;print(json.load(open('backup-status.json'))['file'])")
+          SHA=$(python3 -c "import json;print(json.load(open('backup-status.json'))['sha256'])")
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+          echo "file=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          if [ "$RESULT" != "PASS" ]; then echo "::error::Sauvegarde en échec sur le VPS — voir backup-status.json"; exit 1; fi
+          ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes \
+            "$VPS_USER@$VPS_HOST" "cat '$VPS_DIR/backups/$LATEST'" > mbote-latest.db.enc
+          sha256sum mbote-latest.db.enc
+
+      - name: Preuves — statut, cron, journal
+        if: steps.guard.outputs.ok == 'true'
+        run: |
+          ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" \
+            "echo '── statut ──'; cat '$VPS_DIR/backups/last-backup-status.json'; \
+             echo '── cron ──'; crontab -l | grep -F backup-mbote.sh; \
+             echo '── journal (3 dernières lignes) ──'; tail -n 3 '$VPS_DIR/backups/backup.log'; \
+             echo '── clé ──'; ls -la '$VPS_DIR/.backup-key'" | tee evidence.txt
+
+      - name: Externalisation — branche `backups` (hors VPS)
+        if: steps.guard.outputs.ok == 'true'
+        run: |
+          git config user.name "mbote-backup-bot"
+          git config user.email "noreply@mbote-mesh"
+          git remote set-url origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          if git ls-remote --exit-code origin refs/heads/backups >/dev/null 2>&1; then
+            git fetch origin backups
+            git checkout -B backups origin/backups
+          else
+            git checkout --orphan backups
+            git rm -rf --cached . >/dev/null 2>&1 || true
+          fi
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp mbote-latest.db.enc ./mbote-latest.db.enc
+          cp backup-status.json ./mbote-latest.status.json
+          git add -A
+          git commit -m "backup $(date -u +%FT%TZ) sha256=${{ steps.fetch.outputs.sha }}" || echo "aucune différence — rien à committer"
+          git push origin backups
+          echo "✅ fichier chiffré externalisé sur la branche backups"
+
+      - name: Artefact — sauvegarde chiffrée + statut (rétention 30 j)
+        if: steps.guard.outputs.ok == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2 (épinglé — supply chain)
+        with:
+          name: mbote-backup-encrypted
+          path: |
+            mbote-latest.db.enc
+            backup-status.json
+            evidence.txt
+          retention-days: 30
+
+      - name: Résumé
+        if: steps.guard.outputs.ok == 'true'
+        run: |
+          {
+            echo "## Sauvegarde Mbote — cycle réussi"
+            echo ""
+            echo "| Élément | Valeur |"
+            echo "|---|---|"
+            echo "| Résultat | ✅ PASS (intégrité + restauration vérifiés) |"
+            echo "| Fichier chiffré | \`${{ steps.fetch.outputs.file }}\` |"
+            echo "| SHA-256 | \`${{ steps.fetch.outputs.sha }}\` |"
+            echo "| Externalisation | branche \`backups\` de ce dépôt |"
+            echo "| Cron | quotidien 03:17 UTC sur le VPS |"
+            echo ""
+            echo "⚠ Conserver une copie hors ligne de \`.backup-key\` sur le VPS — sans elle, aucune restauration n'est possible."
+          } >> "$GITHUB_STEP_SUMMARY"
