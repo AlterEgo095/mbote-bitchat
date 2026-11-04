@@ -19,8 +19,12 @@
  * « Nouvelle version » dans PwaRegister.tsx, qui envoie le message
  * SKIP_WAITING). Fini les rechargements à l'improviste en pleine rédaction.
  * v4 : flux de mise à jour contrôlé + offline.html déjà v3.
+ * v5 : démarrage à froid hors-ligne — une navigation réseau-échouée sert
+ * d'abord l'app shell « / » en cache (pré-cachée à l'install), puis
+ * offline.html en dernier recours. L'app s'OUVRE donc même sans réseau après
+ * une première visite : le mode courrier (outbox IndexedDB) prend le relais.
  */
-const VERSION = "mbote-v4";
+const VERSION = "mbote-v5";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
@@ -163,9 +167,13 @@ self.addEventListener("fetch", (event) => {
           return res;
         })
         .catch(() =>
-          // F-49 : repli sur la page hors-ligne brandée (au lieu du texte nu 503)
+          // v5 : repli hors-ligne — l'app shell « / » d'abord (le shell est
+          // pré-caché à l'install et les chunks /_next/ vus en ligne sont en
+          // RUNTIME_CACHE → l'app démarre réellement sans réseau, mode courrier
+          // inclus). offline.html ne sert qu'en dernier recours (shell absent).
           caches
-            .match("/offline.html")
+            .match("/")
+            .then((shell) => shell ?? caches.match("/offline.html"))
             .then((fallback) => fallback ?? new Response("Hors ligne", { status: 503 }))
         )
     );
