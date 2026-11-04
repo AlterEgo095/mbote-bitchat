@@ -1,0 +1,113 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Mbote BitChat — Sécurité : analyse des vulnérabilités (condition 6)
+#  ─ audit-npm  : audit des dépendances JS de l'app racine (npm audit)
+#  ─ scan-trivy : vulnérabilités + secrets + mauvaises configurations sur
+#    tout le dépôt (filesystem) — couvre aussi les deux Dockerfiles.
+#  ─ Toutes les actions sont épinglées par SHA de commit (supply chain).
+#  ─ Rapports publiés en ARTEFACTS (pas de code scanning : permissions
+#    restreintes à contents: read, F-50).
+# ─────────────────────────────────────────────────────────────────────────────
+name: "Sécurité — analyse des vulnérabilités"
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # hebdomadaire — lundi 06:00 UTC
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "bun.lock"
+      - "Dockerfile"
+      - ".github/workflows/security.yml"
+
+permissions:
+  contents: read # lecture seule — les rapports partent en artefacts, pas en code scanning
+
+jobs:
+  audit-npm:
+    name: Audit dépendances (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 — épinglé par SHA (supply chain, condition 6)
+
+      - name: Bun (version pinned = lockfile reproductible)
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 — épinglé par SHA
+        with:
+          bun-version: "1.3.14"
+
+      - name: Installer les dépendances (lockfile strict)
+        run: bun install --frozen-lockfile
+
+      - name: Générer un package-lock.json pour npm audit
+        # npm audit exige un lockfile npm (il ne lit pas bun.lock).
+        # --package-lock-only : résolution seule — aucun paquet téléchargé,
+        # --ignore-scripts : aucun script de cycle de vie exécuté.
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Audit npm (seuil high+)
+        # continue-on-error : le rapport est publié en artefact sans casser la
+        # CI pendant le triage initial — resserrer après triage initial
+        # (supprimer continue-on-error + passer --audit-level=low).
+        continue-on-error: true
+        run: npm audit --audit-level=high --json > npm-audit-report.json || true
+
+      - name: Résumé lisible (comptage par sévérité)
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          try:
+              with open("npm-audit-report.json") as f:
+                  data = json.load(f)
+          except FileNotFoundError:
+              print("⚠️ aucun rapport npm-audit-report.json produit"); sys.exit(0)
+          except Exception as e:
+              print(f"⚠️ rapport d'audit illisible : {e}"); sys.exit(0)
+          v = data.get("metadata", {}).get("vulnerabilities", {})
+          total = v.get("total", 0)
+          details = ", ".join(
+              f"{k}={v.get(k, 0)}"
+              for k in ("critical", "high", "moderate", "low", "info")
+          )
+          print(f"→ npm audit : {total} vulnérabilité(s) — {details}")
+          print("✅ aucune vulnérabilité signalée" if total == 0 else "⚠️ voir l'artefact npm-audit-report")
+          PY
+
+      - name: Publier le rapport d'audit
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2 — épinglé par SHA
+        with:
+          name: npm-audit-report
+          path: npm-audit-report.json
+          retention-days: 30
+
+  scan-trivy:
+    name: Scan Trivy (vuln + secret + misconfig)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 — épinglé par SHA (supply chain, condition 6)
+
+      - name: Trivy — scan filesystem (vulnérabilités, secrets, misconfig)
+        # Politique de resserrement planifiée : exit-code 0 = rapport seul pour
+        # commencer (triage du bruit initial / faux positifs) ; une fois le
+        # triage fait, passer exit-code à "1" (+ .trivyignore documenté) pour
+        # faire échouer la CI sur toute nouvelle vulnérabilité HIGH/CRITICAL.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 — épinglé par SHA
+        with:
+          scan-type: fs
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          exit-code: "0" # rapport seulement pour commencer — resserrage planifié
+          format: sarif
+          output: trivy-results.sarif
+
+      - name: Publier le rapport SARIF
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2 — épinglé par SHA
+        with:
+          name: trivy-results-sarif
+          path: trivy-results.sarif
+          retention-days: 30

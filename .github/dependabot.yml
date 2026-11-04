@@ -1,0 +1,50 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Mbote BitChat — Dependabot (mises à jour automatiques des dépendances)
+#  ─ Hebdomadaire ; les mises à jour mineures/patch sont GROUPÉES pour limiter
+#    le bruit des PR (les majeures restent des PR individuelles, plus risquées).
+#  ─ 5 sources : npm racine, npm relay-service, Docker racine, Docker relay,
+#    github-actions (bump des SHA épinglés quand une version sort).
+# ─────────────────────────────────────────────────────────────────────────────
+version: 2
+
+updates:
+  # Dépendances JS de l'app web (Next.js standalone)
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Dépendances JS du relay socket.io (mini-service)
+  - package-ecosystem: npm
+    directory: "/mini-services/relay-service"
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Images Docker (base oven/bun épinglée par digest) — app racine
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+
+  # Images Docker — relay
+  - package-ecosystem: docker
+    directory: "/mini-services/relay-service"
+    schedule:
+      interval: weekly
+
+  # Actions GitHub utilisées dans .github/workflows/ — les références épinglées
+  # par SHA sont suivies par Dependabot (PR de bump de SHA à chaque release)
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
