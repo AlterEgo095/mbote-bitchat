@@ -174,7 +174,7 @@ describe("A1 — persistance (PrismaReplayStore, SQLite fichier)", () => {
     dir = mkdtempSync(join(tmpdir(), "mbote-a1-"));
     url = `file:${join(dir, "test.db")}`;
     execSync(`bunx prisma db push --skip-generate`, {
-      cwd: "/home/z/my-project",
+      cwd: process.cwd(),
       env: { ...process.env, DATABASE_URL: url },
       stdio: "pipe",
     });
@@ -248,7 +248,7 @@ describe("A1 — contrat commun Memory/Prisma", () => {
     const dir = mkdtempSync(join(tmpdir(), "mbote-a1c-"));
     const url = `file:${join(dir, "c.db")}`;
     execSync(`bunx prisma db push --skip-generate`, {
-      cwd: "/home/z/my-project",
+      cwd: process.cwd(),
       env: { ...process.env, DATABASE_URL: url },
       stdio: "pipe",
     });
