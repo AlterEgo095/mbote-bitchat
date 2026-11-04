@@ -106,7 +106,21 @@ export async function GET(req: NextRequest) {
       data: { readAt: new Date() },
     });
 
-    return NextResponse.json({ messages });
+    // A3 : le pair est-il bloqué par le lecteur ? Les DMs RESTENT reçus mais
+    // sont MARQUÉS (`fromBlocked`) — décision de validation A3 : « reçus, avec
+    // option bloquer distincte de masquer ». Aucun filtrage de contenu : le
+    // canal DM est E2EE, le serveur ne peut pas (et ne doit pas) trier.
+    const blockRow = await db.peerBlock.findUnique({
+      where: { blockerKey_blockedKey: { blockerKey: me, blockedKey: peer } },
+      select: { id: true },
+    });
+
+    return NextResponse.json({
+      messages: messages.map((m) => ({
+        ...m,
+        fromBlocked: blockRow != null && m.senderKey === peer,
+      })),
+    });
   } catch (e) {
     console.error("GET /api/dms", e);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });

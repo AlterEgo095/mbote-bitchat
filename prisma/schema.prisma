@@ -16,6 +16,10 @@ model User {
   ecdhPub    String? // clé publique ECDH P-256 (base64url) pour le chiffrement des DM
   isBot      Boolean  @default(false)
   botPriv    String? // JWK privée — UNIQUEMENT pour le bot de démonstration
+  // A3 (recadrage) — suspension par modération : posts absents du fil public,
+  // publication refusée (403) tant que la suspension tient.
+  suspendedAt DateTime?
+  suspendedBy String? // identité admin ayant suspendu
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -43,6 +47,10 @@ model Post {
   // les COUNT à chaud disparaissent des lectures de feed.
   likeCount  Int      @default(0)
   replyCount Int      @default(0)
+  // A3 (recadrage) — modération du fil public : masqué = absent du fil public,
+  // MAIS CONSERVÉ EN DB pour audit (contrairement à la purge qui supprime).
+  hiddenAt DateTime?
+  hiddenBy String? // identité admin ayant masqué (clé API provisoire avant RBAC)
   createdAt  DateTime @default(now())
 
   likes Like[]
@@ -125,6 +133,63 @@ model TrustedKey {
 
   @@unique([ownerKey, peerKey])
   @@index([ownerKey])
+}
+
+// A3 (recadrage) — signalement d'un contenu PUBLIC (posts/commentaires) vers la
+// file de modération. PÉRIMÈTRE STRICT : fil public uniquement. AUCUNE modération
+// DM — impossible par conception : le serveur ne stocke que du chiffré E2EE
+// (boîte aux lettres aveugle) et ne peut ni lire ni qualifier un message privé.
+model Report {
+  id          String    @id @default(cuid())
+  reporterKey String // pubkey du signaleur (preuve signée `report`)
+  targetKind  String // "post" | "comment" — jamais "dm" (refusé à l'endpoint)
+  targetId    String // id Post (post racine ou commentaire)
+  reason      String // spam | harassment | violence | illegal | other
+  details     String? // contexte libre (≤ 500 chars)
+  status      String    @default("open") // open | actioned | dismissed
+  handledAt   DateTime?
+  handledBy   String? // identité admin ayant traité (clé API provisoire avant RBAC)
+  createdAt   DateTime  @default(now())
+
+  @@unique([reporterKey, targetKind, targetId]) // idempotence : 1 signalement par (signaleur, cible)
+  @@index([status, createdAt])
+  @@index([targetKind, targetId])
+}
+
+// A3 — blocage d'un pair par l'utilisateur. Effets livrés :
+//  - fil public : les posts du bloqué disparaissent du fil du bloqueur
+//    (préférence d'affichage servie côté serveur — PAS une mesure de
+//    confidentialité : le fil est public par nature) ;
+//  - DM : les messages du bloqué RESTENT reçus mais MARQUÉS (`fromBlocked`) —
+//    décision tranchée à la validation A3 : « reçus, avec option bloquer
+//    distincte de masquer ». Le canal DM reste E2EE et aveugle : le serveur
+//    n'applique aucun filtrage de contenu privé.
+model PeerBlock {
+  id         String   @id @default(cuid())
+  blockerKey String // celui qui bloque
+  blockedKey String // le bloqué
+  createdAt  DateTime @default(now())
+
+  @@unique([blockerKey, blockedKey])
+  @@index([blockerKey])
+}
+
+// A3 — journal d'audit de modération (admin). Toute action y laisse une trace.
+// Une PURGE supprime le contenu mais la trace subsiste ici : auteur, extrait
+// borné (≤ 280), compteur de signalements clôturés.
+model ModerationAction {
+  id         String   @id @default(cuid())
+  adminKey   String // identité admin (ADMIN_API_KEY — provisoire avant RBAC complet)
+  action     String // warn | hide | unhide | suspend | unsuspend | purge
+  targetKind String // post | user
+  targetId   String // id Post (hide/unhide/purge) ou pubkey User (warn/suspend/unsuspend)
+  reason     String?
+  reportIds  String? // JSON [] : signalements clôturés par l'action
+  meta       String? // JSON : purge → { authorKey, nickname, snippet, repliesPurged, likeCount }
+  createdAt  DateTime @default(now())
+
+  @@index([targetKind, targetId])
+  @@index([createdAt])
 }
 
 // Nœuds passerelle connus (app native / Raspberry Pi qui relayent mesh ↔ internet)

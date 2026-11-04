@@ -81,6 +81,18 @@ export async function GET(req: NextRequest) {
 
     const userByPub = new Map(users.map((u) => [u.pubkey, u]));
 
+    // A3 : pairs bloqués par le lecteur — conversations MARQUÉES (`blocked`),
+    // messages toujours reçus (aucun filtrage de contenu E2EE — décision A3 :
+    // « reçus, avec option bloquer distincte de masquer »)
+    const myBlocks = new Set(
+      (
+        await db.peerBlock.findMany({
+          where: { blockerKey: me },
+          select: { blockedKey: true },
+        })
+      ).map((b) => b.blockedKey)
+    );
+
     const conversations = peers
       .map((peer) => {
         const entry = byPeer.get(peer);
@@ -98,6 +110,7 @@ export async function GET(req: NextRequest) {
             readAt: entry.last.readAt,
           },
           unread: entry.unread,
+          blocked: myBlocks.has(peer),
         };
       })
       .filter((c): c is NonNullable<typeof c> => c != null)

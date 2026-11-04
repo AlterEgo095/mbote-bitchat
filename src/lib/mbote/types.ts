@@ -37,6 +37,9 @@ export interface DirectMessageDto {
   ciphertext: string;
   createdAt: string;
   readAt?: string | null;
+  /** A3 : expéditeur bloqué par le lecteur — message REÇU mais MARQUÉ
+   *  (décision validation A3 : « reçus, avec option bloquer distincte de masquer »). */
+  fromBlocked?: boolean;
 }
 
 export interface ChannelAgg {
