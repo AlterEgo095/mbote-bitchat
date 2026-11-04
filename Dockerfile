@@ -34,8 +34,12 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     DATABASE_URL=file:/app/db/custom.db
 
-# sortie standalone (serveur + modules tracés + static + public)
+# sortie standalone (serveur + modules tracés). server.js atterrit à la
+# racine /app (COPY dest = ./). Les chunks clients et public ne font PAS
+# partie de la sortie standalone : les copier explicitement (sinon 404 CSS/JS).
 COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
 # CLI + client Prisma pour les migrations au démarrage
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
@@ -46,5 +50,5 @@ VOLUME ["/app/db"]
 EXPOSE 3000
 
 # F-36 : migrations versionnées (jamais db push --accept-data-loss en prod),
-# puis serveur Next standalone
-CMD ["sh", "-c", "bunx prisma migrate deploy && exec bun .next/standalone/server.js"]
+# puis serveur Next standalone (server.js à la racine de /app)
+CMD ["sh", "-c", "bunx prisma migrate deploy && exec bun server.js"]
