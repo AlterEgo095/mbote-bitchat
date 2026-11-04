@@ -95,3 +95,50 @@ bun test tests/ && bunx tsc --noEmit && bun run lint && bun scripts/check-protoc
 1. **Le verrou demandé est en place** : « bloquant pour tout média E2EE » — le niveau rouge bloque l'envoi de TOUT message DM (plus fort que les seuls médias), et A1/A2 sont les deux prérequis déclarés du verrou médias.
 2. **Numérotation** : A2 (recadrage, « crypto ④ ») = lacunes **L-2 + L-3** de la crypto spec.
 3. **Le pseudo du pair change à la rotation d'identité** (upsert identity) — sans impact sur la confiance (l'identité stable = la clé publique, pas le pseudo).
+
+---
+
+## 6. Trace d'incident — « superviseur » (exigée pour la validation A1/A2)
+
+*Section ajoutée à la validation (demande explicite : « un auditeur externe doit pouvoir trouver cette trace sans fouiller l'historique »). Faits issus des reflogs locaux, re-jouables.*
+
+**Que s'est-il passé** : pendant la livraison A1/A2, l'environnement d'exécution (le « superviseur » — le driver de sandbox qui héberge l'agent) **rétablit de force le checkout sur `main` entre deux tours d'outils de l'agent**. Les commits de phase ont donc atterri directement sur `main` au lieu des branches de phase : `main` a été déplacé hors de `7b51fd5` à deux reprises (« main forcé 2× »), plus un correctif CI dans la même manœuvre.
+
+**SHAs concernés** (reflog local `main`, transitoires) :
+
+| Reflog | SHA | Contenu |
+|---|---|---|
+| `main@{3}` | `2994060` | commit A1 anti-replay — posé sur main par erreur |
+| `main@{2}` | `652c5b0` | commit A2 key-auth — posé sur main par erreur |
+| `main@{1}` | `05b06bc` | fix a2-ci (cwd trust-flows) — posé sur main par erreur |
+| `main@{0}` | `7b51fd5` | **restauration** : main réinitialisé à l'état validé |
+
+**Remédiation** : `main` réinitialisé à `7b51fd5` ; le travail recréé sur les branches de phase — `feat/a1-anti-replay` = `2994060` + fix CI `441c927` ; `feat/a2-key-auth` = `0c7d4c3` (rebasé sur `441c927`, équivalent de `652c5b0` + fix cwd `05b06bc`).
+
+**Vérification finale — re-jouable** :
+
+```bash
+git rev-parse main origin/main          # → 7b51fd5… = 7b51fd5… (identiques)
+git log --oneline main..feat/a2-key-auth      # 3 commits : A1 + fix CI A1 + A2
+git diff 652c5b0 0c7d4c3 --stat         # uniquement les 2 correctifs cwd des tests
+git reflog show origin/main             # aucun rewind : fast-forwards + push recadrage seulement
+```
+
+**Portée de l'incident** : strictement LOCAL. `origin/main` n'a **jamais** été réécrit (le reflog de la ref distante ne montre que des fast-forwards et le push du recadrage `7b51fd5`) ; aucun historique public n'a été altéré. Note : `feat/a2-key-auth` a, elle, nécessité des poussées non fast-forward (rebases internes à la branche : `652c5b0` → `eb7995e` → … → `0c7d4c3`) — visibles dans son reflog, sans impact sur `main`.
+
+**Mesure corrective durable** : le travail de phase se fait désormais dans des **worktrees git externes** (`git worktree add`), hors de portée du reset du superviseur — pattern documenté dans `docs/DEV-SETUP.md`.
+
+---
+
+## 7. Clarification — comportement exact en état rouge (exigée avant A3)
+
+*Clarification DEMANDÉE à la validation (« sans re-tester ») — consolidée du code livré et des preuves UI existantes de ce rapport.*
+
+| Action en état rouge | Comportement exact | Source de preuve |
+|---|---|---|
+| Message **SORTANT** | **Bloqué** — input + bouton d'envoi désactivés (`trustBlocked = trust?.level === "red"`, appliqué aux deux) ; l'outbox n'est pas alimentée en état rouge | capture `a2-red-key-change.png` (`INPUT BLOQUÉ` vérifié programmatiquement) — reconfirmé à la validation |
+| Message **ENTRANT** | **Affiché** — la liste DM ne filtre rien selon la confiance : côté client, `MessagesView.tsx` rend tous les messages et les déchiffre sans condition de niveau ; côté serveur, `GET /api/dms` ne consulte pas l'état de confiance. **L'utilisateur voit le trafic suspect** et peut réagir | revue de code à la validation (`MessagesView.tsx` : rendu de liste + effet de déchiffrement ; `src/app/api/dms/route.ts` : aucun filtre de confiance) |
+| **Bannière rouge** | Permanente (`role="alert"`) en tête de conversation, avec bouton **« Re-vérifier le numéro de sécurité »** → dialogue de scellement : le flux de re-vérification est disponible **à tout moment**, sans quitter la conversation | capture `a2-red-key-change.png` (`ALERTE ROUGE PRÉSENTE`) |
+| Déchiffrement en état rouge | Le déchiffrement utilise la clé **courante** servie : un message chiffré avec la NOUVELLE clé s'affiche en clair ; une enveloppe chiffrée avec l'ANCIENNE clé épinglée s'affiche « 🔒 Enveloppe indéchiffrable » — **visible elle aussi** (jamais masquée) | `MessagesView.tsx` (fallback `catch` du déchiffrement) |
+
+**Conclusion** : la réception n'est **pas** bloquée en état rouge — l'exigence (« l'utilisateur doit voir qu'il reçoit quelque chose de suspect pour déclencher la re-vérification ») est satisfaite par le comportement livré. **Aucun correctif requis avant A3.**
