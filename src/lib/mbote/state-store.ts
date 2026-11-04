@@ -142,12 +142,11 @@ export function trackApiRequest(route: string): () => void {
   return () => getPerf().record(route, Date.now() - start);
 }
 
-/** Extrait l'IP client derrière un reverse proxy (Caddy → x-forwarded-for). */
-export function clientIp(headers: Headers): string {
-  const fwd = headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
-  return headers.get("x-real-ip") ?? "local";
-}
+/** Extrait l'IP client — condition de sécurité n° 5 : seules les requêtes
+ *  prouvées Cloudflare (dernier maillon XFF ∈ plages officielles CF + cf-ray)
+ *  révèlent leur IP réelle ; tout le reste partage le bucket « local ».
+ *  Implémentation : @/lib/mbote/client-ip.ts (pure, sans dépendance). */
+export { clientIp, isCloudflareIp } from "@/lib/mbote/client-ip";
 
 // ───────────────────────── Singletons (survitent au HMR) ─────────────────────────
 
