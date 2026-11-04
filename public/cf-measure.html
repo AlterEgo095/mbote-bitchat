@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mbote Mesh — Test Cloudflare RDC 48h</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:#0b1220; color:#e8edf5; font-size:16px; line-height:1.45; }
+  h1 { font-size:1.25rem; margin:0 0 4px; }
+  .sub { color:#8fa3bd; font-size:.9rem; margin-bottom:16px; }
+  .card { background:#121c30; border:1px solid #233450; border-radius:12px; padding:16px; margin-bottom:14px; }
+  label { display:block; font-size:.85rem; color:#8fa3bd; margin:8px 0 4px; }
+  select, button { font-size:1rem; min-height:44px; border-radius:10px; border:1px solid #2c4265; background:#0e1729; color:#e8edf5; padding:8px 12px; }
+  select { width:100%; }
+  button { cursor:pointer; }
+  button.primary { background:#1f7a4d; border-color:#27995f; font-weight:700; width:100%; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .row2 { display:flex; gap:10px; flex-wrap:wrap; }
+  .row2 > div { flex:1 1 140px; }
+  table { width:100%; border-collapse:collapse; font-size:.9rem; margin-top:8px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid #233450; }
+  td.num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align:right; }
+  .ok { color:#4ade80; font-weight:700; }
+  .ko { color:#f87171; font-weight:700; }
+  .muted { color:#8fa3bd; font-size:.85rem; }
+  ol { padding-left:20px; margin:8px 0 0; }
+  ol li { margin-bottom:6px; }
+  .stats { font-size:.85rem; color:#8fa3bd; margin-top:6px; }
+  .btnrow { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  .btnrow button { flex:1 1 120px; }
+  .checkline { display:flex; align-items:center; gap:10px; margin-top:12px; font-size:.95rem; }
+  .checkline input { width:20px; height:20px; }
+</style>
+</head>
+<body>
+<h1>Mbote Mesh — Protocole Cloudflare RDC 48 h</h1>
+<div class="sub">Mesure de disponibilité et de latence de Cloudflare depuis ton opérateur. 100 % local : les résultats restent sur ton téléphone jusqu'à l'export CSV.</div>
+
+<div class="card">
+  <div class="row2">
+    <div>
+      <label for="op">Opérateur</label>
+      <select id="op">
+        <option value="MTN">MTN</option>
+        <option value="Orange">Orange</option>
+        <option value="Vodacom">Vodacom</option>
+        <option value="Africell">Africell</option>
+        <option value="Wifi">Wi-Fi</option>
+        <option value="Autre">Autre</option>
+      </select>
+    </div>
+    <div>
+      <label for="net">Type de réseau</label>
+      <select id="net">
+        <option value="">Auto</option>
+        <option value="2G">2G</option>
+        <option value="3G">3G</option>
+        <option value="4G">4G</option>
+        <option value="5G">5G</option>
+        <option value="Wifi">Wi-Fi</option>
+      </select>
+    </div>
+  </div>
+  <div class="checkline">
+    <input type="checkbox" id="auto">
+    <span>Répéter automatiquement toutes les 10 minutes (écran allumé)</span>
+  </div>
+  <button class="primary" id="run" style="margin-top:12px">▶ Lancer un test (~15 s)</button>
+  <div id="last"></div>
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="card">
+  <strong>Export des résultats</strong>
+  <div class="btnrow">
+    <button id="export">⬇ Exporter CSV</button>
+    <button id="copy">Copier CSV</button>
+    <button id="clear">Effacer l'historique</button>
+  </div>
+  <div class="stats" id="count"></div>
+</div>
+
+<div class="card">
+  <strong>Protocole (5 min par session, à répéter 6–10×/jour pendant 48 h)</strong>
+  <ol>
+    <li>Choisis ton opérateur (une seule fois, mémorisé).</li>
+    <li>Tape « Lancer un test » — mesure les 4 cibles l'une après l'autre.</li>
+    <li>Refais un test à des heures variées : matin, midi, soirée, nuit.</li>
+    <li>Après 48 h : « Exporter CSV » et envoie le fichier.</li>
+  </ol>
+  <div class="muted">Cibles : notre zone Cloudflare (mbotemesh.aenews.online), cloudflare.com, 1.1.1.1, et un contrôle hors Cloudflare (Google 204) pour distinguer « internet coupé » de « Cloudflare injoignable ».</div>
+</div>
+
+<script>
+(function(){
+  var TARGETS = [
+    { key:'mbotemesh', label:'mbotemesh.aenews.online (notre zone CF)', url:'https://mbotemesh.aenews.online/cdn-cgi/trace' },
+    { key:'cloudflare', label:'www.cloudflare.com', url:'https://www.cloudflare.com/cdn-cgi/trace' },
+    { key:'oneoneone', label:'1.1.1.1', url:'https://1.1.1.1/cdn-cgi/trace' },
+    { key:'controle', label:'Contrôle hors CF (Google 204)', url:'https://www.google.com/generate_204' }
+  ];
+  var LSKEY = 'cf48h_rows';
+  var rows = [];
+  try { rows = JSON.parse(localStorage.getItem(LSKEY) || '[]'); } catch(e) { rows = []; }
+  if (!Array.isArray(rows)) rows = [];
+
+  var opSel = document.getElementById('op');
+  var netSel = document.getElementById('net');
+  var runBtn = document.getElementById('run');
+  var autoCb = document.getElementById('auto');
+  var lastEl = document.getElementById('last');
+  var statsEl = document.getElementById('stats');
+  var countEl = document.getElementById('count');
+  var running = false;
+  var timer = null;
+  var wakeLock = null;
+
+  try { var savedOp = localStorage.getItem('cf48h_op'); if (savedOp) opSel.value = savedOp; } catch(e) {}
+  opSel.addEventListener('change', function(){ try { localStorage.setItem('cf48h_op', opSel.value); } catch(e) {} });
+
+  function connInfo() {
+    var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    var net = netSel.value;
+    if (!net && c && c.effectiveType) net = c.effectiveType.toUpperCase();
+    if (!net) net = '?';
+    return { net: net, dl: (c && c.downlink) || '', rtt: (c && c.rtt) || '' };
+  }
+
+  function batteryInfo() {
+    if (!navigator.getBattery) return Promise.resolve({ level: '', charging: '' });
+    return navigator.getBattery().then(function(b){
+      return { level: Math.round(b.level * 100), charging: b.charging ? 'oui' : 'non' };
+    }).catch(function(){ return { level: '', charging: '' }; });
+  }
+
+  function probe(t) {
+    var t0 = performance.now();
+    var url = t.url + (t.url.indexOf('?') >= 0 ? '&' : '?') + 'cb=' + Date.now();
+    function finish(ok, status, ms, err, mode) {
+      return { ok: ok, status: status, ms: ms, err: err || '', mode: mode || '' };
+    }
+    return new Promise(function(resolve){
+      var ctl = new AbortController();
+      var to = setTimeout(function(){ ctl.abort(); }, 8000);
+      fetch(url, { cache: 'no-store', credentials: 'omit', mode: 'cors', signal: ctl.signal })
+        .then(function(r){ clearTimeout(to); return r.arrayBuffer().then(function(){ resolve(finish(r.ok, r.status, Math.round(performance.now()-t0), '', 'cors')); }); })
+        .catch(function(e1){
+          clearTimeout(to);
+          var t1 = performance.now();
+          var ctl2 = new AbortController();
+          var to2 = setTimeout(function(){ ctl2.abort(); }, 8000);
+          fetch(url, { cache: 'no-store', credentials: 'omit', mode: 'no-cors', signal: ctl2.signal })
+            .then(function(r2){ clearTimeout(to2); return r2.arrayBuffer().catch(function(){}).then(function(){ resolve(finish(true, 0, Math.round(performance.now()-t1), 'opaque', 'no-cors')); }); })
+            .catch(function(e2){ clearTimeout(to2); resolve(finish(false, 0, Math.round(performance.now()-t1), (e2 && e2.name) || 'ERR', 'no-cors')); });
+        });
+    });
+  }
+
+  function save() {
+    try {
+      if (rows.length > 5000) rows = rows.slice(rows.length - 5000);
+      localStorage.setItem(LSKEY, JSON.stringify(rows));
+    } catch(e) {}
+    countEl.textContent = rows.length + ' mesure(s) enregistrée(s) sur cet appareil.';
+  }
+
+  function median(arr) {
+    if (!arr.length) return '';
+    var s = arr.slice().sort(function(a,b){ return a-b; });
+    var m = Math.floor(s.length/2);
+    return s.length % 2 ? s[m] : Math.round((s[m-1]+s[m])/2);
+  }
+
+  function renderLast(round) {
+    var html = '<table><tr><th>Cible</th><th>Résultat</th><th class="num">Latence</th></tr>';
+    round.forEach(function(r){
+      html += '<tr><td>' + r.label + '</td><td class="' + (r.ok ? 'ok">OK' : 'ko">ÉCHEC') + (r.err ? ' <span class="muted">('+r.err+')</span>' : '') + '</td><td class="num">' + (r.ok ? r.ms + ' ms' : '—') + '</td></tr>';
+    });
+    html += '</table>';
+    lastEl.innerHTML = html;
+  }
+
+  function renderStats() {
+    var lines = [];
+    TARGETS.forEach(function(t){
+      var rs = rows.filter(function(r){ return r.target === t.key; });
+      var ok = rs.filter(function(r){ return r.ok; });
+      var ms = ok.map(function(r){ return r.ms; });
+      lines.push(t.key + ' : ' + ok.length + '/' + rs.length + ' OK' + (ms.length ? ', médiane ' + median(ms) + ' ms' : ''));
+    });
+    statsEl.innerHTML = lines.join('<br>');
+  }
+
+  function runOnce() {
+    if (running) return Promise.resolve();
+    running = true;
+    runBtn.disabled = true;
+    var ci = connInfo();
+    return batteryInfo().then(function(bat){
+      var seq = Promise.resolve();
+      var round = [];
+      TARGETS.forEach(function(t){
+        seq = seq.then(function(){
+          return probe(t).then(function(res){
+            var now = new Date();
+            var row = {
+              ts_iso: now.toISOString(), unix_ms: now.getTime(),
+              operateur: opSel.value, type_reseau: ci.net,
+              downlink_mbps: ci.dl, rtt_indice_ms: ci.rtt,
+              batterie_pct: bat.level, en_charge: bat.charging,
+              target: t.key, label: t.label,
+              ok: res.ok ? 1 : 0, http_status: res.status,
+              latence_ms: res.ms, erreur: res.err, mode: res.mode
+            };
+            rows.push(row);
+            round.push(row);
+          });
+        });
+      });
+      return seq.then(function(){
+        save();
+        renderLast(round);
+        renderStats();
+        running = false;
+        runBtn.disabled = false;
+      });
+    }).catch(function(){
+      running = false;
+      runBtn.disabled = false;
+    });
+  }
+
+  function csv() {
+    var cols = ['ts_iso','unix_ms','operateur','type_reseau','downlink_mbps','rtt_indice_ms','batterie_pct','en_charge','target','label','ok','http_status','latence_ms','erreur','mode'];
+    var out = [cols.join(',')];
+    rows.forEach(function(r){
+      var vals = cols.map(function(c){
+        var v = r[c];
+        if (v === undefined || v === null) v = '';
+        v = String(v);
+        if (v.indexOf(',') >= 0 || v.indexOf('"') >= 0) v = '"' + v.replace(/"/g, '""') + '"';
+        return v;
+      });
+      out.push(vals.join(','));
+    });
+    return out.join('\r\n');
+  }
+
+  function requestWake(on) {
+    if (!navigator.wakeLock) return;
+    if (on) {
+      navigator.wakeLock.request('screen').then(function(wl){ wakeLock = wl; }).catch(function(){});
+    } else if (wakeLock) {
+      wakeLock.release().catch(function(){});
+      wakeLock = null;
+    }
+  }
+
+  runBtn.addEventListener('click', runOnce);
+
+  autoCb.addEventListener('change', function(){
+    if (autoCb.checked) {
+      requestWake(true);
+      runOnce();
+      timer = setInterval(runOnce, 10 * 60 * 1000);
+    } else {
+      requestWake(false);
+      if (timer) { clearInterval(timer); timer = null; }
+    }
+  });
+
+  document.getElementById('export').addEventListener('click', function(){
+    if (!rows.length) return;
+    var blob = new Blob([csv()], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    var d = new Date();
+    a.href = URL.createObjectURL(blob);
+    a.download = 'cf-rdc-48h_' + opSel.value + '_' + d.getFullYear() + ('0'+(d.getMonth()+1)).slice(-2) + ('0'+d.getDate()).slice(-2) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  });
+
+  document.getElementById('copy').addEventListener('click', function(){
+    if (!rows.length) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(csv());
+    }
+  });
+
+  document.getElementById('clear').addEventListener('click', function(){
+    rows = [];
+    save();
+    renderStats();
+    lastEl.innerHTML = '';
+  });
+
+  save();
+  renderStats();
+})();
+</script>
+</body>
+</html>
