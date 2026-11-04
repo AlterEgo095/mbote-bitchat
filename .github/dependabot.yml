@@ -2,34 +2,18 @@
 #  Mbote BitChat — Dependabot (mises à jour automatiques des dépendances)
 #  ─ Hebdomadaire ; les mises à jour mineures/patch sont GROUPÉES pour limiter
 #    le bruit des PR (les majeures restent des PR individuelles, plus risquées).
-#  ─ 5 sources : npm racine, npm relay-service, Docker racine, Docker relay,
+#  ─ Écosystèmes couverts : Docker ×2 (images épinglées par digest),
 #    github-actions (bump des SHA épinglés quand une version sort).
+#  ─ PAS d'écosystème npm : Dependabot ne lit pas les lockfiles Bun (bun.lock).
+#    L'analyse des vulnérabilités npm est assurée par
+#    .github/workflows/security.yml (npm audit --audit-level=high, hebdomadaire
+#    + sur chaque push affectant les dépendances).
+#  ─ Historique : les entrées npm ont été retirées le 2026-11-04 — le run
+#    dependabot npm_and_yarn échouait systématiquement (lockfile non supporté).
 # ─────────────────────────────────────────────────────────────────────────────
 version: 2
 
 updates:
-  # Dépendances JS de l'app web (Next.js standalone)
-  - package-ecosystem: npm
-    directory: "/"
-    schedule:
-      interval: weekly
-    groups:
-      minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
-
-  # Dépendances JS du relay socket.io (mini-service)
-  - package-ecosystem: npm
-    directory: "/mini-services/relay-service"
-    schedule:
-      interval: weekly
-    groups:
-      minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
-
   # Images Docker (base oven/bun épinglée par digest) — app racine
   - package-ecosystem: docker
     directory: "/"
