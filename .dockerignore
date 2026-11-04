@@ -14,6 +14,10 @@ tests
 download
 upload
 skills
-mini-services
+mini-services/*
+!mini-services/relay-service
+mini-services/relay-service/*
+!mini-services/relay-service/hub.ts
+!mini-services/relay-service/package.json
 examples
 agent-ctx
