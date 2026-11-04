@@ -93,19 +93,24 @@ jobs:
       - name: Externalisation — branche `backups` (hors VPS)
         if: steps.guard.outputs.ok == 'true'
         run: |
+          # Les fichiers de données sont mis à l'abri AVANT toute manipulation
+          # git (le nettoyage du worktree ne doit pas les détruire — bug corrigé
+          # le 2026-11-04 : le find effaçait mbote-latest.db.enc avant le cp).
+          mkdir -p /tmp/backup-data
+          cp mbote-latest.db.enc backup-status.json /tmp/backup-data/
           git config user.name "mbote-backup-bot"
           git config user.email "noreply@mbote-mesh"
           git remote set-url origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
           if git ls-remote --exit-code origin refs/heads/backups >/dev/null 2>&1; then
             git fetch origin backups
             git checkout -B backups origin/backups
+            find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
           else
             git checkout --orphan backups
             git rm -rf --cached . >/dev/null 2>&1 || true
+            find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
           fi
-          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
-          cp mbote-latest.db.enc ./mbote-latest.db.enc
-          cp backup-status.json ./mbote-latest.status.json
+          cp /tmp/backup-data/mbote-latest.db.enc /tmp/backup-data/backup-status.json .
           git add -A
           git commit -m "backup $(date -u +%FT%TZ) sha256=${{ steps.fetch.outputs.sha }}" || echo "aucune différence — rien à committer"
           git push origin backups
