@@ -5,8 +5,10 @@
 #  ─ Idempotent : premier déploiement == 100e déploiement
 #  ─ Secrets requis : VPS_HOST, VPS_USER, VPS_SSH_KEY (docs/CI-CD.md)
 #  ─ Secrets temps réel (F-09, à créer dans GitHub → Settings → Secrets) :
-#    NEXT_PUBLIC_SOCKET_URL (URL publique du hub socket.io sur le VPS) et
-#    RELAY_ALLOWED_ORIGIN (origine autorisée du relay) — écrits dans le .env VPS
+#    NEXT_PUBLIC_SOCKET_URL, RELAY_ALLOWED_ORIGIN, SEED_SECRET,
+#    RELAY_EMIT_TOKEN (F-51) et MBOTE_BOT_KEY (F-29) — écrits dans le .env VPS.
+#  ─ Le rsync PRÉSERVE le .env et docker-compose.override.yml du serveur
+#    (bindings 127.0.0.1 selon la convention nginx-hôte, ports non standards).
 # ─────────────────────────────────────────────────────────────────────────────
 name: Déploiement VPS
 
@@ -35,6 +37,7 @@ jobs:
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
       VPS_DIR: ${{ secrets.VPS_DEPLOY_DIR || '/opt/mbote-bitchat' }}
+      VPS_WEB_PORT: ${{ secrets.VPS_WEB_PORT || '3000' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -84,24 +87,30 @@ jobs:
             --exclude 'skills' \
             --exclude '.env' \
             --exclude '.env.local' \
+            --exclude 'docker-compose.override.yml' \
             --exclude '*.log' \
             -e "ssh -p ${VPS_PORT} -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes" \
             ./ "$VPS_USER@$VPS_HOST:$VPS_DIR/"
           echo "✅ code synchronisé (commit $(cat .deploy-commit))"
 
-      - name: Environnement de build (.env sur le VPS)
+      - name: Environnement de build (.env sur le VPS — 5 variables critiques)
         if: steps.guard.outputs.ok == 'true'
         run: |
           {
             echo "NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL}"
             echo "RELAY_ALLOWED_ORIGIN=${RELAY_ALLOWED_ORIGIN}"
             echo "SEED_SECRET=${SEED_SECRET}"
+            echo "RELAY_EMIT_TOKEN=${RELAY_EMIT_TOKEN}"
+            echo "MBOTE_BOT_KEY=${MBOTE_BOT_KEY}"
           } | ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "cat > '$VPS_DIR/.env'"
-          echo "✅ .env écrit sur le VPS (NEXT_PUBLIC_SOCKET_URL, RELAY_ALLOWED_ORIGIN, SEED_SECRET)"
+          ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "chmod 600 '$VPS_DIR/.env'"
+          echo "✅ .env écrit sur le VPS (F-09/F-51/F-29/F-02 — 5 variables)"
         env:
           NEXT_PUBLIC_SOCKET_URL: ${{ secrets.NEXT_PUBLIC_SOCKET_URL }}
           RELAY_ALLOWED_ORIGIN: ${{ secrets.RELAY_ALLOWED_ORIGIN }}
           SEED_SECRET: ${{ secrets.SEED_SECRET }}
+          RELAY_EMIT_TOKEN: ${{ secrets.RELAY_EMIT_TOKEN }}
+          MBOTE_BOT_KEY: ${{ secrets.MBOTE_BOT_KEY }}
 
       - name: Build & démarrage
         if: steps.guard.outputs.ok == 'true'
@@ -115,4 +124,4 @@ jobs:
         run: |
           ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes \
             "$VPS_USER@$VPS_HOST" \
-            "sleep 6 && curl -fsS http://localhost:3000/api/stats > /dev/null && echo '✅ API en bonne santé' && cd '$VPS_DIR' && docker compose ps"
+            "sleep 6 && curl -fsS http://127.0.0.1:${VPS_WEB_PORT}/api/stats > /dev/null && echo '✅ API en bonne santé' && cd '$VPS_DIR' && docker compose ps"
