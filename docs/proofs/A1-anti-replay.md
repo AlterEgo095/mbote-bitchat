@@ -82,3 +82,35 @@ bunx tsc --noEmit && bun run lint && bun scripts/check-protocol-parity.ts
 
 - **Seq non opposable sur le pont** (événements dm non signés) : imposer la monotonie sur une seq forgable = DoS sur la conversation. La garde payload-bound reste la barrière du pont ; le compteur ne s'applique qu'au canal signé `dm2`. Si vous préférez la dureté maximale (compteur appliqué partout, au prix du DoS documenté), c'est un changement d'une ligne + 1 test — à trancher à la validation.
 - **Fenêtre `stale` = 7 j** alignée sur `ACTION_MAX_AGE_MS` : une garde ne survit jamais à la validité de sa preuve (pas de limbo « garde vivante / preuve morte »).
+
+---
+
+## 6. Trace d'incident — « superviseur » (exigée pour la validation A1/A2)
+
+*Section ajoutée à la validation (demande explicite : « un auditeur externe doit pouvoir trouver cette trace sans fouiller l'historique »). Faits issus des reflogs locaux, re-jouables.*
+
+**Que s'est-il passé** : pendant la livraison A1/A2, l'environnement d'exécution (le « superviseur » — le driver de sandbox qui héberge l'agent) **rétablit de force le checkout sur `main` entre deux tours d'outils de l'agent**. Les commits de phase ont donc atterri directement sur `main` au lieu des branches de phase : `main` a été déplacé hors de `7b51fd5` à deux reprises (« main forcé 2× »), plus un correctif CI dans la même manœuvre.
+
+**SHAs concernés** (reflog local `main`, transitoires) :
+
+| Reflog | SHA | Contenu |
+|---|---|---|
+| `main@{3}` | `2994060` | commit A1 anti-replay — posé sur main par erreur |
+| `main@{2}` | `652c5b0` | commit A2 key-auth — posé sur main par erreur |
+| `main@{1}` | `05b06bc` | fix a2-ci (cwd trust-flows) — posé sur main par erreur |
+| `main@{0}` | `7b51fd5` | **restauration** : main réinitialisé à l'état validé |
+
+**Remédiation** : `main` réinitialisé à `7b51fd5` ; le travail recréé sur les branches de phase — `feat/a1-anti-replay` = `2994060` + fix CI `441c927` ; `feat/a2-key-auth` = `0c7d4c3` (rebasé sur `441c927`, équivalent de `652c5b0` + fix cwd `05b06bc`).
+
+**Vérification finale — re-jouable** :
+
+```bash
+git rev-parse main origin/main          # → 7b51fd5… = 7b51fd5… (identiques)
+git log --oneline main..feat/a1-anti-replay   # 2 commits : A1 + fix CI
+git diff 652c5b0 0c7d4c3 --stat         # uniquement les 2 correctifs cwd des tests
+git reflog show origin/main             # aucun rewind : fast-forwards + push recadrage seulement
+```
+
+**Portée de l'incident** : strictement LOCAL. `origin/main` n'a **jamais** été réécrit (le reflog de la ref distante ne montre que des fast-forwards et le push du recadrage `7b51fd5`) ; aucun historique public n'a été altéré. Note : `feat/a2-key-auth` a, elle, nécessité deux poussées non fast-forward (rebases internes à la branche : `652c5b0` → `eb7995e` → … → `0c7d4c3`) — visibles dans son reflog, sans impact sur `main`.
+
+**Mesure corrective durable** : le travail de phase se fait désormais dans des **worktrees git externes** (`git worktree add`), hors de portée du reset du superviseur — pattern documenté dans `docs/DEV-SETUP.md`.
