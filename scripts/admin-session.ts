@@ -7,12 +7,15 @@
  *  permet de tester la rupture (endpoints session-based) localement.
  *
  *  Il crée (si absent) un AdminUser de test et une AdminSession, puis affiche
- *  le cookie et le jeton CSRF — la session vit en DB (AdminSession).
+ *  le cookie et le jeton CSRF — la session vit en DB (AdminSession, hash du
+ *  token seul — Étape 3).
  *
  *  Usage :
  *    DATABASE_URL="file:$(pwd)/db/adm-rupture.db" \
  *      bun scripts/admin-session.ts --email dev@mbote.test --role super-admin
- *    # → Cookie: mbote_admin_session=<id>  ·  x-admin-csrf: <token>
+ *    # → Cookie: mbote_admin_session=<token>  ·  x-admin-csrf: <token>
+ *    #   x-admin-internal + x-admin-actor requis depuis l'Étape 4 — voir
+ *    #   ADMIN_INTERNAL_TOKEN du serveur ciblé.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -66,7 +69,7 @@ try {
   });
 
   const ttlMs = Math.max(1, Number(values["ttl-hours"] ?? 8) || 8) * 3600_000;
-  const { sessionId, csrfToken, expiresAt } = await createAdminSession(user.id, {
+  const session = await createAdminSession(user.id, {
     ip: "dev-bootstrap",
     userAgent: "scripts/admin-session.ts",
     ttlMs,
@@ -74,10 +77,14 @@ try {
 
   console.log(
     `✅ Session DEV créée pour ${email} (id=${user.id}, role=${role})
-Cookie      : mbote_admin_session=${sessionId}
-CSRF header : x-admin-csrf: ${csrfToken}
-Expire      : ${expiresAt.toISOString()}
-Usage curl  : curl -b "mbote_admin_session=${sessionId}" -H "x-admin-csrf: ${csrfToken}" …`
+Cookie      : mbote_admin_session=${session.sessionToken}
+CSRF header : x-admin-csrf: ${session.csrfToken}
+Expire      : ${session.expiresAt.toISOString()}
+NB (Étape 4): les endpoints /api/moderation/* exigent AUSSI x-admin-internal
+             (ADMIN_INTERNAL_TOKEN du serveur) et x-admin-actor: ${user.id}.
+Usage curl  : curl -b "mbote_admin_session=${session.sessionToken}" \\
+  -H "x-admin-csrf: ${session.csrfToken}" -H "x-admin-actor: ${user.id}" \\
+  -H "x-admin-internal: $ADMIN_INTERNAL_TOKEN" …`
   );
 } finally {
   await db.$disconnect();
