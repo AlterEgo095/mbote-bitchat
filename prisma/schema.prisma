@@ -209,6 +209,7 @@ model ModerationAction {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADM Étape 0 — couche administration (rupture ADMIN_API_KEY)
+// ADM Étape 3 — auth (login+TOTP+break-glass) : voir docs/proofs/ADM-step3-4.md
 // Audit : docs/proofs/ADM-audit-2026-11-05.md (GO conditionnel, risques R-1/R-2)
 // Append-only d'AdminAudit : triggers SQLite (BEFORE UPDATE/DELETE → RAISE)
 // posés dans la migration 0004_admin — aucun client (Prisma inclus) ne peut
@@ -222,11 +223,15 @@ model AdminUser {
   passwordHash  String? // Argon2id — null pour le pseudo-user system (jamais de login)
   totpSecret    String?
   totpEnrolled  Boolean   @default(false)
+  // ADM Étape 3 — anti-rejeu TOTP : dernier compteur de 30 s VALIDÉ avec succès.
+  // Un code d'un compteur ≤ à celui-ci est un REJEU → 401 uniforme.
+  totpLastCounter Int?
   role          String // system | auditor | support | moderator | super-admin
   createdAt     DateTime  @default(now())
   disabledAt    DateTime?
 
   sessions          AdminSession[]
+  recoveryCodes     AdminRecoveryCode[]
   audits            AdminAudit[]       @relation("auditActor")
   hiddenPosts       Post[]             @relation("postHiddenBy")
   suspendedUsers    User[]             @relation("userSuspendedBy")
@@ -239,6 +244,9 @@ model AdminUser {
 model AdminSession {
   id          String    @id @default(cuid())
   adminUserId Int
+  // ADM Étape 3 — le cookie porte un token ALÉATOIRE 32 octets ; SEUL SON HASH
+  // SHA-256 est stocké ici (jamais le token en clair — directive Étape 3).
+  tokenHash   String    @unique
   csrfToken   String // anti-CSRF : exigé en header x-admin-csrf sur toute mutation
   ip          String?
   userAgent   String?
@@ -246,11 +254,28 @@ model AdminSession {
   lastSeenAt  DateTime  @default(now())
   expiresAt   DateTime
   revokedAt   DateTime?
+  revokedReason String? // logout | idle-timeout | break-glass | admin-disabled
 
   adminUser AdminUser @relation(fields: [adminUserId], references: [id])
 
   @@index([adminUserId])
   @@index([expiresAt])
+}
+
+// ADM Étape 3 — break-glass (décision audit §4.2) : 2 codes de secours créés au
+// bootstrap, montrés UNE FOIS, stockés HASHÉS Argon2id. Un code utilisé est
+// brûlé (usedAt + ip + userAgent) — jamais réutilisable.
+model AdminRecoveryCode {
+  id            Int       @id @default(autoincrement())
+  adminUserId   Int
+  adminUser     AdminUser @relation(fields: [adminUserId], references: [id])
+  codeHash      String // Argon2id PHC — jamais le code en clair
+  usedAt        DateTime?
+  usedIp        String?
+  usedUserAgent String?
+  createdAt     DateTime  @default(now())
+
+  @@index([adminUserId])
 }
 
 model AdminAudit {
