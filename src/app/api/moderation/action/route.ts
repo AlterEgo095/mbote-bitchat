@@ -2,9 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { trackApiRequest } from "@/lib/mbote/state-store";
 import { MODERATION_ACTIONS, purgePostWithAudit } from "@/lib/mbote/moderation";
-import { isDenied, requireAdmin, writeAdminAudit, type AdminContext } from "@/lib/mbote/admin-auth";
+import { isDenied, requireAdmin, roleAtLeast, writeAdminAudit, type AdminContext } from "@/lib/mbote/admin-auth";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Rôles MINIMAUX PAR ACTION — matrice RBAC §4 (ADMIN-RBAC.md) câblée à
+ * l'Étape 4 : warn = support · hide/unhide/suspend/unsuspend/purge = moderator.
+ * (support et auditor = lecture seule — directive Étape 4.)
+ */
+const ACTION_MIN_ROLE: Record<string, string> = {
+  warn: "support",
+  hide: "moderator",
+  unhide: "moderator",
+  suspend: "moderator",
+  unsuspend: "moderator",
+  purge: "moderator",
+};
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -12,8 +26,12 @@ export const dynamic = "force-dynamic";
  * ─────────────────────────────────────────────────────────────────────────────
  *  ADM Étape 0 — RUPTURE ADMIN_API_KEY : l'authentification est une SESSION
  *  admin (cookie `mbote_admin_session` + header `x-admin-csrf` sur mutation).
- *  AUCUNE clé n'est lue ici — 401 si session absente/invalide, 403 si rôle
- *  insuffisant ou CSRF invalide. L'acteur est `AdminUser.id` (traçable) ;
+ *  AUCUNE clé n'est lue ici. ADM Étape 4 — DOUBLE CONTRÔLE : la requête doit
+ *  AUSSI porter le token interne du panneau (`x-admin-internal`) ET l'acteur
+ *  nominatif (`x-admin-actor` == session) — le token SEUL ne peut RIEN faire.
+ *  401/403 avec message uniforme `unauthorized` (aucune fuite de couche).
+ *  Rôles par action : matrice RBAC §4 (warn=support · autres mutations=moderator).
+ *  L'acteur est `AdminUser.id` (traçable) ;
  *  chaque action écrit `ModerationAction` (label `admin-<id>`) ET `AdminAudit`
  *  (append-only) dans la même transaction. Aucune réponse ne contient de secret.
  *
@@ -34,7 +52,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   const done = trackApiRequest("moderation.action");
   try {
-    const gate = await requireAdmin(req, { minRole: "moderator", mutation: true });
+    const gate = await requireAdmin(req, { minRole: "auditor", mutation: true });
     if (isDenied(gate)) return gate;
     const ctx: AdminContext = gate;
 
@@ -46,6 +64,10 @@ export async function POST(req: NextRequest) {
         { error: `action invalide (valeurs : ${MODERATION_ACTIONS.join(", ")})` },
         { status: 400 }
       );
+    }
+    // RBAC §4 — rôle minimal PAR ACTION (au-delà du plancher auditor du gate)
+    if (!roleAtLeast(ctx.role, ACTION_MIN_ROLE[action] ?? "moderator")) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
     if (targetKind !== "post" && targetKind !== "user") {
       return NextResponse.json(

@@ -11,9 +11,10 @@ export const dynamic = "force-dynamic";
  * ─────────────────────────────────────────────────────────────────────────────
  *  GET /api/moderation/queue — file de modération (ADMIN)
  * ─────────────────────────────────────────────────────────────────────────────
- *  ADM Étape 0 — RUPTURE ADMIN_API_KEY : auth par SESSION admin (lecture,
- *  rôle ≥ support — matrice RBAC : docs/ADMIN-RBAC.md). 401 si session
- *  absente/invalide · 403 si rôle insuffisant. Aucune clé n'est lue ici.
+ *  ADM Étape 0 — RUPTURE ADMIN_API_KEY : auth par SESSION admin (lecture).
+ *  ADM Étape 4 — alignement matrice RBAC §4 : queue.view = rôle ≥ AUDITOR
+ *  (lecture seule) + double contrôle token interne + acteur nominatif.
+ *  401/403 avec message uniforme `unauthorized`. Aucune clé n'est lue ici.
  *
  *  Chaque entrée = un signalement + son CONTEXTE : contenu ciblé (extrait,
  *  auteur, état hidden/suspendu), nb de signalements ouverts sur la même cible.
@@ -26,7 +27,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const done = trackApiRequest("moderation.queue");
   try {
-    const gate = await requireAdmin(req, { minRole: "support" });
+    const gate = await requireAdmin(req, { minRole: "auditor" });
     if (isDenied(gate)) return gate;
 
     const sp = req.nextUrl.searchParams;

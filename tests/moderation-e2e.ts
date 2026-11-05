@@ -3,12 +3,17 @@
  *  E2E A3 — modération du fil public contre l'API RÉELLE (serveur dev)
  * ─────────────────────────────────────────────────────────────────────────────
  *  Prérequis : serveur dev avec DATABASE_URL EXPLICITE (piège du DATABASE_URL
- *  global du sandbox : docs/DEV-SETUP.md §2a) — DB migrations-based (0001–0004).
+ *  global du sandbox : docs/DEV-SETUP.md §2a) — DB migrations-based (0001–0005).
  *  ADM Étape 0 (rupture) : le serveur N'A PLUS BESOIN d'ADMIN_API_KEY ; le
- *  script crée lui-même son AdminUser de test + sa session (bootstrap) :
+ *  script crée lui-même son AdminUser de test + sa session (bootstrap).
+ *  ADM Étape 4 (RBAC) : les endpoints /api/moderation/* exigent AUSSI le token
+ *  interne (x-admin-internal) et l'acteur nominatif (x-admin-actor) — le
+ *  harness lit ADMIN_INTERNAL_TOKEN de l'env (même valeur que le serveur) :
  *    DATABASE_URL="file:$(pwd)/db/adm-rupture.db" bunx prisma migrate deploy
- *    DATABASE_URL="file:$(pwd)/db/adm-rupture.db" bunx next dev -p 3100 &
- *    DATABASE_URL="file:$(pwd)/db/adm-rupture.db" MBOTE_BASE_URL=http://127.0.0.1:3100 \
+ *    DATABASE_URL="file:$(pwd)/db/adm-rupture.db" ADMIN_INTERNAL_TOKEN=<hex> \
+ *      bunx next dev -p 3100 &
+ *    DATABASE_URL="file:$(pwd)/db/adm-rupture.db" \
+ *      ADMIN_INTERNAL_TOKEN=<hex> MBOTE_BASE_URL=http://127.0.0.1:3100 \
  *      bun tests/moderation-e2e.ts
  *
  *  Scénarios (exigences de validation A3) :
@@ -31,7 +36,9 @@
  *        action=purge conservée (auteur, extrait) — vérification DB      [exig. 4]
  *   S12. intégration complète : report → file → action(hide) → DB
  *        (report clôturé actioned/handledById = admin)                   [exig. 5]
- *   S13. négatif : session absente/étrangère → 401 · CSRF absent → 403    [exig. 6b]
+ *   S13. négatif : session absente/étrangère → 401 · CSRF absent/faux → 403
+ *        (testé avec token interne + acteur présents — la couche CSRF est
+ *        LA DERNIÈRE du requireAdmin Étape 4 : token → session → acteur → CSRF)
  *   S14. suspend → posts de Bob absents du fil, publication refusée 403 ;
  *        unsuspend → retour à la normale ; warn → trace d'audit en DB
  *   S15. unblock → les posts de Bob redeviennent visibles dans le fil d'Alice,
@@ -65,27 +72,41 @@ function check(label: string, ok: boolean, detail?: string): void {
 
 async function jsonFetch(
   path: string,
-  init?: RequestInit & { admin?: { cookie: string; csrf: string } }
+  init?: RequestInit & { admin?: { cookie: string; csrf: string; actorId: string } }
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const { admin, ...rest } = init ?? {};
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (admin) {
+    // ADM Étape 4 — double contrôle : session + CSRF + token interne + acteur
     headers["Cookie"] = admin.cookie;
     headers["x-admin-csrf"] = admin.csrf;
+    headers["x-admin-internal"] = INTERNAL_TOKEN;
+    headers["x-admin-actor"] = admin.actorId;
   }
   const res = await fetch(`${BASE}${path}`, { ...rest, headers: { ...headers, ...(rest.headers as Record<string, string>) } });
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return { status: res.status, body };
 }
 
-// ── ADM Étape 0 : bootstrap de la session admin de test (DEV — cf. en-tête) ──
+// ── ADM Étape 4 : token interne requis par le harness (même valeur serveur) ──
+const INTERNAL_TOKEN = process.env.ADMIN_INTERNAL_TOKEN ?? "";
+if (!INTERNAL_TOKEN) {
+  console.error("ADMIN_INTERNAL_TOKEN manquant — le serveur et ce harness doivent partager la même valeur.");
+  process.exit(1);
+}
+
+// ── ADM Étape 0/3 : bootstrap de la session admin de test (DEV — cf. en-tête) ──
 const admUser = await db.adminUser.upsert({
   where: { email: "a3-e2e@mbote.test" },
   create: { email: "a3-e2e@mbote.test", role: "super-admin" },
   update: {},
 });
 const admSession = await createAdminSession(admUser.id, { ip: "e2e", userAgent: "tests/moderation-e2e.ts" });
-const ADMIN = { cookie: `mbote_admin_session=${admSession.sessionId}`, csrf: admSession.csrfToken };
+const ADMIN = {
+  cookie: `mbote_admin_session=${admSession.sessionToken}`,
+  csrf: admSession.csrfToken,
+  actorId: String(admUser.id),
+};
 console.log(`session e2e : adminUser id=${admUser.id} (${admUser.role})`);
 
 interface Identity {
@@ -294,9 +315,9 @@ const actBadKey = await moderationAction({ action: "hide", targetKind: "post", t
 check("avec session INCONNUE → 401", actBadKey.status === 401, `status=${actBadKey.status}`);
 const actUserKey = await moderationAction({ action: "hide", targetKind: "post", targetId: P1 }, { cookie: `mbote_admin_session=${encodeURIComponent(alice.pubkey)}`, csrf: "x" });
 check("avec une valeur NON-session (pubkey d'un utilisateur) → 401", actUserKey.status === 401, `status=${actUserKey.status}`);
-const actNoCsrf = await jsonFetch("/api/moderation/action", { method: "POST", headers: { Cookie: ADMIN.cookie }, body: JSON.stringify({ action: "hide", targetKind: "post", targetId: P1 }) });
-check("session valide SANS jeton CSRF → 403", actNoCsrf.status === 403, `status=${actNoCsrf.status} ${JSON.stringify(actNoCsrf.body)}`);
-const actBadCsrf = await jsonFetch("/api/moderation/action", { method: "POST", headers: { Cookie: ADMIN.cookie, "x-admin-csrf": "csrf-faux" }, body: JSON.stringify({ action: "hide", targetKind: "post", targetId: P1 }) });
+const actNoCsrf = await jsonFetch("/api/moderation/action", { method: "POST", headers: { Cookie: ADMIN.cookie, "x-admin-internal": INTERNAL_TOKEN, "x-admin-actor": ADMIN.actorId }, body: JSON.stringify({ action: "hide", targetKind: "post", targetId: P1 }) });
+check("session valide SANS jeton CSRF → 403 (token interne + acteur présents)", actNoCsrf.status === 403, `status=${actNoCsrf.status} ${JSON.stringify(actNoCsrf.body)}`);
+const actBadCsrf = await jsonFetch("/api/moderation/action", { method: "POST", headers: { Cookie: ADMIN.cookie, "x-admin-csrf": "csrf-faux", "x-admin-internal": INTERNAL_TOKEN, "x-admin-actor": ADMIN.actorId }, body: JSON.stringify({ action: "hide", targetKind: "post", targetId: P1 }) });
 check("session valide avec CSRF FAUX → 403", actBadCsrf.status === 403, `status=${actBadCsrf.status}`);
 
 console.log("── S14 : suspension d'un auteur ──");

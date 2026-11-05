@@ -1,13 +1,21 @@
 import { BackendStatus } from "@/components/BackendStatus";
+import { AdminAuthPanel } from "@/components/AdminAuthPanel";
+import { getPanelSessionServer } from "@/lib/admin-backend";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Page stub du squelette ADM (Étape 1+2).
-// Aucune donnée sensible : l'authentification arrive à l'Étape 3
-// (docs/specs/ADM-breakdown.md E3). La seule fonctionnalité vivante est le
-// health check qui reflète l'état réel de la liaison panneau → app principale.
+// Page du panneau ADM — Étape 3 : authentification vivante.
+// L'état de session est calculé CÔTÉ SERVEUR (verify via l'app principale) et
+// passé en prop — pas de effet de chargement côté client. Le health check
+// (Étape 2) reste la vérification vivante de la liaison panneau → principale.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const session = await getPanelSessionServer().catch(() => null);
+  const initial = session
+    ? { authenticated: true, email: session.email, role: session.role, totpEnrolled: session.totpEnrolled }
+    : { authenticated: false, email: "", role: "", totpEnrolled: false };
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-zinc-200 bg-white">
@@ -15,16 +23,32 @@ export default function Home() {
           <h1 className="text-lg font-semibold tracking-tight text-zinc-900">
             Mbote Admin
           </h1>
-          <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-800">
-            squelette — Étape 1+2
+          <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+            auth — Étape 3+4
           </span>
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6">
         <section
-          aria-labelledby="status-heading"
+          aria-labelledby="auth-heading"
           className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm"
+        >
+          <h2 id="auth-heading" className="text-base font-semibold text-zinc-900">
+            Authentification
+          </h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            Email + mot de passe + code TOTP (6 chiffres) — un seul round-trip.
+            Toute échec est uniforme (aucune indication sur la cause).
+          </p>
+          <div className="mt-4">
+            <AdminAuthPanel initial={initial} />
+          </div>
+        </section>
+
+        <section
+          aria-labelledby="status-heading"
+          className="mt-6 rounded-lg border border-zinc-200 bg-white p-6 shadow-sm"
         >
           <h2 id="status-heading" className="text-base font-semibold text-zinc-900">
             État du service
@@ -32,37 +56,17 @@ export default function Home() {
           <p className="mt-1 text-sm text-zinc-600">
             Vérification vivante de la liaison panneau → app principale
             (<code className="rounded bg-zinc-100 px-1 py-0.5 text-xs">BACKEND_INTERNAL_URL</code>).
-            Aucune donnée sensible n&apos;est exposée par cette page.
           </p>
           <BackendStatus />
         </section>
 
-        <section
-          aria-labelledby="skeleton-heading"
-          className="mt-6 rounded-lg border border-zinc-200 bg-white p-6 shadow-sm"
-        >
-          <h2 id="skeleton-heading" className="text-base font-semibold text-zinc-900">
-            Squelette ADM MVP
-          </h2>
-          <ul className="mt-3 list-inside space-y-2 text-sm text-zinc-700">
-            <li className="flex gap-2">
-              <span className="font-medium text-emerald-700">[fait]</span>
-              Rupture <code className="rounded bg-zinc-100 px-1 text-xs">ADMIN_API_KEY</code>{" "}
-              (Étape 0) — sessions, CSRF, rôles, audit append-only.
-            </li>
-            <li className="flex gap-2">
-              <span className="font-medium text-amber-700">[Étape 3]</span>
-              Authentification (login + TOTP + break-glass) — d&apos;ici là, cette
-              page n&apos;expose rien et la surface admin API reste fermée aux
-              humains en production (fail-safe volontaire).
-            </li>
-          </ul>
-          <p className="mt-4 border-t border-zinc-100 pt-4 text-xs leading-relaxed text-zinc-500">
-            Invariants : zéro accès DB direct depuis cette app · cookie de session
-            dédié au domaine admin · Cloudflare Access requis avant toute
-            exposition (docs/specs/ADMIN-RBAC.md).
-          </p>
-        </section>
+        <p className="mt-4 text-xs leading-relaxed text-zinc-500">
+          Invariants : zéro accès DB direct depuis cette app · cookie de session
+          dédié au domaine admin (HttpOnly, SameSite=Strict) · double contrôle
+          token interne + acteur nominatif vers l&apos;app principale ·
+          Cloudflare Access requis avant toute exposition
+          (docs/specs/ADMIN-RBAC.md, preuves ADM-step3-4.md).
+        </p>
       </main>
 
       <footer className="mt-auto border-t border-zinc-200 bg-white pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
