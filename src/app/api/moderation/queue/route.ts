@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { trackApiRequest } from "@/lib/mbote/state-store";
-import { adminGuard, auditSnippet } from "@/lib/mbote/moderation";
+import { auditSnippet } from "@/lib/mbote/moderation";
+import { isDenied, requireAdmin } from "@/lib/mbote/admin-auth";
 import { parseBoundedInt } from "@/lib/mbote/params";
 
 export const dynamic = "force-dynamic";
@@ -10,10 +11,9 @@ export const dynamic = "force-dynamic";
  * ─────────────────────────────────────────────────────────────────────────────
  *  GET /api/moderation/queue — file de modération (ADMIN)
  * ─────────────────────────────────────────────────────────────────────────────
- *  AUTH PROVISOIRE (validation A3) : header `x-admin-key: <ADMIN_API_KEY>`
- *  (ou `Authorization: Bearer <ADMIN_API_KEY>`) — clé dans l'env, à remplacer
- *  par un RBAC complet AVANT ouverture publique (documenté dans
- *  docs/proofs/A3-moderation.md). 403 UNIFORME : clé absente ou invalide.
+ *  ADM Étape 0 — RUPTURE ADMIN_API_KEY : auth par SESSION admin (lecture,
+ *  rôle ≥ support — matrice RBAC : docs/ADMIN-RBAC.md). 401 si session
+ *  absente/invalide · 403 si rôle insuffisant. Aucune clé n'est lue ici.
  *
  *  Chaque entrée = un signalement + son CONTEXTE : contenu ciblé (extrait,
  *  auteur, état hidden/suspendu), nb de signalements ouverts sur la même cible.
@@ -26,8 +26,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const done = trackApiRequest("moderation.queue");
   try {
-    const denied = adminGuard(req);
-    if (denied) return denied;
+    const gate = await requireAdmin(req, { minRole: "support" });
+    if (isDenied(gate)) return gate;
 
     const sp = req.nextUrl.searchParams;
     const statusRaw = sp.get("status") ?? "open";
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
         content: true,
         createdAt: true,
         hiddenAt: true,
-        hiddenBy: true,
+        hiddenById: true,
         author: { select: { pubkey: true, nickname: true, suspendedAt: true } },
       },
     });
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
           details: r.details,
           status: r.status,
           handledAt: r.handledAt,
-          handledBy: r.handledBy,
+          handledById: r.handledById,
           createdAt: r.createdAt,
         },
         context: t
@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
               snippet: auditSnippet(t.content, 160),
               postCreatedAt: t.createdAt,
               hiddenAt: t.hiddenAt,
-              hiddenBy: t.hiddenBy,
+              hiddenById: t.hiddenById,
               author: {
                 pubkey: t.author.pubkey,
                 nickname: t.author.nickname,

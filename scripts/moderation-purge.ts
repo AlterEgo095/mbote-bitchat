@@ -9,12 +9,13 @@
  *  Usage :
  *    bun scripts/moderation-purge.ts --list [--min-reports 3] [--limit 50]
  *    bun scripts/moderation-purge.ts --purge <postId> --reason "..." \
- *        --admin-label "ops:cli-alice" --execute
+ *        --admin-key "$ADMIN_API_KEY" --execute
  *
  *  Sans `--execute`, la purge est un DRY-RUN (n'affiche que ce qui serait fait).
- *  La trace `ModerationAction` est écrite avec `adminKey = --admin-label`
- *  (chaîne libre d'exploitation — l'outil opère en DB, il est par nature admin ;
- *  le label laisse une piste humaine dans l'audit).
+ *  ADM Étape 0 (rupture) : le CLI est le SEUL consommateur restant d'
+ *  `ADMIN_API_KEY` (secret machine) — fournie via `--admin-key`, comparée en
+ *  timing-safe à l'env, JAMAIS stockée en DB, JAMAIS renvoyée. L'acteur des
+ *  traces est le pseudo-user `system` (seed 0004) avec label "cli".
  *
  *  DATABASE_URL : lu de l'environnement ou de .env (bun le charge).
  * ─────────────────────────────────────────────────────────────────────────────
@@ -22,7 +23,8 @@
 
 import { parseArgs } from "util";
 import { PrismaClient } from "@prisma/client";
-import { auditSnippet, purgePostWithAudit } from "../src/lib/mbote/moderation";
+import { auditSnippet, isAdminKey, purgePostWithAudit } from "../src/lib/mbote/moderation";
+import { getSystemActor } from "../src/lib/mbote/admin-auth";
 
 const { values } = parseArgs({
   args: process.argv.slice(2),
@@ -32,7 +34,7 @@ const { values } = parseArgs({
     "min-reports": { type: "string", default: "1" },
     limit: { type: "string", default: "50" },
     reason: { type: "string" },
-    "admin-label": { type: "string" },
+    "admin-key": { type: "string" },
     execute: { type: "boolean", default: false },
     help: { type: "boolean", default: false },
   },
@@ -42,9 +44,10 @@ if (values.help || (!values.list && !values.purge)) {
   console.log(
     `Usage:
   bun scripts/moderation-purge.ts --list [--min-reports 3] [--limit 50]
-  bun scripts/moderation-purge.ts --purge <postId> --reason "..." --admin-label "ops:cli" --execute
+  bun scripts/moderation-purge.ts --purge <postId> --reason "..." --admin-key "$ADMIN_API_KEY" --execute
 
-Sans --execute : dry-run (aucune écriture).`
+Sans --execute : dry-run (aucune écriture).
+--admin-key : requis avec --execute (timing-safe vs ADMIN_API_KEY — jamais stockée, jamais affichée).`
   );
   process.exit(values.help ? 0 : 1);
 }
@@ -88,13 +91,13 @@ async function listCandidates(): Promise<void> {
     );
   }
   console.log(
-    `\nPurge : bun scripts/moderation-purge.ts --purge <postId> --reason "..." --admin-label "ops:cli" --execute\n`
+    `\nPurge : bun scripts/moderation-purge.ts --purge <postId> --reason "..." --admin-key "$ADMIN_API_KEY" --execute\n`
   );
 }
 
 async function purgeOne(): Promise<void> {
   const postId = values.purge as string;
-  const adminLabel = values["admin-label"] ?? "ops:cli";
+  const providedKey = values["admin-key"] ?? "";
   if (!values.execute) {
     const post = await db.post.findUnique({
       where: { id: postId },
@@ -113,21 +116,35 @@ async function purgeOne(): Promise<void> {
       where: { targetId: postId, status: "open" },
     });
     console.log(
-      `\nDRY-RUN — purge de ${postId} :\n  auteur=${post.author.nickname} (${post.author.pubkey.slice(0, 12)}…)\n  « ${auditSnippet(post.content, 160)} »\n  likes=${post.likeCount}  signalements ouverts=${openReports}\n  → trace ModerationAction(action=purge, adminKey=${adminLabel})\nRelancer avec --execute pour appliquer.\n`
+      `\nDRY-RUN — purge de ${postId} :\n  auteur=${post.author.nickname} (${post.author.pubkey.slice(0, 12)}…)\n  « ${auditSnippet(post.content, 160)} »\n  likes=${post.likeCount}  signalements ouverts=${openReports}\n  → traces ModerationAction(action=purge, actorLabel="cli") + AdminAudit(actorId=system)\nRelancer avec --execute --admin-key "$ADMIN_API_KEY" pour appliquer.\n`
     );
     return;
   }
+
+  // ADM Étape 0 — la clé est le secret machine du CLI : validée timing-safe,
+  // jamais affichée, jamais stockée. Acteur = pseudo-user system (label "cli").
+  if (!isAdminKey(providedKey)) {
+    console.error("Clé admin invalide (ADMIN_API_KEY) — purge refusée.");
+    process.exit(1);
+  }
+  const system = await getSystemActor();
 
   try {
     const outcome = await db.$transaction((tx) =>
       purgePostWithAudit(tx, {
         postId,
-        adminKey: adminLabel,
+        actor: {
+          adminUserId: system.id,
+          actorLabel: "cli",
+          actorRole: system.role,
+          ip: null,
+          userAgent: "cli:moderation-purge",
+        },
         reason: values.reason ?? null,
       })
     );
     console.log(
-      `\nPURGÉ ${outcome.purgedPostId} — auteur=${outcome.authorNickname} (${outcome.authorKey.slice(0, 12)}…), réponses purgées=${outcome.repliesPurged}, likes=${outcome.likeCount}, signalements clôturés=${outcome.reportsClosed.length}\nTrace : ModerationAction(action=purge, targetId=${outcome.purgedPostId}, adminKey=${adminLabel})\n`
+      `\nPURGÉ ${outcome.purgedPostId} — auteur=${outcome.authorNickname} (${outcome.authorKey.slice(0, 12)}…), réponses purgées=${outcome.repliesPurged}, likes=${outcome.likeCount}, signalements clôturés=${outcome.reportsClosed.length}\nTraces : ModerationAction(action=purge, targetId=${outcome.purgedPostId}, actorLabel="cli") + AdminAudit(actorId=${system.id}, actorRole="system")\n`
     );
   } catch (err) {
     if (err instanceof Error && err.message === "POST_NOT_FOUND") {

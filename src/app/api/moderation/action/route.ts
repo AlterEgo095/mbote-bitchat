@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { trackApiRequest } from "@/lib/mbote/state-store";
-import {
-  MODERATION_ACTIONS,
-  adminGuard,
-  adminKeyFromRequest,
-  purgePostWithAudit,
-} from "@/lib/mbote/moderation";
+import { MODERATION_ACTIONS, purgePostWithAudit } from "@/lib/mbote/moderation";
+import { isDenied, requireAdmin, writeAdminAudit, type AdminContext } from "@/lib/mbote/admin-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -14,31 +10,33 @@ export const dynamic = "force-dynamic";
  * ─────────────────────────────────────────────────────────────────────────────
  *  POST /api/moderation/action — action admin sur le fil public
  * ─────────────────────────────────────────────────────────────────────────────
- *  AUTH PROVISOIRE : header `x-admin-key` (ADMIN_API_KEY) — 403 UNIFORME si
- *  absente/invalide (test négatif exigé : un utilisateur non admin → 403).
- *  À remplacer par un RBAC complet avant ouverture publique.
+ *  ADM Étape 0 — RUPTURE ADMIN_API_KEY : l'authentification est une SESSION
+ *  admin (cookie `mbote_admin_session` + header `x-admin-csrf` sur mutation).
+ *  AUCUNE clé n'est lue ici — 401 si session absente/invalide, 403 si rôle
+ *  insuffisant ou CSRF invalide. L'acteur est `AdminUser.id` (traçable) ;
+ *  chaque action écrit `ModerationAction` (label `admin-<id>`) ET `AdminAudit`
+ *  (append-only) dans la même transaction. Aucune réponse ne contient de secret.
  *
  *  Actions (fil public UNIQUEMENT — AUCUNE modération DM, E2EE par conception) :
  *   - hide      (post)   : masqué — DISPARAÎT du fil public, RESTE en DB (audit)
  *   - unhide    (post)   : retour au fil public
- *   - purge     (post)   : SUPPRIMÉ en DB (cascade likes/réponses) — trace
- *                          d'audit conservée dans ModerationAction (auteur,
- *                          extrait ≤ 280, compteurs, signalements clôturés)
+ *   - purge     (post)   : SUPPRIMÉ en DB (cascade likes/réponses) — traces
+ *                          ModerationAction + AdminAudit conservées
  *   - warn      (user)   : avertissement enregistré (audit) — la notification
  *                          à l'utilisateur est hors périmètre A3
  *   - suspend   (user)   : posts absents du fil public + publication refusée 403
  *   - unsuspend (user)   : levée de suspension
  *
  *  Chaque action clôture les signalements ouverts liés (status=actioned,
- *  handledAt, handledBy) et laisse UNE trace ModerationAction.
+ *  handledById = admin) et laisse UNE trace ModerationAction + UNE AdminAudit.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 export async function POST(req: NextRequest) {
   const done = trackApiRequest("moderation.action");
   try {
-    const denied = adminGuard(req);
-    if (denied) return denied;
-    const adminKey = adminKeyFromRequest(req) as string; // guard validé non-null
+    const gate = await requireAdmin(req, { minRole: "moderator", mutation: true });
+    if (isDenied(gate)) return gate;
+    const ctx: AdminContext = gate;
 
     const body = await req.json().catch(() => null);
     const { action, targetKind, targetId, reason } = (body ?? {}) as Record<string, unknown>;
@@ -63,6 +61,13 @@ export async function POST(req: NextRequest) {
     }
 
     const handledAt = new Date();
+    const actor = {
+      adminUserId: ctx.adminUserId,
+      actorLabel: ctx.actorLabel,
+      actorRole: ctx.role,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    };
 
     // ── actions sur un contenu public ──
     if (targetKind === "post") {
@@ -91,18 +96,19 @@ export async function POST(req: NextRequest) {
         const updated = await db.$transaction(async (tx) => {
           const row = await tx.post.update({
             where: { id: targetId },
-            data: { hiddenAt: handledAt, hiddenBy: adminKey },
-            select: { id: true, hiddenAt: true, hiddenBy: true },
+            data: { hiddenAt: handledAt, hiddenById: ctx.adminUserId },
+            select: { id: true, hiddenAt: true, hiddenById: true },
           });
           if (openReports.length > 0) {
             await tx.report.updateMany({
               where: { id: { in: openReports.map((r) => r.id) } },
-              data: { status: "actioned", handledAt, handledBy: adminKey },
+              data: { status: "actioned", handledAt, handledById: ctx.adminUserId },
             });
           }
           const trace = await tx.moderationAction.create({
             data: {
-              adminKey,
+              adminUserId: ctx.adminUserId,
+              actorLabel: ctx.actorLabel,
               action: "hide",
               targetKind: "post",
               targetId,
@@ -110,12 +116,24 @@ export async function POST(req: NextRequest) {
               reportIds: JSON.stringify(openReports.map((r) => r.id)),
             },
           });
+          await writeAdminAudit({
+            tx,
+            actorId: ctx.adminUserId,
+            actorRole: ctx.role,
+            action: "hide",
+            targetType: "post",
+            targetId,
+            after: { hiddenAt: row.hiddenAt, reportsClosed: openReports.length },
+            ip: ctx.ip,
+            userAgent: ctx.userAgent,
+            justification: typeof reason === "string" ? reason : null,
+          });
           return { row, trace, closed: openReports.map((r) => r.id) };
         });
         return NextResponse.json({
           action: updated.trace,
           affected: {
-            post: { id: targetId, hiddenAt: updated.row.hiddenAt, hiddenBy: updated.row.hiddenBy },
+            post: { id: targetId, hiddenAt: updated.row.hiddenAt, hiddenById: updated.row.hiddenById },
             reportsClosed: updated.closed.length,
           },
         });
@@ -125,17 +143,30 @@ export async function POST(req: NextRequest) {
         const updated = await db.$transaction(async (tx) => {
           const row = await tx.post.update({
             where: { id: targetId },
-            data: { hiddenAt: null, hiddenBy: null },
+            data: { hiddenAt: null, hiddenById: null },
             select: { id: true, hiddenAt: true },
           });
           const trace = await tx.moderationAction.create({
             data: {
-              adminKey,
+              adminUserId: ctx.adminUserId,
+              actorLabel: ctx.actorLabel,
               action: "unhide",
               targetKind: "post",
               targetId,
               reason: typeof reason === "string" ? reason : null,
             },
+          });
+          await writeAdminAudit({
+            tx,
+            actorId: ctx.adminUserId,
+            actorRole: ctx.role,
+            action: "unhide",
+            targetType: "post",
+            targetId,
+            after: { hiddenAt: row.hiddenAt },
+            ip: ctx.ip,
+            userAgent: ctx.userAgent,
+            justification: typeof reason === "string" ? reason : null,
           });
           return { row, trace };
         });
@@ -145,17 +176,22 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // purge — trace d'audit OBLIGATOIRE (post supprimé, trace conservée)
+      // purge — traces d'audit OBLIGATOIRES (post supprimé, traces conservées)
       try {
         const outcome = await db.$transaction((tx) =>
           purgePostWithAudit(tx, {
             postId: targetId,
-            adminKey,
+            actor,
             reason: typeof reason === "string" ? reason : null,
           })
         );
         return NextResponse.json({
-          action: { action: "purge", targetKind: "post", targetId, adminKey },
+          action: {
+            action: "purge",
+            targetKind: "post",
+            targetId,
+            actorLabel: ctx.actorLabel,
+          },
           affected: {
             purged: true,
             purgedPostId: outcome.purgedPostId,
@@ -200,9 +236,9 @@ export async function POST(req: NextRequest) {
     const result = await db.$transaction(async (tx) => {
       const data =
         action === "suspend"
-          ? { suspendedAt: handledAt, suspendedBy: adminKey }
+          ? { suspendedAt: handledAt, suspendedById: ctx.adminUserId }
           : action === "unsuspend"
-            ? { suspendedAt: null, suspendedBy: null }
+            ? { suspendedAt: null, suspendedById: null }
             : {};
       const row = await tx.user.update({
         where: { id: user.id },
@@ -212,12 +248,13 @@ export async function POST(req: NextRequest) {
       if (openReports.length > 0) {
         await tx.report.updateMany({
           where: { id: { in: openReports.map((r) => r.id) } },
-          data: { status: "actioned", handledAt, handledBy: adminKey },
+          data: { status: "actioned", handledAt, handledById: ctx.adminUserId },
         });
       }
       const trace = await tx.moderationAction.create({
         data: {
-          adminKey,
+          adminUserId: ctx.adminUserId,
+          actorLabel: ctx.actorLabel,
           action,
           targetKind: "user",
           targetId,
@@ -229,6 +266,19 @@ export async function POST(req: NextRequest) {
             ...(action === "warn" ? { note: "avertissement enregistré (notification hors périmètre A3)" } : {}),
           }),
         },
+      });
+      await writeAdminAudit({
+        tx,
+        actorId: ctx.adminUserId,
+        actorRole: ctx.role,
+        action,
+        targetType: "user",
+        targetId,
+        before: { suspendedAt: user.suspendedAt },
+        after: { suspendedAt: row.suspendedAt, reportsClosed: openReports.length },
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        justification: typeof reason === "string" ? reason : null,
       });
       return { row, trace };
     });

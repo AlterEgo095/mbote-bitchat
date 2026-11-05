@@ -2,13 +2,14 @@
  * ─────────────────────────────────────────────────────────────────────────────
  *  E2E A3 — modération du fil public contre l'API RÉELLE (serveur dev)
  * ─────────────────────────────────────────────────────────────────────────────
- *  Prérequis : serveur avec ADMIN_API_KEY + DATABASE_URL EXPLICITES (piège du
- *  DATABASE_URL global du sandbox : docs/DEV-SETUP.md §2a). Le DATABASE_URL du
- *  script DOIT être identique à celui du serveur (vérifications DB directes).
- *    DATABASE_URL="file:$(pwd)/db/custom.db" bunx prisma db push
- *    DATABASE_URL="file:$(pwd)/db/custom.db" ADMIN_API_KEY=a3-dev-admin-key bunx next dev -p 3100 &
- *    DATABASE_URL="file:$(pwd)/db/custom.db" ADMIN_API_KEY=a3-dev-admin-key \
- *      MBOTE_BASE_URL=http://127.0.0.1:3100 bun tests/moderation-e2e.ts
+ *  Prérequis : serveur dev avec DATABASE_URL EXPLICITE (piège du DATABASE_URL
+ *  global du sandbox : docs/DEV-SETUP.md §2a) — DB migrations-based (0001–0004).
+ *  ADM Étape 0 (rupture) : le serveur N'A PLUS BESOIN d'ADMIN_API_KEY ; le
+ *  script crée lui-même son AdminUser de test + sa session (bootstrap) :
+ *    DATABASE_URL="file:$(pwd)/db/adm-rupture.db" bunx prisma migrate deploy
+ *    DATABASE_URL="file:$(pwd)/db/adm-rupture.db" bunx next dev -p 3100 &
+ *    DATABASE_URL="file:$(pwd)/db/adm-rupture.db" MBOTE_BASE_URL=http://127.0.0.1:3100 \
+ *      bun tests/moderation-e2e.ts
  *
  *  Scénarios (exigences de validation A3) :
  *   S1. identités réelles (Alice signaleuse, Bob auteur, Carol signaleuse)
@@ -19,7 +20,7 @@
  *       openReportsOnTarget = 2 dans la file
  *   S5. refus de modération DM : targetKind "dm" → 400 (E2EE par conception)
  *   S6. signalement sans preuve → 401 · cible inconnue → 404
- *   S7. file sans/avec mauvaise clé admin → 403                          [exig. 6a]
+ *   S7. file protégée : sans session → 401 · cookie inconnu → 401          [exig. 6a]
  *   S8. POST /api/block (Alice bloque Bob) → le fil public d'Alice n'affiche
  *       plus Bob ; le fil sans lecteur l'affiche toujours                [exig. 2a]
  *   S9. DM de Bob → REÇU mais MARQUÉ (fromBlocked=true, conversation
@@ -29,9 +30,8 @@
  *   S11. purge (admin) → P2 SUPPRIMÉ en DB, trace ModerationAction
  *        action=purge conservée (auteur, extrait) — vérification DB      [exig. 4]
  *   S12. intégration complète : report → file → action(hide) → DB
- *        (report clôturé actioned/handledBy)                             [exig. 5]
- *   S13. négatif : utilisateur NON-admin tente /api/moderation/action
- *        (sans clé puis mauvaise clé) → 403                              [exig. 6b]
+ *        (report clôturé actioned/handledById = admin)                   [exig. 5]
+ *   S13. négatif : session absente/étrangère → 401 · CSRF absent → 403    [exig. 6b]
  *   S14. suspend → posts de Bob absents du fil, publication refusée 403 ;
  *        unsuspend → retour à la normale ; warn → trace d'audit en DB
  *   S15. unblock → les posts de Bob redeviennent visibles dans le fil d'Alice,
@@ -40,9 +40,9 @@
  */
 
 import { PrismaClient } from "@prisma/client";
+import { createAdminSession } from "../src/lib/mbote/admin-auth";
 
 const BASE = process.env.MBOTE_BASE_URL ?? "http://127.0.0.1:3100";
-const ADMIN = process.env.ADMIN_API_KEY ?? "a3-dev-admin-key";
 const subtle = globalThis.crypto.subtle;
 const db = new PrismaClient();
 
@@ -65,15 +65,28 @@ function check(label: string, ok: boolean, detail?: string): void {
 
 async function jsonFetch(
   path: string,
-  init?: RequestInit & { adminKey?: string }
+  init?: RequestInit & { admin?: { cookie: string; csrf: string } }
 ): Promise<{ status: number; body: Record<string, unknown> }> {
-  const { adminKey, ...rest } = init ?? {};
+  const { admin, ...rest } = init ?? {};
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (adminKey) headers["x-admin-key"] = adminKey;
+  if (admin) {
+    headers["Cookie"] = admin.cookie;
+    headers["x-admin-csrf"] = admin.csrf;
+  }
   const res = await fetch(`${BASE}${path}`, { ...rest, headers: { ...headers, ...(rest.headers as Record<string, string>) } });
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return { status: res.status, body };
 }
+
+// ── ADM Étape 0 : bootstrap de la session admin de test (DEV — cf. en-tête) ──
+const admUser = await db.adminUser.upsert({
+  where: { email: "a3-e2e@mbote.test" },
+  create: { email: "a3-e2e@mbote.test", role: "super-admin" },
+  update: {},
+});
+const admSession = await createAdminSession(admUser.id, { ip: "e2e", userAgent: "tests/moderation-e2e.ts" });
+const ADMIN = { cookie: `mbote_admin_session=${admSession.sessionId}`, csrf: admSession.csrfToken };
+console.log(`session e2e : adminUser id=${admUser.id} (${admUser.role})`);
 
 interface Identity {
   pubkey: string;
@@ -131,10 +144,10 @@ async function block(me: Identity, target: string, action: "block" | "unblock" =
   });
 }
 
-async function moderationAction(payload: Record<string, unknown>, adminKey?: string) {
+async function moderationAction(payload: Record<string, unknown>, admin?: { cookie: string; csrf: string }) {
   return jsonFetch("/api/moderation/action", {
     method: "POST",
-    adminKey,
+    admin,
     body: JSON.stringify(payload),
   });
 }
@@ -162,7 +175,7 @@ check("POST /api/report → 201", rep1.status === 201, `status=${rep1.status} ${
 const rep1Row = rep1.body.report as { id: string; createdAt: string } | undefined;
 check("signalement créé avec id + timestamp", !!rep1Row?.id && !!rep1Row?.createdAt);
 
-const q1 = await jsonFetch("/api/moderation/queue", { adminKey: ADMIN });
+const q1 = await jsonFetch("/api/moderation/queue", { admin: ADMIN });
 const q1entries = (q1.body.queue as {
   report: { id: string; reporterKey: string; targetKind: string; targetId: string; createdAt: string };
   context: { exists: boolean; snippet?: string; author?: { pubkey: string }; postCreatedAt?: string };
@@ -189,7 +202,7 @@ check(
   `status=${rep2.status} ${JSON.stringify(rep2.body)}`
 );
 await report(carol, "post", P1, "spam");
-const q2 = await jsonFetch("/api/moderation/queue", { adminKey: ADMIN });
+const q2 = await jsonFetch("/api/moderation/queue", { admin: ADMIN });
 const q2entries = (q2.body.queue as { report: { targetId: string }; openReportsOnTarget: number }[]) ?? [];
 const p1Entry = q2entries.find((e) => e.report.targetId === P1);
 check("2 signaleurs distincts sur P1 → openReportsOnTarget = 2", p1Entry?.openReportsOnTarget === 2, JSON.stringify(p1Entry));
@@ -204,11 +217,11 @@ check("signalement sans preuve → 401", repNoSig.status === 401, `status=${repN
 const repUnknown = await report(alice, "post", "inexistant-a3", "spam");
 check("cible inconnue → 404", repUnknown.status === 404, `status=${repUnknown.status}`);
 
-console.log("── S7 : file protégée (403) ──");
+console.log("── S7 : file protégée (session requise) ──");
 const qNoKey = await jsonFetch("/api/moderation/queue");
-check("file SANS clé → 403", qNoKey.status === 403, `status=${qNoKey.status}`);
-const qBadKey = await jsonFetch("/api/moderation/queue", { adminKey: "mauvaise-clé" });
-check("file avec MAUVAISE clé → 403", qBadKey.status === 403, `status=${qBadKey.status}`);
+check("file SANS session → 401", qNoKey.status === 401, `status=${qNoKey.status} ${JSON.stringify(qNoKey.body)}`);
+const qBadKey = await jsonFetch("/api/moderation/queue", { headers: { Cookie: "mbote_admin_session=session-inconnue-e2e" } });
+check("file avec cookie INCONNU → 401", qBadKey.status === 401, `status=${qBadKey.status}`);
 
 console.log("── S8 : blocage → fil public filtré pour le bloqueur ──");
 const feedBefore = await feed(alice.pubkey);
@@ -253,8 +266,8 @@ const hid = await moderationAction({ action: "hide", targetKind: "post", targetI
 check("POST /api/moderation/action (hide) → 200", hid.status === 200, `status=${hid.status} ${JSON.stringify(hid.body)}`);
 const feedAfterHide = await feed();
 check("P1 absent du fil public après hide", !feedAfterHide.posts.some((p) => p.id === P1));
-const p1db = await db.post.findUnique({ where: { id: P1 }, select: { hiddenAt: true, hiddenBy: true } });
-check("P1 RESTE en DB (audit) avec hiddenAt + hiddenBy", !!p1db?.hiddenAt && p1db.hiddenBy === ADMIN, JSON.stringify(p1db));
+const p1db = await db.post.findUnique({ where: { id: P1 }, select: { hiddenAt: true, hiddenById: true } });
+check("P1 RESTE en DB (audit) avec hiddenAt + hiddenById = admin", !!p1db?.hiddenAt && p1db.hiddenById === admUser.id, JSON.stringify(p1db));
 
 console.log("── S11 : purge → SUPPRIMÉ en DB, trace conservée ──");
 const purged = await moderationAction({ action: "purge", targetKind: "post", targetId: P2, reason: "validation A3" }, ADMIN);
@@ -270,17 +283,21 @@ await report(carol, "comment", C1, "illegal");
 const hidC1 = await moderationAction({ action: "hide", targetKind: "post", targetId: C1, reason: "intégration A3" }, ADMIN);
 check("hide du commentaire signalé → 200", hidC1.status === 200, `status=${hidC1.status}`);
 const c1reports = await db.report.findMany({ where: { targetId: C1 } });
-check("report clôturé en DB (status=actioned, handledBy=admin)", c1reports.length >= 1 && c1reports.every((r) => r.status === "actioned" && r.handledBy === ADMIN && r.handledAt != null), JSON.stringify(c1reports));
+check("report clôturé en DB (status=actioned, handledById=admin)", c1reports.length >= 1 && c1reports.every((r) => r.status === "actioned" && r.handledById === admUser.id && r.handledAt != null), JSON.stringify(c1reports));
 const repliesRes = await jsonFetch(`/api/posts?scope=replies&parentId=${P1}`);
 check("fil de réponses du post masqué → 404 (plus une surface publique)", repliesRes.status === 404, `status=${repliesRes.status}`);
 
-console.log("── S13 : négatif — non-admin sur /api/moderation/action → 403 ──");
+console.log("── S13 : négatif — session/CSRF sur /api/moderation/action ──");
 const actNoKey = await moderationAction({ action: "hide", targetKind: "post", targetId: P1 });
-check("SANS clé → 403", actNoKey.status === 403, `status=${actNoKey.status}`);
-const actBadKey = await moderationAction({ action: "hide", targetKind: "post", targetId: P1 }, "pas-admin");
-check("avec MAUVAISE clé → 403", actBadKey.status === 403, `status=${actBadKey.status}`);
-const actUserKey = await moderationAction({ action: "hide", targetKind: "post", targetId: P1 }, alice.pubkey);
-check("avec la clé PUBLIQUE d'un utilisateur (pas un secret admin) → 403", actUserKey.status === 403, `status=${actUserKey.status}`);
+check("SANS session → 401", actNoKey.status === 401, `status=${actNoKey.status}`);
+const actBadKey = await moderationAction({ action: "hide", targetKind: "post", targetId: P1 }, { cookie: "mbote_admin_session=session-étrangère", csrf: "x" });
+check("avec session INCONNUE → 401", actBadKey.status === 401, `status=${actBadKey.status}`);
+const actUserKey = await moderationAction({ action: "hide", targetKind: "post", targetId: P1 }, { cookie: `mbote_admin_session=${encodeURIComponent(alice.pubkey)}`, csrf: "x" });
+check("avec une valeur NON-session (pubkey d'un utilisateur) → 401", actUserKey.status === 401, `status=${actUserKey.status}`);
+const actNoCsrf = await jsonFetch("/api/moderation/action", { method: "POST", headers: { Cookie: ADMIN.cookie }, body: JSON.stringify({ action: "hide", targetKind: "post", targetId: P1 }) });
+check("session valide SANS jeton CSRF → 403", actNoCsrf.status === 403, `status=${actNoCsrf.status} ${JSON.stringify(actNoCsrf.body)}`);
+const actBadCsrf = await jsonFetch("/api/moderation/action", { method: "POST", headers: { Cookie: ADMIN.cookie, "x-admin-csrf": "csrf-faux" }, body: JSON.stringify({ action: "hide", targetKind: "post", targetId: P1 }) });
+check("session valide avec CSRF FAUX → 403", actBadCsrf.status === 403, `status=${actBadCsrf.status}`);
 
 console.log("── S14 : suspension d'un auteur ──");
 const susp = await moderationAction({ action: "suspend", targetKind: "user", targetId: bob.pubkey, reason: "validation A3" }, ADMIN);

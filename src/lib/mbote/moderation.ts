@@ -18,7 +18,6 @@
  */
 
 import { createHash, timingSafeEqual } from "crypto";
-import { NextResponse, type NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
 
 // ───────────────────────── Vocabulaire fermé ─────────────────────────
@@ -45,35 +44,20 @@ export type ModerationActionName = (typeof MODERATION_ACTIONS)[number];
 export const REPORT_TARGET_KINDS = ["post", "comment"] as const;
 export type ReportTargetKind = (typeof REPORT_TARGET_KINDS)[number];
 
-// ───────────────────────── Auth admin (provisoire) ─────────────────────────
+// ───────────────────────── Garde CLI (seul usage restant de la clé) ─────────────────────────
 
-/** Clé fournie par la requête : `x-admin-key` ou `Authorization: Bearer …`. */
-export function adminKeyFromRequest(req: NextRequest): string | null {
-  const direct = req.headers.get("x-admin-key");
-  if (direct && direct.length > 0) return direct;
-  const auth = req.headers.get("authorization");
-  if (auth && auth.startsWith("Bearer ")) return auth.slice(7).trim() || null;
-  return null;
-}
-
-/** Comparaison sans fuite temporelle : on compare des SHA-256 (longueur fixe). */
+/**
+ * ADM Étape 0 (rupture) : `ADMIN_API_KEY` n'est PLUS lue par aucun endpoint
+ * HTTP. Le seul consommateur restant est le CLI de purge
+ * (scripts/moderation-purge.ts) qui valide `--admin-key` contre l'env avec
+ * cette comparaison timing-safe. Jamais stockée, jamais renvoyée.
+ */
 export function isAdminKey(provided: string | null | undefined): boolean {
   const expected = process.env.ADMIN_API_KEY ?? "";
   if (!expected || !provided) return false;
   const a = createHash("sha256").update(provided).digest();
   const b = createHash("sha256").update(expected).digest();
   return timingSafeEqual(a, b);
-}
-
-/** Garde des endpoints admin — 403 uniforme (absente OU invalide). */
-export function adminGuard(req: NextRequest): NextResponse | null {
-  if (!isAdminKey(adminKeyFromRequest(req))) {
-    return NextResponse.json(
-      { error: "Accès modération refusé (admin requis)" },
-      { status: 403 }
-    );
-  }
-  return null;
 }
 
 // ───────────────────────── Helpers d'audit ─────────────────────────
@@ -101,19 +85,30 @@ export interface PurgeOutcome {
  * Purge d'un post DANS UNE TRANSACTION : le contenu est supprimé (cascade
  * likes + réponses), la trace d'audit `ModerationAction` est écrite avec le
  * contexte nécessaire à un auditeur (auteur, extrait ≤ 280, compteurs,
- * signalements clôturés). Utilisée par l'endpoint admin ET par le tooling CLI
- * (`scripts/moderation-purge.ts`) — une seule définition = un seul comportement
- * d'audit.
+ * signalements clôturés) et la ligne `AdminAudit` (identité nominative)
+ * est écrite dans la MÊME transaction. Utilisée par l'endpoint admin (session)
+ * ET par le tooling CLI (`scripts/moderation-purge.ts`) — une seule définition
+ * = un seul comportement d'audit.
+ *
+ * ADM Étape 0 (rupture) : l'acteur est une IDENTITÉ (AdminUser.id + label),
+ * jamais une clé secrète.
  *
  * Le compteur dénormalisé du parent (D5) est décrémenté si on purge une réponse.
  */
+export interface PurgeActor {
+  adminUserId: number; // id AdminUser (le pseudo-user `system` pour le CLI)
+  actorLabel: string; // "admin-<id>" | "cli" — JAMAIS un secret
+  actorRole: string; // copie figée du rôle au moment de l'action
+  ip?: string | null;
+  userAgent?: string | null;
+}
+
 export async function purgePostWithAudit(
   tx: Prisma.TransactionClient,
   params: {
     postId: string;
-    adminKey: string;
+    actor: PurgeActor;
     reason?: string | null;
-    /** identité admin telle qu'enregistrée dans la trace (ex. "ops:cli") */
   }
 ): Promise<PurgeOutcome> {
   const post = await tx.post.findUnique({
@@ -151,7 +146,7 @@ export async function purgePostWithAudit(
   if (openReports.length > 0) {
     await tx.report.updateMany({
       where: { id: { in: openReports.map((r) => r.id) } },
-      data: { status: "actioned", handledAt: new Date(), handledBy: params.adminKey },
+      data: { status: "actioned", handledAt: new Date(), handledById: params.actor.adminUserId },
     });
   }
 
@@ -166,13 +161,35 @@ export async function purgePostWithAudit(
 
   await tx.moderationAction.create({
     data: {
-      adminKey: params.adminKey,
+      adminUserId: params.actor.adminUserId,
+      actorLabel: params.actor.actorLabel,
       action: "purge",
       targetKind: "post",
       targetId: post.id,
       reason: params.reason ?? null,
       reportIds: JSON.stringify(openReports.map((r) => r.id)),
       meta: JSON.stringify(meta),
+    },
+  });
+
+  // ADM Étape 0 — journal d'audit nominatif (append-only), même transaction
+  await tx.adminAudit.create({
+    data: {
+      actorId: params.actor.adminUserId,
+      actorRole: params.actor.actorRole,
+      action: "purge",
+      targetType: "post",
+      targetId: post.id,
+      beforeJson: JSON.stringify({
+        content: post.content,
+        authorPubkey: post.author.pubkey,
+        likeCount: post.likeCount,
+        repliesPurged,
+      }),
+      afterJson: JSON.stringify(meta),
+      ip: params.actor.ip ?? null,
+      userAgent: params.actor.userAgent ?? null,
+      justification: params.reason ?? null,
     },
   });
 

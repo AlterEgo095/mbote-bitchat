@@ -38,7 +38,10 @@ let db: PrismaClient;
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), "mbote-a3-"));
   const url = `file:${join(dir, "moderation.db")}`;
-  execSync(`bunx prisma db push --skip-generate`, {
+  // ADM Étape 0 : DB éphémère provisionnée par MIGRATIONS (0001→0004 — jamais
+  // db push, discipline §4 de DEV-SETUP). Le seed 0004 fournit le pseudo-user
+  // system (id 1) requis par la FK AdminAudit.actorId.
+  execSync(`bunx prisma migrate deploy`, {
     cwd: process.cwd(),
     env: { ...process.env, DATABASE_URL: url },
     stdio: "pipe",
@@ -51,8 +54,8 @@ afterAll(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe("A3 — garde admin (clé API provisoire)", () => {
-  test("U1a · ADMIN_API_KEY absente → aucun accès admin", () => {
+describe("A3 — garde admin (clé API — CLI uniquement depuis la rupture ADM Étape 0)", () => {
+  test("U1a · ADMIN_API_KEY absente → aucun accès (le CLI refuse)", () => {
     const prev = process.env.ADMIN_API_KEY;
     delete process.env.ADMIN_API_KEY;
     try {
@@ -108,8 +111,13 @@ describe("A3 — purge transactionnelle avec trace d'audit", () => {
       data: { reporterKey: fakeKey(13), targetKind: "comment", targetId: reply.id, reason: "harassment" },
     });
 
+    const moderator = await db.adminUser.create({
+      data: { email: "u3-moderator@mbote.test", role: "moderator" },
+    });
+    const actor = { adminUserId: moderator.id, actorLabel: `admin-${moderator.id}`, actorRole: moderator.role };
+
     const outcome = await db.$transaction((tx) =>
-      purgePostWithAudit(tx, { postId: reply.id, adminKey: "test:u3", reason: "test U3" })
+      purgePostWithAudit(tx, { postId: reply.id, actor, reason: "test U3" })
     );
 
     expect(outcome.purgedPostId).toBe(reply.id);
@@ -125,26 +133,42 @@ describe("A3 — purge transactionnelle avec trace d'audit", () => {
     expect(await db.like.findFirst({ where: { postId: reply.id } })).toBeNull();
     // compteur dénormalisé du parent décrémenté
     expect((await db.post.findUnique({ where: { id: parent.id } }))?.replyCount).toBe(0);
-    // signalements clôturés
+    // signalements clôturés (handledById = FK AdminUser — rupture ADM Étape 0)
     const closed = await db.report.findMany({ where: { targetId: reply.id } });
-    expect(closed.every((r) => r.status === "actioned" && r.handledBy === "test:u3")).toBeTrue();
+    expect(closed.every((r) => r.status === "actioned" && r.handledById === moderator.id)).toBeTrue();
     // TRACE D'AUDIT CONSERVÉE (exigence : le contenu disparaît, la trace reste)
     const traces = await db.moderationAction.findMany({ where: { targetId: reply.id } });
     expect(traces.length).toBe(1);
     const trace = traces[0];
     expect(trace.action).toBe("purge");
-    expect(trace.adminKey).toBe("test:u3");
+    // RUPTURE : identité nominative, jamais de clé secrète
+    expect(trace.adminUserId).toBe(moderator.id);
+    expect(trace.actorLabel).toBe(`admin-${moderator.id}`);
+    expect((trace as unknown as Record<string, unknown>).adminKey).toBeUndefined();
     const meta = JSON.parse(trace.meta ?? "{}") as Record<string, unknown>;
     expect(meta.authorKey).toBe(author.pubkey);
     expect(meta.nickname).toBe("U3-auteur");
     expect(meta.closedReports).toBe(2);
     expect(String(meta.snippet)).toContain("réponse U3");
     expect(JSON.parse(trace.reportIds ?? "[]")).toEqual(expect.arrayContaining([r1.id, r2.id]));
+    // JOURNAL NOMINATIF AdminAudit écrit dans la même transaction
+    const audit = await db.adminAudit.findFirst({ where: { action: "purge", targetType: "post", targetId: reply.id } });
+    expect(audit).not.toBeNull();
+    expect(audit?.actorId).toBe(moderator.id);
+    expect(audit?.actorRole).toBe("moderator");
+    expect(audit?.justification).toBe("test U3");
+    const before = JSON.parse(audit?.beforeJson ?? "{}") as { content?: string };
+    expect(before.content).toContain("réponse U3");
   });
 
   test("U3b · purge d'un post déjà purgé → POST_NOT_FOUND (pas de double trace)", async () => {
     await expect(
-      db.$transaction((tx) => purgePostWithAudit(tx, { postId: "inexistant", adminKey: "test:u3b" }))
+      db.$transaction((tx) =>
+        purgePostWithAudit(tx, {
+          postId: "inexistant",
+          actor: { adminUserId: 1, actorLabel: "cli", actorRole: "system" },
+        })
+      )
     ).rejects.toThrow("POST_NOT_FOUND");
     expect(await db.moderationAction.count({ where: { targetId: "inexistant" } })).toBe(0);
   });
