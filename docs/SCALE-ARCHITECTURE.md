@@ -184,5 +184,18 @@ Travail code (checklist exécutable dès le prochain « suite ») :
 
 ---
 
+## 8. Jalons techniques reportés — dates cibles explicites
+
+Un élément reporté sans jalon devient permanent par oubli. Cette section
+fige les reports en cours avec leur borne de rattrapage. Un jalon ne peut être
+déplacé que par une décision explicite de validation — jamais supprimé
+silencieusement.
+
+| Élément reporté | État actuel | Jalon cible (borne dure) | Pourquoi cette borne |
+|---|---|---|---|
+| **FNV-64 mobile → SHA-256-128** (crypto spec OD-6, lacune L-5) | Empreinte SHA-256-128 (`dedupFingerprint`) livrée côté web + miroirs mobiles + parité verrouillée (A1) ; les appelants **synchrones** de `mobile/src/transport/MeshTransport.ts` (contrainte Hermes : WebCrypto asynchrone) utilisent encore FNV-1a 64 pour la dédup mémoire | **Bloc 2-F « UI médias » au plus tard — et dans tous les cas AVANT toute ouverture publique** | la dédup mémoire porte les chunks des médias E2EE ; le verrou médias (R4) ne doit pas reposer sur une empreinte forgeable. Si la vague mobile glisse, le jalon glisse AVEC elle mais reste antérieur à l'ouverture publique |
+
+---
+
 *Mbote Mesh — la scalabilité par la géométrie : la proximité est servie par la
 radio, la ville par le cache, le monde par la fédération.*

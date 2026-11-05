@@ -216,6 +216,42 @@ export function apiBotReply(payload: { meKey: string; iv: string; ciphertext: st
   });
 }
 
+// ---------- confiance (A2 — authentification des clés) ----------
+
+export interface TrustStatusDto {
+  peerEcdhPub: string | null;
+  safetyNumber: string | null;
+  state: "unverified" | "verified" | "changed";
+  level: "green" | "yellow" | "red";
+  changedAt: string | null;
+  verifiedAt: string | null;
+  keyChanged: boolean;
+}
+
+/** État de confiance côté serveur (audit + détection inter-appareils). */
+export function apiGetTrust(
+  me: string,
+  peer: string,
+  proof: { ts: number; signature: string }
+) {
+  const q = new URLSearchParams({ me, peer, ts: String(proof.ts), signature: proof.signature });
+  return jsonFetch<{ trust: TrustStatusDto }>(`/api/trust?${q.toString()}`);
+}
+
+/** Confirmation hors-bande du numéro de sécurité (audit serveur). */
+export function apiVerifyTrust(payload: {
+  me: string;
+  peer: string;
+  safetyNumber: string;
+  ts: number;
+  signature: string;
+}) {
+  return jsonFetch<{ trust: TrustStatusDto }>("/api/trust/verify", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 // ---------- canaux / stats ----------
 
 export function apiFetchChannels(precision?: number) {
