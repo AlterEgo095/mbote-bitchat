@@ -39,7 +39,7 @@ jobs:
       VPS_DIR: ${{ secrets.VPS_DEPLOY_DIR || '/opt/mbote-bitchat' }}
       VPS_WEB_PORT: ${{ secrets.VPS_WEB_PORT || '3000' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (épinglé par SHA — supply chain)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.4.0 (épinglé par SHA — supply chain)
 
       - name: Bun (portail qualité — lint web)
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (épinglé par SHA — supply chain)
