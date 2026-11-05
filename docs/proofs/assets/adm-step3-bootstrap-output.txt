@@ -1,0 +1,50 @@
+$ bun scripts/admin-bootstrap.ts "--email=operateur@mbote.test"
+✅ Super-admin créé : id=2 role=super-admin totpEnrolled=false
+
+⚠️  SECRETS AFFICHÉS UNE SEULE FOIS — à stocker dans un gestionnaire de mots de passe.
+
+Mot de passe : [MOT-DE-PASSE-MASQUÉ-DU-RAPPORT-PUBLIC]
+
+── Enrôlement TOTP (obligatoire à la première connexion) ──
+Scannez ce QR dans votre app authenticator (Aegis, 1Password, Google Authenticator…) :
+[47m[30m ▄▄▄▄▄▄▄  ▄ ▄ ▄  ▄▄▄ ▄  ▄   ▄     ▄▄  ▄  ▄ ▄▄▄▄▄▄▄ [0m
+[47m[30m █ ▄▄▄ █ ▄▄ █▄ █▀▀▄▀ █ ▀█▄▄▄▀▄▀▄█▄ ▄█ ▀▀██ █ ▄▄▄ █ [0m
+[47m[30m █ ███ █ ██▄ ▄▄█▀ ██▀ ██▄█▄██▀ ▄▄█    █ ▀  █ ███ █ [0m
+[47m[30m █▄▄▄▄▄█ █▀▄▀█▀▄ ▄ █▀▄▀█ ▄ █▀▄▀▄▀▄▀█ ▄▀█ ▄ █▄▄▄▄▄█ [0m
+[47m[30m ▄ ▄▄▄▄▄ ▀ ▀██▀▀▀█ █▄▄▄█▄▄▄██ ▀██▀ █▀▄█  █ ▄▄▄▄▄   [0m
+[47m[30m ▄▄ ▀▄▄▄█▀▀ █▀ ▄▀▀█▄▄ ▀▄▀█ ▄▀ ▄▀█  ▄▄█ ▄█▄ ▀▄ █▄█▄ [0m
+[47m[30m ███ ▄▀▄▀▄▄  ▀ █▄█ █ ▀▀▄▀█▀▀▀▀  ▀▀█▄▄█▄█▀ ▀█ ▄▄ ██ [0m
+[47m[30m ▀▀█▀▄█▄▀▀█▀█ █▄ ██ ▀█▄██▄▀█▄▄▄▀█ ▀██ ▄▀█▄▀▀▄▀▄ █▄ [0m
+[47m[30m █ █▄▄▄▄▄ █ ▀▀   ▄▄███▄▀▄  ▄█ █▀▀▀▀█▀▀▀ █▄█▄▄▀▀▄█  [0m
+[47m[30m ▀▀█▀▀ ▄▀ ██▀ ▄ ▄▄  ▄██ ▀▀▄▄█▄▄ ▀▄▀ ▀▀▄█▄ ▀▀  ▄ ▀▄ [0m
+[47m[30m ▄  ▄ ▄▄▀ ▄▀▀▄█▄▀▄▄▄▀ ▄▄▄▄▀██▀ █▀▀█▄▀ ▀ ▄▄▄██▀ ▄   [0m
+[47m[30m ▄▀ ▄▄█▄██ ▄▀ ▀▀▄ ▄  ▄▀██████▄▀█▀ ▄▄▀▀▀▄▀▄▄██▄█▄   [0m
+[47m[30m ▀▀ ▀█ ▄ █▄ ▀ █▀  █ █▄██ ▄ ████▄▄▀▀▄█▄▀█ █ ▄ ██▄ ▄ [0m
+[47m[30m ▄ ▄▀█▄▄▄██▀▀▀▄▄▄▀▀▄█ ▀█▄▄▄███ ▀ ▀▄▄▀▄█▄ █▄▄▄█ ▀█▄ [0m
+[47m[30m █  ▀▄▀▄█ █ ▄ ▄▄▀   ▄ █  █▄ ▀▀ ▀ ▀▀▀ ▄▄▄▄▄ ▄▀▄▄▀██ [0m
+[47m[30m ▀▄█▄██▄▀ █▀▄▄ ▀ ▄▀ ▄   ▀ ▀  ▄▄▄█ ▀  █▄▄▄  ▀▄▀▄▄▄▄ [0m
+[47m[30m ██ ▄▄█▄▄ █▀▀ █ █  █▄▄█▀█ ▀▀▄▄ ▀▀█▀▄▀▄▄▄ ▄▀▀ █▀▀█▀ [0m
+[47m[30m ▀█▀██▄▄██▄▀▀ █▄▄█  ▄██▀ ▄ ▄▄▄▄█ ▀▀▄  ▄███ █  █ ▀  [0m
+[47m[30m ▄██  ▀▄ █▀ █▄▀▀ ▄▀▀ ▄██▀█▄▀▄ ▄█▀█ █▀ ██▄█▀▄█▄▄▄▄█ [0m
+[47m[30m  █  ▀█▄█▄ ▀▀▄▄ ▄▀███▄▀██▀ █▄▄▀▀▄▀ ▄▀▀█▄ ▀▄▄    ▀  [0m
+[47m[30m ▄██▀  ▄▄█ ▀▀▀▀ ▀ ██ ▄ █▄████▀▄██▀  █▄▀ ▄▄▄▄█▄▀▄▄▀ [0m
+[47m[30m ▄▄▄▄▄▄▄ ▀█▀ ▄ █▀▀ ▄▀▄▄█ ▄ █▀  █▀▀▄▄██▀▄▀█ ▄ █▄█▄▄ [0m
+[47m[30m █ ▄▄▄ █ █▀█▀█▀▀█▄ ▀  ▀█▄▄▄█▀▀ ▀▄▀▄██▄▀ ▀█▄▄▄█▄▄▄█ [0m
+[47m[30m █ ███ █ █▄▄▀█ ▀▀▀█▄▀█▀▀▄█▄ ▀ ▄▄▄ ██▄█▄█▄▄ ▄█▀▄█▀▄ [0m
+[47m[30m █▄▄▄▄▄█ ▄▄▄█ █  ██ ███▀▀▄▄ ▄▄▀ ▀▀█▀▀ ▀ █▄▄▄▀ ██▄█ [0m
+[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m[37m▀[47m[30m[0m
+[47m[30m[0m
+Secret base32 (saisie manuelle) : [SECRET-TOTP-MASQUÉ]
+URI otpauth : otpauth://totp/Mbote%20Admin%3Aoperateur%40mbote.test?secret=[SECRET-TOTP-MASQUÉ]&issuer=Mbote%20Admin&algorithm=SHA1&digits=6&period=30
+
+── Codes de secours break-glass (2, chacun utilisable UNE fois) ──
+1. [CODE-1-MASQUÉ]
+2. [CODE-2-MASQUÉ]
+
+── Instructions ──
+1. Installez une app authenticator et scannez le QR ci-dessus.
+2. Connectez-vous sur le panneau admin avec email + mot de passe + code TOTP
+   (6 chiffres). Le PREMIER login validé finalise l'enrôlement (totpEnrolled=true).
+3. Conservez les 2 codes de secours hors ligne : un code consommé = un téléphone
+   perdu récupérable (bypass TOTP + ré-enrôlement forcé).
+Audit : ligne AdminAudit{action=bootstrap} écrite (append-only).

@@ -1,0 +1,3 @@
+$ bun scripts/admin-bootstrap.ts "--email=second@mbote.test"
+REFUSÉ : un AdminUser existe déjà (1) — bootstrap réservé au PREMIER compte.
+error: script "admin:bootstrap" exited with code 1
