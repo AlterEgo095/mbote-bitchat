@@ -181,3 +181,79 @@ Champs figés : `actorId` + `actorRole` (copie au moment de l'action), `action`,
 ## 11. HORS PÉRIMÈTRE MVP (arbitré, ne pas dériver)
 
 UI de gestion des comptes admin (CLI seulement) · rôle « viewer » dédié (`auditor` couvre le besoin) · i18n du panneau (FR uniquement) · WebAuthn/clés matérielles · mTLS interne (token timing-safe sur réseau Docker privé) · chiffrement champ-niveau des secrets au repos · dashboard temps réel (les 4 métriques sont des compteurs à la demande).
+
+---
+
+## 12. ARBITRAGES ÉTAPE 3+4 (2026-11-06 — directive « auth + RBAC », tracés en code + tests)
+
+Points ambigus entre la directive Étape 3+4 et cette spec v1.0 — TRANCHÉS
+explicitement ici, implémentés et testés (preuve : docs/proofs/ADM-step3-4.md) :
+
+1. **Login — double surface, un seul cerveau** : la surface NAVIGATEUR est
+   `POST /api/admin/auth/login` (BFF admin, 3 champs, un seul round-trip) ; la
+   VÉRIFICATION vit dans l'app principale (`POST /api/internal/admin/login`,
+   gardée par le token interne §8). Invariant §1 conservé : l'app admin n'a
+   ni prisma ni accès DB. Le BFF pose le cookie et ne renvoie que
+   `{csrfToken}` + état non sensible.
+2. **Sessions token-hash** : le cookie porte un token ALÉATOIRE 32 octets ;
+   seul son HASH SHA-256 vit en DB (`AdminSession.tokenHash`, migration
+   `0005_admin_auth`). REMPLACE le modèle Étape 0 (cookie = `AdminSession.id`)
+   — les sessions pré-Étape-3 meurent au déploiement (aucune en prod).
+3. **TOTP au bootstrap** : le secret est généré par `admin:bootstrap` (QR
+   ASCII affiché UNE fois) ; le PREMIER login validé (fenêtre ±1) bascule
+   `totpEnrolled=true` + audit `totp_enrolled`. Implémentation RFC 6238 maison
+   (`src/lib/mbote/totp.ts`, HMAC-SHA-1 de `node:crypto`) validée contre les
+   vecteurs NORMATIFS du RFC 6238 Appendice B — `otplib` (spec v1.0) écarté :
+   contrôle du compteur requis par l'anti-rejeu + risque de bundling CJS dans
+   Next 16. La primitive crypto reste node:crypto.
+4. **Anti-rejeu TOTP** : `AdminUser.totpLastCounter` (migration 0005) — un
+   code de compteur ≤ au dernier VALIDÉ est un rejeu → 401 uniforme.
+5. **Break-glass** : 2 codes générés AU BOOTSTRAP (32 chars base32 groupés,
+   hashés Argon2id, montrés une fois — la spec v1.0 disait « à l'enrôlement »
+   et SHA-256 : la directive Étape 3 prime). Usage = bypass TOTP + burn
+   (`usedAt`/`usedIp`/`usedUserAgent`) + révocation de TOUTES les sessions de
+   l'admin + NOUVEAU secret TOTP immédiat (`totpEnrolled=false`) + ré-enrôlement
+   via `POST /api/admin/auth/totp-enroll` (session+CSRF) + audit `break-glass`
+   + notification aux autres super-admins (LOG — SMTP en attente, NOT TESTÉ).
+6. **Rate limit** : 5 tentatives / 5 min / IP (fenêtre glissante EN MÉMOIRE
+   dans l'app principale — mono-VPS, pas de Redis). TOUTES les tentatives
+   comptent (succès inclus) ; un 429 ne consomme pas (pas de prolongation).
+   La directive disait « 5/5 min » (la v1.0 disait 5 échecs/15 min — directive
+   prime). nginx `limit_req` = durcissement optionnel au déploiement.
+7. **Messages uniformes** : échecs d'IDENTIFIANTS (login/break-glass, y
+   compris token interne absent — camouflage total) → 401
+   `{error:"invalid credentials"}`. Échecs RBAC (`/api/moderation/*` et
+   verify/logout/enroll) → 401/403 `{error:"unauthorized"}` — MÊME message
+   pour 401 et 403 (aucune fuite de couche).
+8. **Double contrôle `/api/moderation/*`** (ordre des contrôles) : token
+   interne → session → `X-Admin-Actor` == session → CSRF (mutation) → rôle.
+   Le token SEUL ne peut RIEN faire ET le cookie SEUL ne peut rien faire —
+   la surface est fermée à tout autre appelant HTTP (le panneau est le seul
+   client légitime en prod).
+9. **Rôles par action** (aligne le code Étape 0 sur la matrice §4) :
+   `user.warn` = support (était moderator) · `queue.view` = auditor (était
+   support) · hide/unhide/suspend/unsuspend/purge = moderator. support et
+   auditor = lecture seule (directive Étape 4).
+10. **Cookie** : `HttpOnly · SameSite=Strict · Path=/` + `Secure` EN
+    PRODUCTION UNIQUEMENT (dev sandbox en http://localhost — exception
+    documentée, à revérifier au déploiement derrière CF Access).
+11. **Idle 30 min** : révocation PARESSEUSE TRACÉE — la première requête qui
+    découvre une session idle > 30 min la passe `revokedAt` +
+    `revokedReason='idle-timeout'` (preuve en DB). TTL absolu 8 h inchangé.
+12. **`report.dismiss`** : n'existe PAS dans `MODERATION_ACTIONS` (Étape 0) —
+    reste au périmètre E6 (queue UI). La matrice 55 (§13) est câblée sur les
+    11 actions EXISTANTES après Étape 4.
+13. **`post.purge`** : reste mono-session moderator jusqu'à E9 (four-eyes le
+    retirera de l'UI) — comportement Étape 0 conservé, testé en matrice.
+14. **Déploiement** : la migration 0005 exige `AdminSession` VIDE en prod
+    (vrai aujourd'hui — aucun login n'existait) : à vérifier par SELECT COUNT
+    avant `migrate deploy` (à ajouter au check O-B de l'opérateur).
+15. **`ADMIN_INTERNAL_TOKEN`** : figé à l'Étape 2 (compose interpole vers les
+    2 services). En dev, il DOIT être passé explicitement au serveur ET aux
+    harness (fail-closed : token absent de l'env → tout est refusé).
+16. **Matrice RBAC 55** : 11 actions × 5 rôles — les 4 rôles humains
+    (super-admin > moderator > support > auditor) + `anonymous` (sans
+    session) ; le pseudo-user `system` est exclu (jamais de chemin HTTP).
+    Actions : queue.view · user.warn · post.hide · post.unhide · user.suspend ·
+    user.unsuspend · post.purge · auth.login · auth.logout · auth.break-glass ·
+    internal.verify (tests/admin-auth-e2e.test.ts, section H).
