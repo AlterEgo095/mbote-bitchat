@@ -60,6 +60,6 @@ Gestion des comptes admin via UI · i18n du panneau · WebAuthn · mTLS interne 
 | C1 push (VAPID+FCM+APNs) | 2–3 jp · C2 appels audio WebRTC+TURN 3–4 jp · C3 vidéo 3–4 jp · C4 groupes MLS 4–6 jp | 12–17 jp |
 | D1 recherche FTS5 · D2 Sybil Phase 0 · D3 durcissement | 2–3 · 2–3 · 1–2 jp | 5–8 jp |
 | Bloc C frontend mature (E, F, G) | cohérence écrans, UI médias, multi-appareils + i18n | 9–14 jp |
-| **Reste total projet (après ADM)** | | **≈ 31–46 jp** |
+| **Reste total projet (après ADM)** | | **≈ 33–49 jp** (Bloc B 24–35 + Bloc C 9–14) |
 
 Ces fourchettes sont des ordres de grandeur assumés : **chaque item produit son breakdown fin (même format que ce document) au moment de son démarrage** — jamais avant, jamais au feeling à la semaine 3.
