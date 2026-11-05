@@ -118,6 +118,13 @@ $ rg -c "prisma" admin/package.json    → 0 occurrence
 $ rg -c "prisma" admin/Dockerfile      → 0 occurrence (aucune couche, aucun migrate)
 ```
 
+### 3.7 Incidents de branche — détectés, réalignés, documentés (transparence)
+
+1. **Commits atterrés sur `main` local** au lieu de `feat/adm-mvp` (détecté via `git branch --show-current` après le commit Étape 1) — réaligné : `git branch -f feat/adm-mvp main` (fast-forward) + `git reset --hard 6d3666b` sur `main` local. Aucun commit perdu, `origin` n'a rien reçu.
+2. **HEAD ramené sur `main` entre deux commandes** (deuxième occurrence : le fichier de preuve disparaît du disque car `main` ne le contient pas — vérifié ensuite : `git ls-tree 3cac247` contient bien le fichier, aucune perte). Cause probable : un processus de l'environnement sandbox re-bascule HEAD sur `main`. **Mitigation appliquée** : tout le travail est committé sur `feat/adm-mvp` (les pointeurs de branche persistent quel que soit le HEAD courant) ; chaque lot de commandes git vérifie/rebascule la branche avant d'opérer.
+
+État final vérifié : `main` = `6d3666b` (clôture + Étape 0 — un push O-A ne déploie que ça) · `feat/adm-mvp` = Étapes 0+1+2 · working tree propre sur la branche de travail.
+
 ---
 
 ## 4. DÉCOUVERTES & DÉCISIONS DE L'ÉTAPE 2 (assumées, tracées)
