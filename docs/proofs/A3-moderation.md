@@ -81,24 +81,40 @@ Vérification DB : post SUPPRIMÉ · ModerationAction(action=purge, adminKey=ops
 
 ## 3. Commandes exactes de reproduction
 
-```bash
-# (worktree feat/a3-moderation) bun install && bunx prisma generate && bunx prisma db push
+⚠️ **`DATABASE_URL` explicite OBLIGATOIRE sur chaque commande** — le sandbox
+exporte une `DATABASE_URL` globale qui écrase tout `.env` (piège prouvé,
+documenté dans `docs/DEV-SETUP.md` §2a : sans surcharge, les écritures vont
+dans la DB du repo principal). Un seul tour pour l'ensemble (les artefacts
+non commités ne survivent pas aux tours d'outils — `docs/DEV-SETUP.md` §2b).
 
-# 1. harness unitaire (SQLite fichier temporaire)
+```bash
+# worktree feat/a3-moderation
+WTDB="file:$(pwd)/db/custom.db"
+bun install && bunx prisma generate
+DATABASE_URL="$WTDB" bunx prisma db push
+
+# 1. harness unitaire (SQLite fichier temporaire, indépendant de DATABASE_URL)
 bun test tests/moderation.test.ts
 
-# 2. serveur de test avec clé admin (dans un autre terminal)
-ADMIN_API_KEY=a3-dev-admin-key bunx next dev -p 3100
+# 2. serveur de test avec clé admin + DB explicite (autre terminal ou même tour)
+DATABASE_URL="$WTDB" ADMIN_API_KEY=a3-dev-admin-key bunx next dev -p 3100
 
-# 3. E2E API réel (42 vérifications, incl. vérifications DB directes)
-ADMIN_API_KEY=a3-dev-admin-key MBOTE_BASE_URL=http://127.0.0.1:3100 bun tests/moderation-e2e.ts
+# 3. E2E API réel (42 vérifications, DATABASE_URL aligné sur celui du serveur
+#    pour les vérifications DB directes du script)
+DATABASE_URL="$WTDB" ADMIN_API_KEY=a3-dev-admin-key \
+  MBOTE_BASE_URL=http://127.0.0.1:3100 bun tests/moderation-e2e.ts
 
 # 4. purge tooling
-bun scripts/moderation-purge.ts --list --min-reports 2
-bun scripts/moderation-purge.ts --purge <postId> --reason "…" --admin-label ops:cli --execute
+DATABASE_URL="$WTDB" bun scripts/moderation-purge.ts --list --min-reports 2
+DATABASE_URL="$WTDB" bun scripts/moderation-purge.ts --purge <postId> \
+  --reason "…" --admin-label ops:cli --execute
 
 # 5. portefeuille complet
 bun test tests/ && bunx tsc --noEmit && bun run lint && bun scripts/check-protocol-parity.ts
+
+# 6. preuve d'isolation (après un touch /tmp/marker avant les preuves)
+find /home/z /tmp -name "*.db" -newer /tmp/marker -not -path "*/node_modules/*"
+# → seul le .db du worktree doit apparaître
 ```
 
 ## 4. Ce qui n'a PAS été testé — et pourquoi
@@ -113,6 +129,7 @@ bun test tests/ && bunx tsc --noEmit && bun run lint && bun scripts/check-protoc
 
 ## 5. Tracabilité et gouvernance
 
-- **Incident superviseur** (main forcé 2×, SHAs concernés, restauration `main = 7b51fd5 = origin/main`, portée strictement locale) : traces complètes et re-jouables dans `docs/proofs/A1-anti-replay.md` §6 et `docs/proofs/A2-key-auth.md` §6 — cette phase (A3) a été développée dans un **worktree externe** (`docs/DEV-SETUP.md` §2), la mesure corrective durable : aucun mouvement de `main` pendant A3, vérifiable par `git reflog show main` (aucune entrée hors commits validés).
+- **Incident superviseur** (main forcé 2×, SHAs concernés, restauration `main = 7b51fd5 = origin/main`, portée strictement locale) : traces complètes et re-jouables dans `docs/proofs/A1-anti-replay.md` §6 et `docs/proofs/A2-key-auth.md` §6. Cette phase (A3) a été développée dans un **worktree externe** — aucun mouvement de `main` pendant A3 (vérifiable : `git reflog show main`).
+- **Incident d'isolation DB — découvert et corrigé pendant A3** : le sandbox exporte une `DATABASE_URL` globale (repo principal) qui écrase tout `.env` → les premières exécutions des preuves ont écrit des données de test dans la DB de l'app :3000. **Nettoyage effectué** (15 + 8 identités de test, signalements, traces d'audit, DMs — bot et comptes réels préservés, résidu vérifié = 0) et **isolation prouvée** par le système de fichiers (`find -newer marker` → seul le `.db` du worktree bouge). Leçons et patterns : `docs/DEV-SETUP.md` §2 (les commandes de reproduction §3 intègrent la surcharge explicite). Les tables du schéma A3 (Report, PeerBlock, ModerationAction, colonnes hiddenAt/suspendedAt) subsistent dans la DB principale — additives et inoffensives pour le schéma main, elles seront actives au merge.
 - **Preuves signées** : report/block réutilisent le socle ECDSA des actions (fraîcheur 7 j / dérive future 60 s) — un signalement ou un blocage est opposable (porté par une clé), pas un vote anonyme.
 - **Numérotation** : A3 (recadrage) = **R4** (modération) du plan de recadrage.

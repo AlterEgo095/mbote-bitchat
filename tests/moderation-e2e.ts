@@ -2,9 +2,13 @@
  * ─────────────────────────────────────────────────────────────────────────────
  *  E2E A3 — modération du fil public contre l'API RÉELLE (serveur dev)
  * ─────────────────────────────────────────────────────────────────────────────
- *  Prérequis : serveur avec ADMIN_API_KEY défini (ex. :3100, .env du worktree)
- *    PORT=3100 bunx next dev -p 3100 &
- *    ADMIN_API_KEY=a3-dev-admin-key MBOTE_BASE_URL=http://127.0.0.1:3100 bun tests/moderation-e2e.ts
+ *  Prérequis : serveur avec ADMIN_API_KEY + DATABASE_URL EXPLICITES (piège du
+ *  DATABASE_URL global du sandbox : docs/DEV-SETUP.md §2a). Le DATABASE_URL du
+ *  script DOIT être identique à celui du serveur (vérifications DB directes).
+ *    DATABASE_URL="file:$(pwd)/db/custom.db" bunx prisma db push
+ *    DATABASE_URL="file:$(pwd)/db/custom.db" ADMIN_API_KEY=a3-dev-admin-key bunx next dev -p 3100 &
+ *    DATABASE_URL="file:$(pwd)/db/custom.db" ADMIN_API_KEY=a3-dev-admin-key \
+ *      MBOTE_BASE_URL=http://127.0.0.1:3100 bun tests/moderation-e2e.ts
  *
  *  Scénarios (exigences de validation A3) :
  *   S1. identités réelles (Alice signaleuse, Bob auteur, Carol signaleuse)
