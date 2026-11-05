@@ -185,6 +185,9 @@ export function apiSendDm(payload: {
   recipientKey: string;
   iv: string;
   ciphertext: string;
+  /** A1 v2 : identifiant client + séquence monotone (signés dm2) */
+  msgId?: string;
+  seq?: number;
   /** preuve de possession (F-01) */
   ts: number;
   signature: string;

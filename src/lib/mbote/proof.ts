@@ -86,6 +86,25 @@ export function dmProofMessage(
 }
 
 /**
+ * A1 (recadrage) — chaîne canonique DM v2 : le `msgId` et le `seq` sont
+ * couverts par la signature → un adversaire ne peut ni les modifier ni les
+ * réordonner. C'est ce qui rend le compteur de séquence monotone
+ * (anti-replay.ts) opposable : seq non signée ne prouverait rien.
+ *   dm2 : `${senderKey}|dm2|${recipientKey}|${msgId}|${seq}|${iv}|${ciphertext}|${ts}`
+ */
+export function dm2ProofMessage(
+  senderKey: string,
+  recipientKey: string,
+  msgId: string,
+  seq: number,
+  iv: string,
+  ciphertext: string,
+  ts: number
+): string {
+  return `${senderKey}|dm2|${recipientKey}|${msgId}|${seq}|${iv}|${ciphertext}|${ts}`;
+}
+
+/**
  * F-07 : chaîne canonique pour la preuve de LECTURE d'une conversation DM.
  * `peer` = clé publique du pair, ou `"*"` pour la liste des conversations.
  * Signée par la clé du lecteur (`me`) — sans elle, pas de lecture ni de

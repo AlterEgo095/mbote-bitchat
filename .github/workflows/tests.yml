@@ -1,0 +1,52 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Mbote BitChat — Tests automatisés (harness adversarial)
+#  ─ bun test       : harness A1 (anti-rejeu) + suites à venir (A2, A5…)
+#  ─ parité         : contrat de protocole web ↔ mobile (check-protocol-parity)
+#  ─ CI bloquante : tout échec = merge refusé.
+#  ─ Actions épinglées par SHA de commit (supply chain, condition 6).
+# ─────────────────────────────────────────────────────────────────────────────
+name: "Tests — harness adversarial"
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read # lecture seule (F-50)
+
+jobs:
+  adversarial:
+    name: bun test + parité protocole
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 — épinglé par SHA
+
+      - name: Bun (version pinned = lockfile reproductible)
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 — épinglé par SHA
+        with:
+          bun-version: "1.3.14"
+
+      - name: Installer les dépendances (lockfile strict)
+        run: bun install --frozen-lockfile
+
+      - name: Base de données de test (génération client + schéma à jour)
+        # sans --skip-generate : bun bloque les postinstall (@prisma/client n'est
+        # PAS généré par bun install) → la génération DOIT être explicite
+        run: bunx prisma db push
+        env:
+          DATABASE_URL: "file:./db/ci-test.db"
+
+      - name: Harness adversarial (bun test)
+        run: bun test tests/
+        env:
+          DATABASE_URL: "file:./db/ci-test.db"
+
+      - name: Parité protocole web ↔ mobile
+        run: bun scripts/check-protocol-parity.ts
+
+      - name: Typecheck strict
+        run: bunx tsc --noEmit

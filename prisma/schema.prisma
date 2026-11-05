@@ -67,13 +67,41 @@ model Like {
 
 // Paquets BitChat déjà ingérés par la passerelle VPS (dédup persistante)
 model MeshIngest {
-  hash      String   @id // empreinte FNV-1a 64 du paquet brut (hex)
+  hash      String   @id // SHA-256 hex du paquet brut (F-30 — l'ancien FNV-64 forgeable a été remplacé)
   gatewayId String? // senderID hex du nœud passerelle qui l'a déposé
   type      Int // type de paquet (0x01 announce, 0x02 public, 0x03 DM, 0x04 gossip)
   hops      Int // sauts mesh traversés (TTL_MAX − TTL restant)
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+}
+
+// A1 (recadrage) — garde anti-rejeu PERSISTANTE : l'empreinte couvre le tuple
+// d'identité du DM (expéditeur|destinataire|iv|ciphertext), pas ses octets de
+// transport. Un rejeu réemballé (nouveau paquet mesh, nouveaux msgId/seq forgés)
+// reste un doublon. TTL 7 j = fenêtre de fraîcheur des preuves (ACTION_MAX_AGE_MS).
+model ReplayGuard {
+  id        String   @id // SHA-256 hex du tuple canonique (64 chars)
+  kind      String   @default("dm") // réservé aux extensions futures (média, groupe)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
+// A1 — compteur de séquence monotone par (conversation, époque). Seconde
+// barrière indépendante de la garde : un message v2 (msgId+seq signés) dont
+// la séquence régresse est rejeté même si la garde a été purgée.
+model ReplayCounter {
+  key          String   @id // SHA-256 hex de `${senderKey}|${recipientKey}|${epoch}`
+  senderKey    String
+  recipientKey String
+  epoch        BigInt // floor(tsNormalisé / REPLAY_EPOCH_MS)
+  lastSeq      BigInt
+  updatedAt    DateTime @updatedAt
+
+  @@index([senderKey, recipientKey])
+  @@index([epoch])
 }
 
 // Nœuds passerelle connus (app native / Raspberry Pi qui relayent mesh ↔ internet)
@@ -105,8 +133,12 @@ model DirectMessage {
   recipientKey String // pubkey du destinataire
   iv           String // IV AES-GCM base64
   ciphertext   String // ciphertext AES-GCM base64 (opaque pour le serveur)
+  msgId        String? // A1 : identifiant client (uuid) lié par la signature dm2 — null = enveloppe legacy
+  seq          Int? // A1 : séquence monotone par (expéditeur, destinataire, époque) — null = enveloppe legacy
   createdAt    DateTime  @default(now())
   readAt       DateTime?
+
+  @@index([msgId])
 
   @@index([senderKey, recipientKey])
   @@index([recipientKey, createdAt])
