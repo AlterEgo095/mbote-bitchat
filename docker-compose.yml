@@ -16,6 +16,15 @@ services:
       - NEXT_TELEMETRY_DISABLED=1
       - RELAY_EMIT_URL=http://relay:3031
       - RELAY_EMIT_TOKEN=${RELAY_EMIT_TOKEN:-}
+      # Interpolation depuis le .env écrit sur le VPS par la CI (deploy-vps.yml) :
+      # ces variables existaient dans le .env mais n'étaient pas déclarées ici —
+      # elles ne pouvaient atteindre le conteneur que via un override VPS.
+      # Déclarées explicitement à la clôture d'incidents 2026-11-05 :
+      #   SEED_SECRET (F-02) · MBOTE_BOT_KEY (F-29) · ADMIN_API_KEY (A3,
+      #   vide = modération admin OFF, 403 uniforme — RUNBOOK-ADMIN-KEY.md).
+      - SEED_SECRET=${SEED_SECRET:-}
+      - MBOTE_BOT_KEY=${MBOTE_BOT_KEY:-}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-}
     volumes:
       - mbote-data:/app/db
     restart: unless-stopped
@@ -23,17 +32,22 @@ services:
       relay:
         condition: service_healthy
     healthcheck:
+      # Garde post-migration (clôture d'incidents 2026-11-05, suite de I-2) :
+      # le conteneur ne passe healthy que si au moins une migration Prisma est
+      # APPLIQUÉE (`_prisma_migrations.finished_at` non vide) ET que l'API
+      # répond. bun:sqlite est un builtin — l'image n'a pas de CLI sqlite3.
+      # `readonly` : le healthcheck ne doit jamais écrire dans la DB.
       test:
         [
           "CMD",
           "bun",
           "-e",
-          "await fetch('http://localhost:3000/api/stats').then(r => { if (!r.ok) throw new Error('unhealthy'); })",
+          "const { Database } = require('bun:sqlite'); const p = (process.env.DATABASE_URL || 'file:/app/db/custom.db').replace(/^file:/, ''); const db = new Database(p, { readonly: true }); const m = db.query('SELECT 1 AS ok FROM _prisma_migrations WHERE finished_at IS NOT NULL LIMIT 1').get(); if (!m) throw new Error('migrations non appliquees (_prisma_migrations vide)'); await fetch('http://localhost:3000/api/stats').then(r => { if (!r.ok) throw new Error('API unhealthy: ' + r.status); });",
         ]
       interval: 30s
       timeout: 8s
       retries: 3
-      start_period: 20s
+      start_period: 30s
 
   relay:
     build: ./mini-services/relay-service

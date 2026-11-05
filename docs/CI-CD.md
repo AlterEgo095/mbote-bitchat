@@ -129,6 +129,8 @@ suite de l'environnement `VPS_HOST` / `VPS_USER` existant) :
 | `NEXT_PUBLIC_SOCKET_URL` | `https://socket.mondomaine.tld` (ou l'URL du site si le hub est proxifié par Caddy) | URL publique du hub socket.io sur le VPS — sans elle, le bundle embarque le mode sandbox (`XTransformPort`) et le temps réel est hors service en prod |
 | `RELAY_ALLOWED_ORIGIN` | `https://mbote.mondomaine.tld` | Origine autorisée par le relay (CORS), passée en `environment` au service `relay` |
 | `SEED_SECRET` | chaîne aléatoire longue | Secret de l'endpoint de seed `/api/seed` |
+| `MBOTE_BOT_KEY` | `openssl rand -hex 32` | F-29 : chiffre au repos le secret du bot |
+| `ADMIN_API_KEY` | `openssl rand -hex 24` | A3 : clé admin des endpoints `/api/moderation/*` (header `x-admin-key`) — absente = modération admin OFF (403 uniforme) ; procédure : `docs/RUNBOOK-ADMIN-KEY.md` |
 
 > ⚠️ Modifier le secret ne suffit pas : il faut **rebuilder** l'image
 > (`docker compose up -d --build`, ce que fait la CI à chaque push) pour que

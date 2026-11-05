@@ -49,7 +49,7 @@ et l'isolation est désormais prouvée par le système de fichiers (point c).
 **Pattern obligatoire — surcharge explicite sur CHAQUE commande** :
 
 ```bash
-DATABASE_URL="file:/home/z/wt-aN/db/custom.db" bunx prisma db push
+DATABASE_URL="file:/home/z/wt-aN/db/custom.db" bunx prisma db push  # ⚠️ §4 : provisioning d'une DB éphémère UNIQUEMENT — jamais pour faire évoluer le schéma
 DATABASE_URL="file:/home/z/wt-aN/db/custom.db" ADMIN_API_KEY=… bunx next dev -p 3100
 DATABASE_URL="file:/home/z/wt-aN/db/custom.db" bun scripts/…  # et les tests E2E qui vérifient la DB
 ```
@@ -91,3 +91,57 @@ DATABASE_URL="file:$(pwd)/db/custom.db" bunx prisma db push
   future 60 s (`ACTION_MAX_AGE_MS`).
 - **Lint** : `bun run lint` (ESLint Next.js) — à passer avant tout commit de
   code, y compris dans les worktrees.
+
+---
+
+## 4. Schéma : migrations versionnées OBLIGATOIRES — `db push` interdit pour évoluer (incident I-2)
+
+**Incident (2026-11-05, audit I-2)** : prod en 500 pendant ~12 min — le delta
+A1/A2/A3 n'avait jamais été versionné : dev en `prisma db push`, prod en
+`prisma migrate deploy` (CMD du conteneur, F-36) → no-op → nouveau client
+Prisma sur ancien schéma (`suspendedAt`/`hiddenAt`… absentes). Cause
+**systémique, pas ponctuelle** : tant que le processus n'est pas durci, la
+prochaine modification de schéma recassera la prod à l'identique.
+
+**Interdiction stricte** : `prisma db push` est interdit pour toute
+**modification** de `prisma/schema.prisma` (en dev comme « plus rapide »).
+
+**Pattern obligatoire** :
+
+```bash
+DATABASE_URL="file:$(pwd)/db/custom.db" bunx prisma migrate dev --name <phase>
+# → commit du dossier généré prisma/migrations/<n>_<phase>/ DANS LA PR DE LA PHASE
+```
+
+**Garde CI non négociable** : `.github/workflows/schema-guard.yml` — ROUGE si
+`prisma/schema.prisma` change sans qu'aucun fichier `prisma/migrations/**`
+soit ajouté (déclenché sur PR vers `main` ET sur push `main` — le pipeline de
+ce projet merge en local puis pousse directement, les PR seules ne
+suffiraient pas).
+
+**Seule exception autorisée** : provisionner une base ÉPHÉMÈRE jetable sur un
+schéma **déjà versionné** — le `db/ci-test.db` de `tests.yml` et le `db push`
+des worktrees (§2a). Jamais pour faire évoluer le schéma.
+
+**Filet de sécurité prod** : le healthcheck du service `mbote`
+(`docker-compose.yml`) exécute
+`SELECT 1 FROM _prisma_migrations WHERE finished_at IS NOT NULL LIMIT 1` —
+le conteneur ne passe `healthy` que si au moins une migration est réellement
+appliquée (plus le check HTTP `/api/stats`). Un `migrate deploy` no-op ou en
+échec rend le conteneur visiblement unhealthy au lieu de laisser un 500
+silencieux.
+
+---
+
+## 5. `mobile/` : le miroir est synchronisé au VPS — ne pas ré-exclure (incident I-1)
+
+Le rsync du déploiement (`deploy-vps.yml`) synchronise `mobile/` vers le VPS.
+**`mobile/src/core/` est sync vers le VPS car le build Docker typecheck le
+miroir pour la parité protocole. Ne pas ré-exclure sans mettre à jour le
+script de parité.**
+
+Historique : l'exclusion rsync `mobile/` (avant `4d24909`) laissait un miroir
+périmé sans `dedupFingerprint` (A1) → typecheck Docker en échec (run CI
+41940394873). La garde de parité a joué son rôle : elle refusera de nouveau de
+construire si le miroir diverge. La parité est de plus vérifiée en CI à chaque
+push (`tests.yml` → `bun scripts/check-protocol-parity.ts`).

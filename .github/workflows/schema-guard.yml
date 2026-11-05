@@ -1,0 +1,65 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Mbote BitChat — Schema guard
+#  ─ Garde-fou de l'incident I-2 (audit 2026-11-05) : schéma modifié SANS
+#    migration versionnée → `prisma migrate deploy` no-op en prod → 500.
+#  ─ Règle : toute modification de prisma/schema.prisma doit être accompagnée
+#    d'au moins un fichier ajouté sous prisma/migrations/** dans la même PR
+#    (ou le même push direct sur main — le pipeline de ce projet merge en
+#    local puis pousse, les PR seules ne suffiraient pas).
+#  ─ Non négociable (directive post-audit) — voir docs/DEV-SETUP.md §4.
+#  ─ Actions épinglées par SHA de commit (supply chain, condition 6).
+# ─────────────────────────────────────────────────────────────────────────────
+name: Schema guard
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read # lecture seule (F-50)
+
+jobs:
+  guard:
+    name: schema.prisma ⇒ migrations obligatoires
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt (historique complet pour le diff)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 — épinglé par SHA
+        with:
+          fetch-depth: 0
+
+      - name: Détection — schéma modifié sans migration = ROUGE
+        run: |
+          set -euo pipefail
+
+          EVENT="${{ github.event_name }}"
+          if [ "$EVENT" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
+
+          # push initial / SHA de base inconnu → comparer au parent
+          if ! git cat-file -e "$BASE" 2>/dev/null; then
+            BASE="$(git rev-parse "$HEAD_SHA^" 2>/dev/null || echo "$HEAD_SHA")"
+          fi
+
+          SCHEMA_CHANGED="$(git diff --name-only "$BASE" "$HEAD_SHA" -- prisma/schema.prisma | wc -l)"
+          MIGRATIONS_ADDED="$(git diff --name-only --diff-filter=A "$BASE" "$HEAD_SHA" -- prisma/migrations | wc -l)"
+
+          echo "Événement           : $EVENT"
+          echo "Base                : $BASE"
+          echo "Tête                : $HEAD_SHA"
+          echo "schema.prisma modifié            : $SCHEMA_CHANGED"
+          echo "fichiers ajoutés prisma/migrations : $MIGRATIONS_ADDED"
+
+          if [ "$SCHEMA_CHANGED" -gt 0 ] && [ "$MIGRATIONS_ADDED" -eq 0 ]; then
+            echo "::error::prisma/schema.prisma a changé SANS aucune migration versionnée. Cause racine de l'incident I-2 (prod 500 ~12 min, audit 2026-11-05). INTERDIT : 'prisma db push' pour faire évoluer le schéma. OBLIGATOIRE : DATABASE_URL=… bunx prisma migrate dev --name <phase>, puis commit du dossier prisma/migrations/<n>_<phase>/ dans cette PR. Voir docs/DEV-SETUP.md §4."
+            exit 1
+          fi
+
+          echo "✅ Schema guard OK (schéma stable ou migration versionnée présente)"
