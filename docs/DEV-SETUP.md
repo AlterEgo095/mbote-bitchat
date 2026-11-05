@@ -27,12 +27,44 @@ revenue à l'identique dans la CI A1 **et** la CI A2 avant correction
 
 ---
 
-## 2. Worktrees : trois pièges PROUVÉS (incident A3 du 2026-11-04)
+## 2. Worktrees : EXTERNE OBLIGATOIRE + trois pièges PROUVÉS (incidents A3 2026-11-04, ADM 2026-11-05)
 
-Le travail de phase se fait dans des **worktrees git externes** (`git worktree
-add`), hors de portée du reset `main` du superviseur (trace de l'incident
-d'origine : `docs/proofs/A1-anti-replay.md` §6). Mais trois pièges ont été
-prouvés pendant A3 — ils sont la raison des patterns ci-dessous.
+### 0. Worktree EXTERNE = OBLIGATOIRE pour toute branche de travail (récidive : 3 flips)
+
+Trois incidents prouvés (A1/A2, ADM Étape 0, ADM Étapes 1+2) : le superviseur
+du sandbox a remis `HEAD` du repo principal sur `main` PENDANT le travail —
+les commits d'Étape 0 ont atterri sur `main` et ont dû être réalignés sur
+`feat/adm-mvp` (reflog 2026-11-05, §3.7 de la preuve ADM-step1-2). La cause
+racine est l'environnement, pas les commandes : **la mitigation par commande
+atomique ne suffit pas**.
+
+**Règle non négociable (ADM et B1, toute branche future)** :
+
+1. Tout le travail d'une branche se fait dans un worktree EXTERNE au repo
+   principal — chemin canonique `/home/z/wt-<branche>` (ex. `/home/z/wt-adm`
+   pour `feat/adm-mvp`, `/home/z/wt-b1` pour B1).
+2. **LA SEULE commande git tolérée dans `/home/z/my-project`** est la création
+   du worktree (elle ne touche pas `HEAD` du repo principal) :
+
+   ```bash
+   git -C /home/z/my-project worktree add /home/z/wt-adm feat/adm-mvp
+   ```
+
+3. Ensuite, **zéro** commande git dans le repo principal. Tout se fait avec
+   `git -C /home/z/wt-adm …` (status, add, commit, log, diff). Le repo
+   principal reste sur `main` = état déployé ; un flip éventuel redevient
+   sans effet (HEAD y est déjà, le worktree est hors de sa portée).
+4. Après création du worktree : `bun install && bunx prisma generate` dedans
+   (piège postinstall §1) — et surcharge explicite de `DATABASE_URL` sur
+   chaque commande (piège §2a ci-dessous).
+5. Les artefacts non commités d'un worktree ne survivent pas toujours aux
+   tours d'outils (piège §2b) : **commit tôt, commit souvent**, et les
+   preuves E2E se rejouent from scratch dans un même tour.
+
+Le travail de phase se fait donc dans des **worktrees git externes** (`git
+worktree add`), hors de portée du reset `main` du superviseur (trace de
+l'incident d'origine : `docs/proofs/A1-anti-replay.md` §6). Trois pièges ont
+été prouvés pendant A3 — ils sont la raison des patterns ci-dessous.
 
 ### a. `DATABASE_URL` est exporté GLOBALEMENT par le sandbox — il écrase tout `.env`
 
@@ -71,13 +103,19 @@ find /home/z /tmp -name "*.db" -newer /tmp/marker -not -path "*/node_modules/*"
 # → seul le .db du worktree doit apparaître ; celui du repo principal ne bouge pas
 ```
 
-### Création d'un worktree (procédure complète)
+### Création d'un worktree (procédure complète — canonique)
 
 ```bash
-git worktree add ../wt-aN feat/aN-branche
-cd ../wt-aN
+# 1. LA SEULE commande git dans le repo principal (ne touche pas son HEAD) :
+git -C /home/z/my-project worktree add /home/z/wt-adm feat/adm-mvp
+# 2. Tout le reste se fait DANS le worktree :
+cd /home/z/wt-adm
 bun install && bunx prisma generate
-DATABASE_URL="file:$(pwd)/db/custom.db" bunx prisma db push
+DATABASE_URL="file:$(pwd)/db/custom.db" bunx prisma migrate deploy
+# 3. Chaque commande (serveur, CLI, tests) surcharge DATABASE_URL explicitement :
+DATABASE_URL="file:$(pwd)/db/custom.db" ADMIN_INTERNAL_TOKEN=… bunx next dev -p 3100
+# 4. git exclusivement via -C :
+git -C /home/z/wt-adm add … && git -C /home/z/wt-adm commit …
 ```
 
 ---
