@@ -21,3 +21,6 @@ mini-services/relay-service/*
 !mini-services/relay-service/package.json
 examples
 agent-ctx
+admin
+deploy
+docs

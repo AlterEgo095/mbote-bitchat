@@ -25,6 +25,10 @@ services:
       - SEED_SECRET=${SEED_SECRET:-}
       - MBOTE_BOT_KEY=${MBOTE_BOT_KEY:-}
       - ADMIN_API_KEY=${ADMIN_API_KEY:-}
+      # ADM Étape 4 (RBAC) : token interne mbote↔admin, timing-safe, JAMAIS en
+      # DB ni en réponse HTTP — ne ressuscite pas ADMIN_API_KEY (RBAC §8).
+      # Inutilisé avant l'Étape 4 ; déclaré dès maintenant pour figer le contrat.
+      - ADMIN_INTERNAL_TOKEN=${ADMIN_INTERNAL_TOKEN:-}
     volumes:
       - mbote-data:/app/db
     restart: unless-stopped
@@ -76,6 +80,43 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  admin:
+    # ADM Étape 2 — squelette du panneau (docs/specs/ADMIN-RBAC.md §8) :
+    # BFF sans état, ZÉRO accès DB (pas de prisma dans admin/package.json),
+    # publié UNIQUEMENT sur 127.0.0.1:3001 — nginx est le seul point d'entrée
+    # public, derrière Cloudflare Access (décision audit §4.5).
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+    container_name: mbote-admin
+    ports:
+      - "127.0.0.1:3001:3001"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - PORT=3001
+      - HOSTNAME=0.0.0.0
+      - BACKEND_INTERNAL_URL=http://mbote:3000
+      - ADMIN_INTERNAL_TOKEN=${ADMIN_INTERNAL_TOKEN:-}
+    depends_on:
+      mbote:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      # 2 états testés (preuve ADM-step1-2.md) : 200 ok / 503 degraded —
+      # un backend mort rend ce conteneur visiblement unhealthy.
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "await fetch('http://localhost:3001/api/health').then(r => { if (!r.ok) throw new Error('unhealthy: ' + r.status); })",
+        ]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 15s
 
 volumes:
   mbote-data:
