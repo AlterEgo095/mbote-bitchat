@@ -105,6 +105,20 @@ export function dm2ProofMessage(
 }
 
 /**
+ * A2 (recadrage) — chaînes canoniques de CONFIANCE (authentification des clés).
+ * `trust` : consultation de l'état de confiance d'un pair (lecture authentifiée).
+ * `trust-verify` : confirmation hors-bande du numéro de sécurité — le numéro
+ * est lié à la signature pour l'audit (quel numéro a été vérifié, quand).
+ */
+export function trustProofMessage(me: string, peer: string, ts: number): string {
+  return `${me}|trust|${peer}|${ts}`;
+}
+
+export function trustVerifyProofMessage(me: string, peer: string, safetyNumber: string, ts: number): string {
+  return `${me}|trust-verify|${peer}|${safetyNumber}|${ts}`;
+}
+
+/**
  * F-07 : chaîne canonique pour la preuve de LECTURE d'une conversation DM.
  * `peer` = clé publique du pair, ou `"*"` pour la liste des conversations.
  * Signée par la clé du lecteur (`me`) — sans elle, pas de lecture ni de
