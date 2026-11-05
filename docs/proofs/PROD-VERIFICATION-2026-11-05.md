@@ -186,3 +186,46 @@ SQL
 - Scripts d'audit : `prod-audit-phase1.ts` (25 checks), `prod-audit-a2red.ts` (9), `prod-audit-block-dm.ts` (9).
 - Cet audit a créé : 3 commits de réparation sur `main` (`d271798` rapport initial, `4d24909` fix rsync, `f558b1c` migration 0003) + 8 identités/8 DMs de test marqués.
 - Le token GitHub fourni par l'opérateur a été retiré de la config git locale à la clôture. **Recommandation : révoquer et régénérer ce token** — il a transité en clair dans la conversation.
+
+---
+
+## 8. ADDENDUM — Re-check live post-clôture (2026-11-05T08:50–08:52Z)
+
+**Question** : « l'application fonctionne-t-elle dans son ensemble en prod après les optimisations ? »
+**Méthode** : batterie 100 % lecture seule + tests négatifs (zéro écriture — pas de nouveau résidu ; gate respecté). Prod testée : `https://mbotemesh.aenews.online`.
+
+### Sorties brutes (re-jouables)
+
+```
+$ curl -sS -o /dev/null -w "%{http_code} %{ssl_verify_result} %{time_total}s" https://mbotemesh.aenews.online/
+200 0 0.639s                                   ← homepage OK, TLS valide
+
+$ curl -sS https://mbotemesh.aenews.online/api/stats        # 08:50Z
+{"users":11,"posts":1,"dms":8,"channels":0,"likes":2,"gateways":1,"meshIngest24h":0,
+ "perf":{"reqPerSec":0.03,"p95Ms":15,…},"uptimeSec":29607}  [code=200 t=0.769s]
+
+$ curl /api/moderation/queue (×3, sans clé)   → 403 ×3 « Accès modération refusé (admin requis) »  (PAS de 500)
+$ curl -X POST /api/moderation/action (sans clé) → 403 (même message)
+$ curl -X POST /api/dms -d '{}'               → 400 « senderKey, recipientKey, iv, ciphertext requis »
+$ curl /api/posts · /api/users · /api/channels → 200 · 200 · 200 (données réelles servies)
+$ http:// → 301 https://  ·  headers : CSP + HSTS preload + X-Frame-Options DENY + nosniff + permissions-policy
+$ openssl s_client → Let's Encrypt CN=aenews.online, notAfter=Dec  9 12:42:25 2026 GMT
+$ re-curl /api/stats après les 6 tests négatifs → users:11 posts:1 dms:8 (IDENTIQUE → non-écriture prouvée)
+```
+
+### Lecture
+
+| Contrôle | Attendu | Observé | Verdict |
+|---|---|---|---|
+| Homepage + TLS + redirect | 200, cert valide, 301 | 200 · LE jusqu'au 2026-12-09 · 301 | ✅ |
+| `/api/stats` | 200, latence faible | 200, 0,77 s, p95 15 ms | ✅ |
+| Continuité service | uptime continu depuis fix I-2 | 29607 s ≈ 8 h 14 m, boot ~00:36 UTC, **aucun restart inexpliqué** | ✅ |
+| Intégrité données | identique snapshot §5 (06:04Z) | users:11 posts:1 dms:8 likes:2 — **zéro dérive** ; `meshIngest24h` 2→0 = roulis normal fenêtre 24 h | ✅ |
+| Garde admin A3 live | 403 uniforme (jamais 500) | 403 ×4, message uniforme | ✅ |
+| Garde anti-replay/validation A1 live | 400 avant écriture | 400, message de validation | ✅ |
+| Non-écriture des tests | stats inchangées | inchangées | ✅ |
+
+### Verdict addendum
+**Fonctionnel : GO confirmé** — toutes les couches optimisées (A1 garde DM, A2 auth clés, A3 modération, migration 0003) sont actives et tiennent en live à H+~3 h de l'audit. La clôture `7d4afb0` est **locale/non poussée** (token compromis, volontaire) : la prod en `75e9559` contient déjà 100 % des changements applicatifs ; la clôture n'ajoute que du durcissement CI/ops (schema-guard, healthcheck, vars deploy) actif au prochain déploiement.
+**Non-fonctionnel : inchangé** — item 3 (token) et item 1 (résidu 11/8, re-confirmé live) restent opérateur ; cf. `INCIDENTS-CLOSED-2026-11-05.md` §7.
+Note : status CI non re-vérifiable à cet instant (API GitHub rate-limitée sans auth — authentification volontairement refusée avec le token compromis). Hygiène pré-push : 4 fichiers `.github/` + workflows en diff **mode-only** (0 ligne) — normaliser/commiter au moment de O-2.
