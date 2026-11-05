@@ -19,7 +19,10 @@ model User {
   // A3 (recadrage) — suspension par modération : posts absents du fil public,
   // publication refusée (403) tant que la suspension tient.
   suspendedAt DateTime?
-  suspendedBy String? // identité admin ayant suspendu
+  // ADM Étape 0 (rupture ADMIN_API_KEY) : suspendedBy (String, clé secrète en
+  // clair) → suspendedById (FK AdminUser) — identité traçable, jamais de secret.
+  suspendedById Int?
+  suspendedByAdmin AdminUser? @relation("userSuspendedBy", fields: [suspendedById], references: [id])
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -50,7 +53,10 @@ model Post {
   // A3 (recadrage) — modération du fil public : masqué = absent du fil public,
   // MAIS CONSERVÉ EN DB pour audit (contrairement à la purge qui supprime).
   hiddenAt DateTime?
-  hiddenBy String? // identité admin ayant masqué (clé API provisoire avant RBAC)
+  // ADM Étape 0 (rupture ADMIN_API_KEY) : hiddenBy (String, clé secrète en
+  // clair) → hiddenById (FK AdminUser) — identité traçable, jamais de secret.
+  hiddenById Int?
+  hiddenByAdmin AdminUser? @relation("postHiddenBy", fields: [hiddenById], references: [id])
   createdAt  DateTime @default(now())
 
   likes Like[]
@@ -148,7 +154,10 @@ model Report {
   details     String? // contexte libre (≤ 500 chars)
   status      String    @default("open") // open | actioned | dismissed
   handledAt   DateTime?
-  handledBy   String? // identité admin ayant traité (clé API provisoire avant RBAC)
+  // ADM Étape 0 (rupture ADMIN_API_KEY) : handledBy (String, clé secrète en
+  // clair) → handledById (FK AdminUser) — identité traçable, jamais de secret.
+  handledById Int?
+  handledByAdmin AdminUser? @relation("reportHandledBy", fields: [handledById], references: [id])
   createdAt   DateTime  @default(now())
 
   @@unique([reporterKey, targetKind, targetId]) // idempotence : 1 signalement par (signaleur, cible)
@@ -179,7 +188,12 @@ model PeerBlock {
 // borné (≤ 280), compteur de signalements clôturés.
 model ModerationAction {
   id         String   @id @default(cuid())
-  adminKey   String // identité admin (ADMIN_API_KEY — provisoire avant RBAC complet)
+  // ADM Étape 0 (rupture ADMIN_API_KEY) : adminKey (String — clé secrète en
+  // clair, SUPPRIMÉE) → adminUserId (FK AdminUser) + actorLabel ("admin-<id>"
+  // | "cli" | "legacy"). Aucune clé secrète ni en DB ni en HTTP.
+  adminUserId Int?
+  adminUser  AdminUser? @relation(fields: [adminUserId], references: [id])
+  actorLabel String // "admin-<id>" (session) | "cli" (purge machine) | "legacy" (pré-rupture)
   action     String // warn | hide | unhide | suspend | unsuspend | purge
   targetKind String // post | user
   targetId   String // id Post (hide/unhide/purge) ou pubkey User (warn/suspend/unsuspend)
@@ -190,6 +204,75 @@ model ModerationAction {
 
   @@index([targetKind, targetId])
   @@index([createdAt])
+  @@index([adminUserId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADM Étape 0 — couche administration (rupture ADMIN_API_KEY)
+// Audit : docs/proofs/ADM-audit-2026-11-05.md (GO conditionnel, risques R-1/R-2)
+// Append-only d'AdminAudit : triggers SQLite (BEFORE UPDATE/DELETE → RAISE)
+// posés dans la migration 0004_admin — aucun client (Prisma inclus) ne peut
+// les contourner (ils s'exécutent dans le moteur). Garde : check CI
+// sqlite_master + schema-guard + relecture super-admin de toute migration
+// touchant AdminAudit.
+// ─────────────────────────────────────────────────────────────────────────────
+model AdminUser {
+  id            Int       @id @default(autoincrement())
+  email         String    @unique
+  passwordHash  String? // Argon2id — null pour le pseudo-user system (jamais de login)
+  totpSecret    String?
+  totpEnrolled  Boolean   @default(false)
+  role          String // system | auditor | support | moderator | super-admin
+  createdAt     DateTime  @default(now())
+  disabledAt    DateTime?
+
+  sessions          AdminSession[]
+  audits            AdminAudit[]       @relation("auditActor")
+  hiddenPosts       Post[]             @relation("postHiddenBy")
+  suspendedUsers    User[]             @relation("userSuspendedBy")
+  handledReports    Report[]           @relation("reportHandledBy")
+  moderationActions ModerationAction[]
+
+  @@index([role])
+}
+
+model AdminSession {
+  id          String    @id @default(cuid())
+  adminUserId Int
+  csrfToken   String // anti-CSRF : exigé en header x-admin-csrf sur toute mutation
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  expiresAt   DateTime
+  revokedAt   DateTime?
+
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id])
+
+  @@index([adminUserId])
+  @@index([expiresAt])
+}
+
+model AdminAudit {
+  id            Int      @id @default(autoincrement())
+  actorId       Int // FK AdminUser — le « qui » qui manquait à ModerationAction
+  actorRole     String // rôle au moment de l'action (copie figée)
+  action        String
+  targetType    String
+  targetId      String
+  beforeJson    String? // état avant (JSON en String — Prisma/SQLite sans Json)
+  afterJson     String? // état après
+  ip            String?
+  userAgent     String?
+  justification String? // catégorie + texte ≥ 20 chars (décision §4.4 de l'audit)
+  createdAt     DateTime @default(now())
+
+  actor AdminUser @relation("auditActor", fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([targetType, targetId])
 }
 
 // Nœuds passerelle connus (app native / Raspberry Pi qui relayent mesh ↔ internet)
