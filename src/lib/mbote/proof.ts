@@ -119,6 +119,38 @@ export function trustVerifyProofMessage(me: string, peer: string, safetyNumber: 
 }
 
 /**
+ * A3 (recadrage) — chaînes canoniques de MODÉRATION (fil public UNIQUEMENT).
+ *
+ * `report` : signalement d'un post ou d'un commentaire public. PÉRIMÈTRE :
+ * aucun DM — le serveur ne stocke que du chiffré E2EE (boîte aux lettres
+ * aveugle) et ne peut ni lire ni qualifier un message privé ; toute tentative
+ * de signaler un DM est refusée à l'endpoint.
+ *   report : `${reporter}|report|${targetKind}|${targetId}|${reason}|${ts}`
+ *
+ * `block` : blocage/déblocage d'un pair — l'ACTION est couverte par la
+ * signature : une preuve `block` rejouée ne peut jamais devenir `unblock`.
+ *   block : `${blocker}|block|${blocked}|${action}|${ts}`   (action = block | unblock)
+ */
+export function reportProofMessage(
+  reporter: string,
+  targetKind: string,
+  targetId: string,
+  reason: string,
+  ts: number
+): string {
+  return `${reporter}|report|${targetKind}|${targetId}|${reason}|${ts}`;
+}
+
+export function blockProofMessage(
+  blocker: string,
+  blocked: string,
+  action: "block" | "unblock",
+  ts: number
+): string {
+  return `${blocker}|block|${blocked}|${action}|${ts}`;
+}
+
+/**
  * F-07 : chaîne canonique pour la preuve de LECTURE d'une conversation DM.
  * `peer` = clé publique du pair, ou `"*"` pour la liste des conversations.
  * Signée par la clé du lecteur (`me`) — sans elle, pas de lecture ni de

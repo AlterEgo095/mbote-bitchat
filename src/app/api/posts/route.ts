@@ -115,6 +115,46 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // ── A3 : le fil public exclut le contenu modéré ──
+    // - posts masqués (hiddenAt) : absents de TOUTES les surfaces publiques,
+    //   mais CONSERVÉS en DB pour audit (accès admin/DB uniquement) ;
+    // - auteurs suspendus : absents du fil public ;
+    // - si un lecteur est déclaré (myPub), les pairs qu'il a bloqués n'y
+    //   apparaissent plus — préférence d'affichage servie côté serveur, PAS
+    //   une mesure de confidentialité (le fil est public par nature).
+    const blockedKeys = myPub
+      ? (
+          await db.peerBlock.findMany({
+            where: { blockerKey: myPub },
+            select: { blockedKey: true },
+          })
+        ).map((b) => b.blockedKey)
+      : [];
+    where = {
+      AND: [
+        where,
+        { hiddenAt: null },
+        { author: { suspendedAt: null } },
+        ...(blockedKeys.length > 0 ? [{ author: { pubkey: { notIn: blockedKeys } } }] : []),
+      ],
+    };
+
+    // A3 : un fil de réponses dont le parent est masqué/suspendu/purgé n'est
+    // plus une surface publique — 404 explicite plutôt qu'un fil fantôme.
+    if (scope === "replies") {
+      const parentId = sp.get("parentId") ?? "";
+      const parent = await db.post.findUnique({
+        where: { id: parentId },
+        select: { hiddenAt: true, author: { select: { suspendedAt: true } } },
+      });
+      if (!parent || parent.hiddenAt || parent.author.suspendedAt) {
+        return NextResponse.json(
+          { error: "Contenu parent indisponible (modéré ou purgé)" },
+          { status: 404 }
+        );
+      }
+    }
+
     // curseur : strictement antérieur au point (createdAt, id) — ordre total,
     // aucun doublon ni trou même si plusieurs posts partagent la même ms
     // (cas fréquent : ingestion mesh en batch).
@@ -234,6 +274,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Identité inconnue — créez d'abord votre identité" },
         { status: 404 }
+      );
+    }
+    // A3 : un compte suspendu par la modération ne publie plus
+    if (author.suspendedAt) {
+      return NextResponse.json(
+        { error: "Publication refusée — compte suspendu par la modération" },
+        { status: 403 }
       );
     }
 
