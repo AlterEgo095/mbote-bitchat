@@ -12,7 +12,7 @@
  *   - anti-CSRF : toute mutation exige le header `x-admin-csrf` égal au
  *     csrfToken de la session (comparaison timing-safe) ;
  *   - hiérarchie de rôles : system < auditor < support < moderator < super-admin
- *     (matrice complète : docs/ADMIN-RBAC.md — Étape 1/4).
+ *     (matrice complète : docs/specs/ADMIN-RBAC.md — Étape 1/4).
  *
  *  Entre l'Étape 0 et l'Étape 3 (login + TOTP), la seule façon de créer une
  *  session est l'outil DEV `scripts/admin-session.ts` (refusé en production) :
