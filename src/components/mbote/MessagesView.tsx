@@ -14,11 +14,13 @@ import {
   Loader2,
   Lock,
   MessageSquarePlus,
+  Mic,
   Paperclip,
   Send,
   ShieldAlert,
   ShieldCheck,
   ShieldQuestion,
+  Square,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -46,16 +48,27 @@ import {
 import { openMessage, sealMessage, shortKey, signPayload } from "@/lib/mbote/crypto";
 import { dm2ProofMessage, dmReadProofMessage, trustVerifyProofMessage } from "@/lib/mbote/proof";
 import { newDmMsgId, nextDmSeq } from "@/lib/mbote/dm-sequence";
+import { VoiceNote } from "@/components/VoiceNote";
 import {
   attachUploadQueueFlusher,
   downloadImage,
+  downloadVoiceNote,
   enqueueOfflineUpload,
   MediaClientError,
   sessionCekFor,
   uploadImage,
+  uploadVoiceNote,
   type UploadStage,
   type UploadedMedia,
+  type UploadedVoice,
 } from "@/lib/mbote/media-client";
+import {
+  VOICE_MAX_DURATION_S,
+  VOICE_UNSUPPORTED_MESSAGE,
+  isOpusRecordingSupported,
+  VoiceRecorder,
+  type VoiceRecording,
+} from "@/lib/mbote/media/opus";
 import {
   confirmLocalTrust,
   evaluateLocalTrust,
@@ -85,6 +98,9 @@ interface MediaDmPayload {
   mediaType: string;
   bytes: number;
   objectKey: string;
+  /** B3 — voix : durée (ms) + waveform (100 peaks) voyagent dans le dm2 E2EE */
+  durationMs?: number;
+  peaks?: number[];
 }
 
 function parseDmBody(body: string): MediaDmPayload | null {
@@ -97,7 +113,17 @@ function parseDmBody(body: string): MediaDmPayload | null {
       typeof p.cek === "string" &&
       typeof p.mediaType === "string"
     ) {
-      return { kind: "media", text: p.text ?? "", mediaId: p.mediaId, cek: p.cek, mediaType: p.mediaType, bytes: p.bytes ?? 0, objectKey: p.objectKey ?? "" };
+      return {
+        kind: "media",
+        text: p.text ?? "",
+        mediaId: p.mediaId,
+        cek: p.cek,
+        mediaType: p.mediaType,
+        bytes: p.bytes ?? 0,
+        objectKey: p.objectKey ?? "",
+        durationMs: typeof p.durationMs === "number" ? p.durationMs : undefined,
+        peaks: Array.isArray(p.peaks) ? (p.peaks as number[]) : undefined,
+      };
     }
   } catch {
     /* plaintext historique — texte brut */
@@ -226,6 +252,57 @@ function MediaBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
   );
 }
 
+// ── B3 — bulle voix : download → decrypt → sniff opus → VoiceNote ────────────
+
+function VoiceBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
+  const [blob, setBlob] = useState<Blob | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [measuredPeaks, setMeasuredPeaks] = useState<number[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const session = sessionCekFor(payload.mediaId);
+      try {
+        const voice = await downloadVoiceNote({
+          mediaId: payload.mediaId,
+          cekB64: payload.cek || session?.cekB64 || "",
+          declaredType: payload.mediaType,
+          me,
+          sign: (p) => signPayload(signPriv, p),
+          wantMeasure: !payload.peaks, // fallback : le dm2 n'a pas porté les peaks
+        });
+        if (!cancelled) {
+          setBlob(voice.blob);
+          setMeasuredPeaks(voice.peaks);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setErr(
+            e instanceof MediaClientError && e.code === "magic-bytes-mismatch"
+              ? "Note refusée — le contenu n'est pas de l'opus annoncé."
+              : "Note vocale indisponible (CEK absent ou objet altéré)."
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [payload.mediaId, payload.cek, payload.mediaType, payload.peaks, me, signPriv]);
+
+  return (
+    <VoiceNote
+      blob={blob}
+      error={err}
+      durationMs={payload.durationMs ?? 0}
+      peaks={payload.peaks ?? measuredPeaks}
+      mine={mine}
+      bytes={payload.bytes}
+    />
+  );
+}
+
 export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: MessagesViewProps) {
   const qc = useQueryClient();
   const myPub = identity.pubkey;
@@ -272,12 +349,103 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
   // file hors-ligne : ref de queue → destinataire (dm2 auto au retour réseau)
   const queuePeerRef = useRef<Map<string, string>>(new Map());
 
+  // ── B3 : note vocale (hold-to-record — arbitrage spec §8.5) ──
+  // TRANCHEMENT : hold-to-record (WhatsApp, référence RDC) — pointerdown =
+  // début, pointerup = stop → preview. Un relâchement < 400 ms bascule en
+  // mode tap-to-toggle (accessibilité clavier : Enter/Space sur le bouton).
+  const voiceRecorderRef = useRef<VoiceRecorder | null>(null);
+  const voiceTapModeRef = useRef(false);
+  const voiceTapArmedAtRef = useRef(0); // anti-rebond : le click du MÊME tap est avalé
+  const voiceSupported = useMemo(() => isOpusRecordingSupported(), []);
+  const [voiceRecording, setVoiceRecording] = useState(false);
+  const [voiceElapsedMs, setVoiceElapsedMs] = useState(0);
+  const [pendingVoice, setPendingVoice] = useState<VoiceRecording | null>(null);
+  const [voiceUploading, setVoiceUploading] = useState(false);
+
+  const cancelPendingVoice = () => setPendingVoice(null);
+
   const peer: UserPublic | undefined = useMemo(() => {
     const fromConv = conversations.data?.conversations.find((c) => c.peer.pubkey === selectedPub)
       ?.peer;
     if (fromConv) return fromConv;
     return users.data?.users.find((u) => u.pubkey === selectedPub);
   }, [conversations.data, users.data, selectedPub]);
+
+  // ── B3 : cycle d'enregistrement (hold-to-record + fallback tap-toggle) ──
+  const startVoiceRecording = async () => {
+    if (!peer?.ecdhPub || peer.isBot) return;
+    const rec = new VoiceRecorder({
+      bitrateKey: "default",
+      onTick: (ms) => setVoiceElapsedMs(ms),
+      onAutoStop: () =>
+        toast.info(`Durée maximale atteinte (${VOICE_MAX_DURATION_S} s) — relâchez pour prévisualiser`),
+    });
+    voiceRecorderRef.current = rec;
+    setVoiceElapsedMs(0);
+    try {
+      await rec.start();
+      setVoiceRecording(true);
+    } catch (e) {
+      voiceRecorderRef.current = null;
+      toast.error("Micro indisponible", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    }
+  };
+
+  const stopVoiceRecording = async (discard: boolean) => {
+    const rec = voiceRecorderRef.current;
+    voiceRecorderRef.current = null;
+    setVoiceRecording(false);
+    if (!rec) return;
+    try {
+      if (discard) {
+        await rec.cancel();
+        return;
+      }
+      const result = await rec.stop();
+      if (result.durationMs < 400) {
+        toast.info("Trop court — maintenez le bouton (ou tapez pour démarrer/arrêter).");
+        return;
+      }
+      setPendingVoice(result);
+    } catch (e) {
+      toast.error("Enregistrement perdu", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    }
+  };
+
+  /** Hold-to-record : presser = démarrer, relâcher = stop → preview.
+   *  Relâchement < 400 ms → mode tap-toggle : le click du MÊME tap est AVALÉ
+   *  (anti-rebond 250 ms — sinon la course d'état stoppe l'enregistrement
+   *  à peine démarré, bug attrapé par la preuve navigateur) ; le tap SUIVANT
+   *  arrête. */
+  function onMicPointerDown() {
+    if (voiceRecording) return;
+    voiceTapModeRef.current = false;
+    void startVoiceRecording();
+  }
+  function onMicPointerUp() {
+    if (!voiceRecording) return;
+    if (voiceElapsedMs < 400) {
+      // tap-to-toggle : l'enregistrement CONTINUE, le prochain tap arrête
+      voiceTapModeRef.current = true;
+      voiceTapArmedAtRef.current = Date.now() + 250;
+      return;
+    }
+    void stopVoiceRecording(false);
+  }
+  function onMicClick() {
+    if (
+      voiceTapModeRef.current &&
+      voiceRecording &&
+      Date.now() >= voiceTapArmedAtRef.current
+    ) {
+      voiceTapModeRef.current = false;
+      void stopVoiceRecording(false);
+    }
+  }
 
   const messages = useQuery({
     queryKey: ["dms", myPub, selectedPub],
@@ -540,6 +708,77 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
     });
     await qc.invalidateQueries({ queryKey: ["dms", myPub, peerPub] });
     await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
+  };
+
+  // ── B3 : envoi du dm2 VOIX (même canal E2EE — durée + peaks dans le payload) ─
+  const sendVoiceDm = async (voice: UploadedVoice, peerPub: string) => {
+    const target = peerPub === selectedPub ? peer : users.data?.users.find((u) => u.pubkey === peerPub);
+    if (!target?.ecdhPub) {
+      toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
+      return;
+    }
+    const payloadVoice: MediaDmPayload = {
+      kind: "media",
+      text: "",
+      mediaId: voice.mediaId,
+      cek: voice.cekB64,
+      mediaType: voice.mediaType,
+      bytes: voice.plainBytes,
+      objectKey: voice.objectKey,
+      durationMs: voice.durationMs,
+      peaks: voice.peaks,
+    };
+    const sealed = await sealMessage(identity.ecdhPriv, target.ecdhPub, JSON.stringify(payloadVoice));
+    const msgId = newDmMsgId();
+    const seq = nextDmSeq(myPub, peerPub);
+    const ts = Date.now();
+    const signature = await signPayload(
+      identity.signPriv,
+      dm2ProofMessage(myPub, peerPub, msgId, seq, sealed.iv, sealed.ciphertext, ts)
+    );
+    await apiSendDm({
+      senderKey: myPub,
+      recipientKey: peerPub,
+      iv: sealed.iv,
+      ciphertext: sealed.ciphertext,
+      msgId,
+      seq,
+      ts,
+      signature,
+    });
+    await qc.invalidateQueries({ queryKey: ["dms", myPub, peerPub] });
+    await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
+  };
+
+  /** B3 : preview → envoi (uploadVoiceNote → dm2). Invariant B2 : l'upload
+   *  EST l'orchestration observable — aucun état « envoyé » avant le 2xx. */
+  const sendPendingVoice = async () => {
+    const voice = pendingVoice;
+    if (!voice || !peer?.pubkey) return;
+    const peerPub = peer.pubkey;
+    setPendingVoice(null);
+    setVoiceUploading(true);
+    try {
+      const uploaded = await uploadVoiceNote({
+        bytes: voice.bytes,
+        durationMs: voice.durationMs,
+        peaks: voice.peaks,
+        me: myPub,
+        sign: (p) => signPayload(identity.signPriv, p),
+        onProgress: (stage, info) => setUploadState({ stage, fraction: info?.fraction, message: info?.message }),
+      });
+      await sendVoiceDm(uploaded, peerPub);
+      toast.success("Note vocale envoyée", {
+        description: `Opus ${(uploaded.durationMs / 1000).toFixed(1)} s · ${humanBytes(uploaded.plainBytes)} · chiffrée (AES-256-GCM)`,
+      });
+    } catch (e) {
+      toast.error("Échec d'envoi vocal", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setVoiceUploading(false);
+      setUploadState(null);
+    }
   };
 
   // B2 : au retour du réseau, la file des uploads re-orchestre — puis le dm2
@@ -880,7 +1119,11 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                             }`}
                           >
                             {media ? (
-                              <MediaBubble payload={media} mine={mine} me={myPub} signPriv={identity.signPriv} />
+                              media.mediaType === "audio/opus" ? (
+                                <VoiceBubble payload={media} mine={mine} me={myPub} signPriv={identity.signPriv} />
+                              ) : (
+                                <MediaBubble payload={media} mine={mine} me={myPub} signPriv={identity.signPriv} />
+                              )
                             ) : (
                               <p className="whitespace-pre-wrap break-words">{body}</p>
                             )}
@@ -889,7 +1132,13 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                                 mine ? "text-primary-foreground/70" : "text-muted-foreground"
                               }`}
                             >
-                              {media && <ImageIcon className="size-2.5" aria-hidden="true" />}
+                              {media && (
+                                media.mediaType === "audio/opus" ? (
+                                  <Mic className="size-2.5" aria-hidden="true" />
+                                ) : (
+                                  <ImageIcon className="size-2.5" aria-hidden="true" />
+                                )
+                              )}
                               <Lock className="size-2.5" aria-hidden="true" />
                               {formatDistanceToNow(new Date(m.createdAt), {
                                 addSuffix: true,
@@ -974,6 +1223,62 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                   >
                     <Paperclip className="size-4" aria-hidden="true" />
                   </Button>
+                  {/* B3 : note vocale — HOLD-TO-RECORD (arbitrage spec §8.5 :
+                      WhatsApp est la référence d'usage en RDC). Relâchement
+                      < 400 ms → mode tap-to-toggle (a11y + clavier :
+                      Enter/Space déclenchent click après pointerdown/up). */}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className={`h-11 shrink-0 ${voiceRecording ? "border-red-400 bg-red-50 text-red-700" : ""}`}
+                    onPointerDown={onMicPointerDown}
+                    onPointerUp={onMicPointerUp}
+                    onPointerLeave={() => {
+                      if (voiceRecording && !voiceTapModeRef.current) void stopVoiceRecording(false);
+                    }}
+                    onClick={onMicClick}
+                    disabled={
+                      !peer.ecdhPub ||
+                      sending ||
+                      uploadState !== null ||
+                      voiceUploading ||
+                      pendingVoice !== null ||
+                      trustBlocked ||
+                      peer.isBot ||
+                      !voiceSupported
+                    }
+                    aria-label={
+                      !voiceSupported
+                        ? "Notes vocales indisponibles (Opus requis)"
+                        : voiceRecording
+                          ? "Arrêter l'enregistrement"
+                          : "Note vocale — maintenir pour enregistrer"
+                    }
+                    title={
+                      !voiceSupported
+                        ? VOICE_UNSUPPORTED_MESSAGE
+                        : voiceRecording
+                          ? "Enregistrement… relâchez pour prévisualiser"
+                          : "Maintenir pour enregistrer (Opus 8 kbps, 60 s max)"
+                    }
+                    data-testid="mic-button"
+                  >
+                    {voiceRecording ? (
+                      <Square className="size-4" aria-hidden="true" />
+                    ) : (
+                      <Mic className="size-4" aria-hidden="true" />
+                    )}
+                  </Button>
+                  {voiceRecording && (
+                    <span
+                      className="shrink-0 text-xs font-medium tabular-nums text-red-600"
+                      role="timer"
+                      aria-live="off"
+                      data-testid="voice-timer"
+                    >
+                      ● {(voiceElapsedMs / 1000).toFixed(1)} s
+                    </span>
+                  )}
                   <Input
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
@@ -1022,6 +1327,53 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
           )}
         </div>
       </div>
+
+      {/* B3 : dialogue de PREVIEW voix (lecture, durée, annulable) */}
+      <Dialog open={pendingVoice !== null} onOpenChange={(open) => !open && cancelPendingVoice()}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mic className="size-4 text-primary" aria-hidden="true" />
+              Envoyer une note vocale
+            </DialogTitle>
+            <DialogDescription>
+              Opus {pendingVoice ? (pendingVoice.durationMs / 1000).toFixed(1) : "0"} s —
+              chiffrée sur ton appareil, le serveur n&apos;entend rien. Écoute-toi avant
+              d&apos;envoyer.
+            </DialogDescription>
+          </DialogHeader>
+          {pendingVoice && (
+            <div className="space-y-3">
+              <div className="rounded-lg border bg-muted/40 p-3">
+                <VoiceNote
+                  blob={new Blob([pendingVoice.bytes as unknown as BlobPart], {
+                    type: pendingVoice.container,
+                  })}
+                  durationMs={pendingVoice.durationMs}
+                  peaks={pendingVoice.peaks}
+                  mine={false}
+                  bytes={pendingVoice.bytes.length}
+                  downloadable
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={cancelPendingVoice}>
+                  <X className="size-4" aria-hidden="true" />
+                  Annuler
+                </Button>
+                <Button className="flex-1" onClick={sendPendingVoice} disabled={voiceUploading}>
+                  {voiceUploading ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Mic className="size-4" aria-hidden="true" />
+                  )}
+                  Chiffrer et envoyer
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* B2 : dialogue de PREVIEW avant upload (nom, taille, annulable) */}
       <Dialog open={pendingFile !== null} onOpenChange={(open) => !open && setPendingFile(null)}>

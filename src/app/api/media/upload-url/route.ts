@@ -34,6 +34,7 @@ import {
   B2_QUOTA_BYTES,
   B2_RATE_WINDOW_MS,
   B2_UPLOAD_RATE_PER_HOUR,
+  b2UploadLimitFor,
   isB2UploadType,
   proxyPresignedPath,
   publicStorageConfig,
@@ -109,19 +110,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 4. whitelist type (directive : jpeg | png | webp)
+  // 4. whitelist type (directive B2 : jpeg | png | webp ; B3 : audio/opus)
   if (!isB2UploadType(mediaType)) {
     return NextResponse.json(
-      { error: `Type ${mediaType || "absent"} hors whitelist (image/jpeg, image/png, image/webp)` },
+      { error: `Type ${mediaType || "absent"} hors whitelist (image/jpeg, image/png, image/webp, audio/opus)` },
       { status: 400 }
     );
   }
 
-  // 5. taille : entier, > 0, ≤ 5 Mo
-  if (!Number.isInteger(sizeBytes) || sizeBytes <= 0 || sizeBytes > B2_IMAGE_MAX_BYTES) {
+  // 5. taille : entier, > 0, limite PAR TYPE (image 5 Mo, audio/opus 10 Mo —
+  //    B3 ; la limite image reste celle de B2, aucun changement de contrat)
+  const typeLimit = b2UploadLimitFor(mediaType);
+  void B2_IMAGE_MAX_BYTES; // conservé export (compat tests B2)
+  if (!Number.isInteger(sizeBytes) || sizeBytes <= 0 || sizeBytes > typeLimit) {
     return NextResponse.json(
       {
-        error: `Taille invalide : ${Number.isNaN(sizeBytes) ? "absente" : sizeBytes} o (bornes 1…${B2_IMAGE_MAX_BYTES})`,
+        error: `Taille invalide : ${Number.isNaN(sizeBytes) ? "absente" : sizeBytes} o (bornes 1…${typeLimit} pour ${mediaType})`,
       },
       { status: 400 }
     );

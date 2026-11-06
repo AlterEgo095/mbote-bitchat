@@ -21,16 +21,38 @@ import {
   type MediaStorageConfig,
 } from "./media/storage";
 
-/** Whitelist d'upload B2 (directive — le socle B1 porte aussi audio/vidéo pour B3). */
-export const B2_UPLOAD_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+/** Whitelist d'upload B2/B3 (directive B2 images + B3 « contentType: 'audio/opus' »).
+ *  Le socle B1 porte aussi webm/ogg/mp4 (conteneurs bruts) — la surface API
+ *  n'expose que le type CANONIQUE audio/opus (le conteneur réel — webm ou ogg —
+ *  est sniffré côté destinataire, arbitrage §8.4 de la spec). */
+export const B2_UPLOAD_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "audio/opus",
+] as const;
 export type B2UploadType = (typeof B2_UPLOAD_TYPES)[number];
 
 export function isB2UploadType(mediaType: string): mediaType is B2UploadType {
   return (B2_UPLOAD_TYPES as readonly string[]).includes(mediaType);
 }
 
-/** Limite d'upload image — 5 Mo (spec §2). */
+/** Limite d'upload PAR TYPE (spec §2) : image 5 Mo, audio/opus 10 Mo (B3 —
+ *  permet ~5 min à 12 kbps ; l'UI borne la voix à 60 s de toute façon). */
+export const B2_UPLOAD_LIMITS: Record<B2UploadType, number> = {
+  "image/jpeg": 5 * 1024 * 1024,
+  "image/png": 5 * 1024 * 1024,
+  "image/webp": 5 * 1024 * 1024,
+  "audio/opus": 10 * 1024 * 1024,
+};
+
+/** Limite d'upload image — 5 Mo (spec §2, conservé pour compat B2). */
 export const B2_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+/** Limite applicable à un type (0 si type inconnu — l'appelant renvoie 400). */
+export function b2UploadLimitFor(mediaType: string): number {
+  return (B2_UPLOAD_LIMITS as Record<string, number>)[mediaType] ?? 0;
+}
 
 /** Quota par compte — 500 Mo de médias FINALISÉS cumulés (spec §2). */
 export const B2_QUOTA_BYTES = 500 * 1024 * 1024;

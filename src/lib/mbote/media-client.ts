@@ -20,7 +20,15 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-// ── base64url pur JS (isomorphe — miroir de proof.ts) ────────────────────────
+// ── base64url pur JS (isomorphe — miroir de proof.ts) ────────────────────
+
+import {
+  VOICE_MAX_BYTES,
+  assertPlayableVoice,
+  decodeAndMeasure,
+  validateVoiceForSend,
+  type SniffedOpusContainer,
+} from "./media/opus";
 
 function bytesToB64url(bytes: Uint8Array): string {
   let bin = "";
@@ -618,4 +626,172 @@ export function attachUploadQueueFlusher(
   };
   window.addEventListener("online", flush);
   return () => window.removeEventListener("online", flush);
+}
+
+// ── B3 — voice notes (pipeline B2 identique, SANS strip) ────────────────────
+// Arbitrages spec §8 : Opus n'a PAS d'EXIF (conteneur audio — rien à striper,
+// documenté §8.3) ; le type CANONIQUE déclaré à l'API est « audio/opus » quel
+// que soit le conteneur réel (webm/ogg), sniffré côté destinataire (§8.4) ;
+// le pipeline chiffrement → presign → PUT → finalize est EXACTEMENT celui de
+// B2 (même enveloppe v1, même CEK session, même preuve ECDSA).
+
+export interface UploadedVoice extends Omit<UploadedMedia, "previewDataUrl"> {
+  /** durée mesurée (ms) — voyage dans le dm2 */
+  durationMs: number;
+  /** waveform 100 peaks — voyage dans le dm2 E2EE (affichage sans re-décode) */
+  peaks: number[];
+  /** conteneur réel détecté (webm | ogg) — diagnostic uniquement */
+  container: SniffedOpusContainer;
+}
+
+export interface UploadVoiceOptions {
+  bytes: Uint8Array;
+  /** durée mesurée à l'enregistrement (garde 60 s — arbitrage §8.3) */
+  durationMs: number;
+  /** waveform calculée à l'enregistrement (100 peaks) */
+  peaks?: number[];
+  me: string;
+  sign: (payload: string) => Promise<string>;
+  onProgress?: (stage: Exclude<UploadStage, "strip">, info?: { fraction?: number; message?: string }) => void;
+}
+
+/** Garde d'envoi 61 s / 10 Mo / conteneur — REFUS AVANT tout octet envoyé. */
+export function assertVoiceSendable(bytes: Uint8Array, durationMs: number): void {
+  const v = validateVoiceForSend({ bytes, durationMs });
+  if (!v.ok) throw new MediaClientError("bad-type", v.reason);
+}
+
+/**
+ * Upload note vocale COMPLET : validation → chiffrement → upload-url
+ * (audio/opus) → PUT présigné → finalize. Pipeline B2 sans l'étape strip.
+ */
+export async function uploadVoiceNote(opts: UploadVoiceOptions): Promise<UploadedVoice> {
+  const { bytes, durationMs, peaks = [], me, sign, onProgress } = opts;
+
+  // 0. garde d'entrée (61 s → refus ICI, jamais un upload de 11 Mo)
+  assertVoiceSendable(bytes, durationMs);
+
+  // 1. chiffrement client (CEK + IV uniques — enveloppe v1 identique B1/B2)
+  onProgress?.("encrypt", { message: "Chiffrement de bout en bout…" });
+  const enc = await encryptBytes(bytes);
+  if (enc.sizeBytes > VOICE_MAX_BYTES) {
+    throw new MediaClientError("too-large", `enveloppe ${enc.sizeBytes} o > ${VOICE_MAX_BYTES}`);
+  }
+
+  // 2. upload-url (type canonique audio/opus — preuve couvre type + taille)
+  onProgress?.("presign", { message: "Demande d'URL d'upload…" });
+  const ts = Date.now();
+  const signature = await sign(`${me}|media-upload|audio/opus|${enc.sizeBytes}|${ts}`);
+  const presign = await mediaApi<{
+    mediaId: string;
+    objectKey: string;
+    uploadUrl: string;
+    expiresAt: string;
+  }>("/api/media/upload-url", {
+    method: "POST",
+    body: JSON.stringify({ me, mediaType: "audio/opus", sizeBytes: enc.sizeBytes, sha256: enc.sha256, ts, signature }),
+  });
+
+  // 3. PUT présigné (même origine — proxy) ; Content-Length automatique
+  onProgress?.("put", { fraction: 0 });
+  const putRes = await fetch(toFetchUrl(presign.uploadUrl), {
+    method: "PUT",
+    body: enc.envelope,
+  });
+  if (!putRes.ok) {
+    throw new MediaClientError("put-failed", `Bucket a refusé le PUT (HTTP ${putRes.status})`);
+  }
+  onProgress?.("put", { fraction: 1 });
+
+  // 4. finalize (existence + taille + enveloppe vérifiés côté serveur)
+  onProgress?.("finalize", { message: "Finalisation…" });
+  const fts = Date.now();
+  const fsig = await sign(`${me}|media-finalize|${presign.mediaId}|${fts}`);
+  const finalized = await mediaApi<{ mediaId: string; objectKey: string; downloadUrl: string }>(
+    "/api/media/finalize",
+    {
+      method: "POST",
+      body: JSON.stringify({ me, mediaId: presign.mediaId, plainBytes: bytes.length, ts: fts, signature: fsig }),
+    }
+  );
+
+  // 5. CEK gardé en mémoire de session (relire ses propres notes vocales)
+  sessionCeks.set(finalized.mediaId, { cekB64: enc.cekB64, mediaType: "audio/opus" });
+
+  onProgress?.("done");
+  return {
+    mediaId: finalized.mediaId,
+    objectKey: finalized.objectKey,
+    cekB64: enc.cekB64,
+    mediaType: "audio/opus",
+    plainBytes: bytes.length,
+    sizeBytes: enc.sizeBytes,
+    sha256: enc.sha256,
+    durationMs,
+    peaks,
+    container: assertPlayableVoice(bytes), // déjà validé en tête — réflexe barrière
+  };
+}
+
+export interface DownloadedVoice {
+  blob: Blob;
+  /** conteneur sniffré (audio/webm | audio/ogg) — type réel du Blob */
+  container: SniffedOpusContainer;
+  bytes: number;
+  /** durée mesurée au décodage (fallback si le dm2 n'en portait pas) */
+  durationMs: number | null;
+  /** peaks re-décodés (fallback si le dm2 n'en portait pas) */
+  peaks: number[] | null;
+}
+
+/**
+ * Download note vocale : download-url → GET → decrypt → SNIFF conteneur
+ * (barrière de rendu — un MP3 déguisé en opus est REFUSÉ) → Blob typé.
+ * `wantMeasure` : re-décoder pour durée/peaks (si le dm2 ne les portait pas).
+ */
+export async function downloadVoiceNote(opts: {
+  mediaId: string;
+  cekB64: string;
+  declaredType?: string;
+  me: string;
+  sign: (payload: string) => Promise<string>;
+  wantMeasure?: boolean;
+}): Promise<DownloadedVoice> {
+  const { mediaId, cekB64, declaredType, me, sign, wantMeasure } = opts;
+  const ts = Date.now();
+  const signature = await sign(`${me}|media-dl|${mediaId}|${ts}`);
+  const res = await fetch(
+    `${apiBase()}/api/media/download-url?${new URLSearchParams({ me, mediaId, ts: String(ts), signature })}`
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new MediaClientError("download-failed", body.error ?? `HTTP ${res.status}`);
+  }
+  const info = (await res.json()) as { downloadUrl: string; mediaType: string };
+
+  const dl = await fetch(toFetchUrl(info.downloadUrl));
+  if (!dl.ok) {
+    throw new MediaClientError("download-failed", `Bucket a refusé la lecture (HTTP ${dl.status})`);
+  }
+  const envelope = await dl.text();
+  const plain = await decryptBytes(envelope, cekB64);
+  const container = assertPlayableVoice(plain, declaredType ?? info.mediaType);
+  let durationMs: number | null = null;
+  let peaks: number[] | null = null;
+  if (wantMeasure) {
+    try {
+      const m = await decodeAndMeasure(plain);
+      durationMs = m.durationMs;
+      peaks = m.peaks;
+    } catch {
+      // pas de AudioContext (harness) — la voix reste jouable via <audio>
+    }
+  }
+  return {
+    blob: new Blob([plain as unknown as BlobPart], { type: container }),
+    container,
+    bytes: plain.length,
+    durationMs,
+    peaks,
+  };
 }

@@ -20,6 +20,12 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
+  // B3 : media-src blob: — les notes vocales se jouent depuis un Blob LOCAL
+  // déchiffré (VoiceNote <audio src=objectURL>). Un blob est lié à son
+  // origine : aucun chargement média distant n'est ouvert ('self' couvre le
+  // reste). Le bug (lecture muette bloquée par la CSP) a été attrapé par la
+  // preuve navigateur B3.
+  "media-src 'self' blob:",
   `connect-src ${connectSrc}`,
   "object-src 'none'",
   "base-uri 'self'",
@@ -33,7 +39,12 @@ const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+  // B3 : microphone=(self) — les notes vocales (VoiceRecorder) exigent
+  // getUserMedia({audio}) SUR LA PAGE APP (même origine). Le durcissement
+  // historique `microphone=()` interdisait AU NAVIGATEUR tout accès micro,
+  // même consenti — impossible de désactiver par l'UI (header niveau
+  // navigateur). camera/geolocation/payment restent refusés (aucun usage).
+  { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), payment=()" },
 ];
 
 const nextConfig: NextConfig = {

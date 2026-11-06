@@ -324,3 +324,83 @@ upload orchestré avec états (`strip → chiffrement → PUT → finalize`, % s
 PUT) → envoi du dm2 média. Réception : vignette (128 px, lazy via
 `downloadImage` + cache mémoire blob) → clic → Dialog plein. Mobile RN :
 arbitrage §6.9 (reporté B3).
+
+---
+
+## 8. Voice notes B3 — Opus 6–12 kbps (livré)
+
+### 8.1 Prérequis bloquant PROUVÉ (avant toute UI)
+
+- **Navigateur** (Chromium 1200 headless — playwright-core + fake audio device,
+  `scripts/b3-opus-prereq.ts` + `tests/b3-opus-prereq.test.ts`) :
+  `MediaRecorder.isTypeSupported("audio/webm;codecs=opus") === true` ·
+  enregistrement RÉEL 5 s @ 8 kbps → 3 685 o · `decodeAudioData` décode le
+  webm/opus → durée 4,98 s @ 44 100 Hz · 100 peaks calculés depuis les samples.
+- **Serveur** (ffmpeg 7.1.5 + libopus) : WAV 30 s encodé à 6/8/12 kbps →
+  22/31/46 Ko (budget mesh cohérent : 20–40 Ko pour 30 s à 8 kbps) ·
+  décodage → durée ≈ 30 s · intégrité SHA-256 du décodage rejeté/accepté
+  documentée dans les assets.
+
+### 8.2 Arbitrages voix (tranchés, tracés en code + tests)
+
+1. **MediaRecorder NATIF en V1 — AUCUN wrapper WASM** : la directive demandait
+   de documenter la dépendance SI un wrapper était nécessaire. Il ne l'est PAS
+   pour les navigateurs cibles (Chrome/Edge/Firefox produisent opus nativement
+   — webm pour Chromium, ogg pour Firefox ; prouvé headless). Safari
+   (MediaRecorder sans opus) → bouton micro DÉSACTIVÉ + message explicite
+   (`VOICE_UNSUPPORTED_MESSAGE`) — pas de remplacement MP3/AAC (directive :
+   Opus est le seul codec viable à 6–12 kbps). Fallback WASM (p. ex.
+   `@wasm-audio-encoders/opus`, licence MIT) reporté **B4+** — NON TESTÉ.
+2. **Bitrates 6 (mesh) / 8 (défaut) / 12 (confort) kbps** — constante
+   `VOICE_BITRATES` ; durée max **60 s** (auto-stop enregistreur + garde
+   d'envoi `validateVoiceForSend`, tolérance horloge 250 ms).
+3. **Pas de strip EXIF** : Opus n'a PAS de métadonnées EXIF (conteneur audio)
+   — rien à nettoyer, la confidentialité reste portée par le chiffrement
+   enveloppe v1 (pipeline B2 IDENTIQUE : CEK client, IV unique, presign,
+   finalize, sniff à la réception).
+4. **Type canonique « audio/opus »** : quel que soit le conteneur réel
+   (webm/ogg), l'API porte `audio/opus` ; le destinataire sniffe le plaintext
+   (`sniffOpusContainer` : EBML+webm | OggS+OpusHead) et REFUSE tout le reste
+   (un MP3 déguisé n'est jamais rendu — miroir §6.7-iii).
+5. **Hold-to-record TRANCHÉ** (référence WhatsApp, usage RDC) : pointerdown =
+   démarrer, pointerup = stop → preview. Relâchement < 400 ms → bascule
+   tap-to-toggle (le tap suivant arrête) — accessibilité clavier (Enter/Space)
+   préservée. Documenté dans MessagesView + spec (ce point).
+6. **Waveform 100 peaks** calculée à l'arrêt (decodeAudioData du blob
+   enregistré, `computePeaksFromSamples` partagé) et voyageant DANS le dm2
+   E2EE (durée + peaks) : le destinataire affiche sans re-décoder ; fallback
+   re-décodage si absents. Le serveur reste aveugle (payload chiffré).
+7. **Mobile RN** : capture (expo-av) + fallback WASM = dette tracée §8
+   SCALE-ARCHITECTURE (« Migration mobile RN », 8–12 jp) — NON TESTÉ, hors
+   vagues web.
+8. **Permissions-Policy : `microphone=(self)` (next.config.ts)** — le
+   durcissement historique du template (`microphone=()`) interdisait au
+   NAVIGATEUR tout accès micro, même avec consentement utilisateur (header
+   niveau navigateur, inécrasable par l'UI) : les notes vocales étaient
+   impossibles PAR CONSTRUCTION. Le bug a été attrapé par la preuve
+   navigateur B3 (NotAllowedError malgré fake-device). Tranchement :
+   `microphone=(self)` (même origine uniquement), camera/geolocation/payment
+   RESTENT refusés (aucun usage dans l'app).
+   Deuxième barrière du même type, même origine de découverte : la CSP
+   historique n'avait PAS de `media-src` → `default-src 'self'` bloquait le
+   chargement du blob audio local (`blob:` — la note déchiffrée) : lecture
+   muette. Ajout `media-src 'self' blob:` (blob lié à son origine — aucun
+   média distant ouvert). Deux preuves de plus que « les preuves navigateur
+   voient ce que les tests unitaires ne voient jamais ».
+
+### 8.3 Surfaces livrées
+
+| Élément | Fichier | Rôle |
+|---|---|---|
+| Lib opus | `src/lib/mbote/media/opus.ts` | constantes, sniff conteneurs, validateVoiceForSend (61 s → refus), VoiceRecorder (auto-stop 60 s), computePeaksFromSamples, decodeAndMeasure |
+| Client média | `media-client.ts` (+uploadVoiceNote/downloadVoiceNote) | pipeline B2 sans strip ; garde 61 s/10 Mo AVANT tout octet ; sniff à la réception |
+| Serveur | `media-server.ts` + `/api/media/upload-url` | whitelist + `audio/opus` (10 Mo, limites PAR TYPE — image reste 5 Mo) |
+| UI | `src/components/VoiceNote.tsx` + `MessagesView` | waveform, play/pause, seek par clic, 1x/1.5x/2x, preview annulable, bulle voix |
+
+Payload dm2 voix (plaintext JSON — serveur aveugle) :
+
+```jsonc
+{ "kind": "media", "mediaId": "…", "cek": "…", "mediaType": "audio/opus",
+  "bytes": 25890, "objectKey": "media/<uuid>", "durationMs": 30240,
+  "peaks": [0.42, 0.61, …] }
+```
