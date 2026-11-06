@@ -38,6 +38,9 @@ export const MODERATION_ACTIONS = [
   "suspend",
   "unsuspend",
   "purge",
+  // ADM Étape 6 — dismiss sort du périmètre E6 (arbitrage ADMIN-RBAC §12.12) :
+  // « signalement clos SANS action sur le contenu », rôle support (matrice §4 #6).
+  "dismiss",
 ] as const;
 export type ModerationActionName = (typeof MODERATION_ACTIONS)[number];
 

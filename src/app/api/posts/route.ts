@@ -119,9 +119,14 @@ export async function GET(req: NextRequest) {
     // - posts masqués (hiddenAt) : absents de TOUTES les surfaces publiques,
     //   mais CONSERVÉS en DB pour audit (accès admin/DB uniquement) ;
     // - auteurs suspendus : absents du fil public ;
+    //   ADM Étape 6 : suspension TEMPORAIRE — active tant que suspendedAt
+    //   != null ET (suspendedUntil == null OU suspendedUntil > now)
+    //   (évaluation paresseuse à la requête — pas de cron) ; une suspension
+    //   expirée réapparaît dans le fil sans écriture.
     // - si un lecteur est déclaré (myPub), les pairs qu'il a bloqués n'y
     //   apparaissent plus — préférence d'affichage servie côté serveur, PAS
     //   une mesure de confidentialité (le fil est public par nature).
+    const now = new Date();
     const blockedKeys = myPub
       ? (
           await db.peerBlock.findMany({
@@ -134,7 +139,11 @@ export async function GET(req: NextRequest) {
       AND: [
         where,
         { hiddenAt: null },
-        { author: { suspendedAt: null } },
+        {
+          author: {
+            OR: [{ suspendedAt: null }, { suspendedUntil: { lt: now } }],
+          },
+        },
         ...(blockedKeys.length > 0 ? [{ author: { pubkey: { notIn: blockedKeys } } }] : []),
       ],
     };
@@ -145,9 +154,12 @@ export async function GET(req: NextRequest) {
       const parentId = sp.get("parentId") ?? "";
       const parent = await db.post.findUnique({
         where: { id: parentId },
-        select: { hiddenAt: true, author: { select: { suspendedAt: true } } },
+        select: { hiddenAt: true, author: { select: { suspendedAt: true, suspendedUntil: true } } },
       });
-      if (!parent || parent.hiddenAt || parent.author.suspendedAt) {
+      const parentSuspended =
+        parent?.author.suspendedAt != null &&
+        (parent.author.suspendedUntil === null || parent.author.suspendedUntil > now);
+      if (!parent || parent.hiddenAt || parentSuspended) {
         return NextResponse.json(
           { error: "Contenu parent indisponible (modéré ou purgé)" },
           { status: 404 }
@@ -276,10 +288,19 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
-    // A3 : un compte suspendu par la modération ne publie plus
-    if (author.suspendedAt) {
+    // A3 : un compte suspendu par la modération ne publie plus —
+    // ADM Étape 6 : suspension temporaire = active tant que suspendedUntil
+    // est null (indéfinie) ou dans le futur (évaluation paresseuse).
+    const suspendedNow =
+      author.suspendedAt != null &&
+      (author.suspendedUntil === null || author.suspendedUntil > new Date());
+    if (suspendedNow) {
       return NextResponse.json(
-        { error: "Publication refusée — compte suspendu par la modération" },
+        {
+          error: author.suspendedUntil
+            ? "Publication refusée — compte suspendu par la modération (temporaire)"
+            : "Publication refusée — compte suspendu par la modération",
+        },
         { status: 403 }
       );
     }

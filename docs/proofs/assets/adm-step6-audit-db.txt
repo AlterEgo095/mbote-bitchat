@@ -1,0 +1,7 @@
+{
+  "auditAction": "hide",
+  "targetType": "post",
+  "justification": "SPAM: Spam répété massif — masqué après vérification des 5 signalements",
+  "reportsActioned": 5,
+  "handledByIdPose": true
+}

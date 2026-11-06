@@ -283,7 +283,7 @@ const bobConv = ((convList.body.conversations as { peer: { pubkey: string }; blo
 check("conversation marquée blocked=true", bobConv?.blocked === true, JSON.stringify(bobConv));
 
 console.log("── S10 : hide → disparu du fil public, PRÉSENT en DB ──");
-const hid = await moderationAction({ action: "hide", targetKind: "post", targetId: P1, reason: "validation A3" }, ADMIN);
+const hid = await moderationAction({ action: "hide", targetKind: "post", targetId: P1, category: "SPAM", justification: "A3 e2e — hide de validation (>=20 chars)" }, ADMIN);
 check("POST /api/moderation/action (hide) → 200", hid.status === 200, `status=${hid.status} ${JSON.stringify(hid.body)}`);
 const feedAfterHide = await feed();
 check("P1 absent du fil public après hide", !feedAfterHide.posts.some((p) => p.id === P1));
@@ -291,7 +291,7 @@ const p1db = await db.post.findUnique({ where: { id: P1 }, select: { hiddenAt: t
 check("P1 RESTE en DB (audit) avec hiddenAt + hiddenById = admin", !!p1db?.hiddenAt && p1db.hiddenById === admUser.id, JSON.stringify(p1db));
 
 console.log("── S11 : purge → SUPPRIMÉ en DB, trace conservée ──");
-const purged = await moderationAction({ action: "purge", targetKind: "post", targetId: P2, reason: "validation A3" }, ADMIN);
+const purged = await moderationAction({ action: "purge", targetKind: "post", targetId: P2, category: "SPAM", justification: "A3 e2e — purge de validation (>=20 chars)" }, ADMIN);
 check("POST /api/moderation/action (purge) → 200", purged.status === 200, `status=${purged.status} ${JSON.stringify(purged.body)}`);
 const p2db = await db.post.findUnique({ where: { id: P2 } });
 check("P2 SUPPRIMÉ en DB", p2db === null);
@@ -301,7 +301,7 @@ check("TRACE d'audit conservée (action=purge, auteur, extrait)", !!tracePurge &
 
 console.log("── S12 : intégration report → file → action → DB ──");
 await report(carol, "comment", C1, "illegal");
-const hidC1 = await moderationAction({ action: "hide", targetKind: "post", targetId: C1, reason: "intégration A3" }, ADMIN);
+const hidC1 = await moderationAction({ action: "hide", targetKind: "post", targetId: C1, category: "SPAM", justification: "A3 e2e — hide commentaire (>=20 chars)" }, ADMIN);
 check("hide du commentaire signalé → 200", hidC1.status === 200, `status=${hidC1.status}`);
 const c1reports = await db.report.findMany({ where: { targetId: C1 } });
 check("report clôturé en DB (status=actioned, handledById=admin)", c1reports.length >= 1 && c1reports.every((r) => r.status === "actioned" && r.handledById === admUser.id && r.handledAt != null), JSON.stringify(c1reports));
@@ -321,7 +321,7 @@ const actBadCsrf = await jsonFetch("/api/moderation/action", { method: "POST", h
 check("session valide avec CSRF FAUX → 403", actBadCsrf.status === 403, `status=${actBadCsrf.status}`);
 
 console.log("── S14 : suspension d'un auteur ──");
-const susp = await moderationAction({ action: "suspend", targetKind: "user", targetId: bob.pubkey, reason: "validation A3" }, ADMIN);
+const susp = await moderationAction({ action: "suspend", targetKind: "user", targetId: bob.pubkey, category: "HARASSMENT", justification: "A3 e2e — suspension de validation" }, ADMIN);
 check("suspend → 200", susp.status === 200, `status=${susp.status}`);
 const feedSusp = await feed();
 check("posts de Bob restants absents du fil public (C1 était caché, il restait P… rien)", !feedSusp.posts.some((p) => p.id === P1) && !feedSusp.posts.some((p) => p.id === P2));
@@ -329,7 +329,7 @@ const postAsSuspended = await makePost(bob, "A3 : tentative pendant suspension")
 check("publication par compte suspendu → refusée (403)", postAsSuspended instanceof Error && postAsSuspended.message.includes("403"), String(postAsSuspended));
 const unsusp = await moderationAction({ action: "unsuspend", targetKind: "user", targetId: bob.pubkey }, ADMIN);
 check("unsuspend → 200", unsusp.status === 200);
-const warn = await moderationAction({ action: "warn", targetKind: "user", targetId: bob.pubkey, reason: "validation A3" }, ADMIN);
+const warn = await moderationAction({ action: "warn", targetKind: "user", targetId: bob.pubkey, category: "SPAM", justification: "A3 e2e — avertissement de validation" }, ADMIN);
 check("warn → 200 (trace d'audit enregistrée)", warn.status === 200);
 const warnTrace = await db.moderationAction.findFirst({ where: { targetId: bob.pubkey, action: "warn" } });
 check("trace warn présente en DB", !!warnTrace);

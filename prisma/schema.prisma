@@ -19,6 +19,16 @@ model User {
   // A3 (recadrage) — suspension par modération : posts absents du fil public,
   // publication refusée (403) tant que la suspension tient.
   suspendedAt DateTime?
+  // ADM Étape 6 — suspension TEMPORAIRE (directive queue UI : 24 h / 7 j) :
+  // la suspension est ACTIVE tant que suspendedAt != null ET
+  // (suspendedUntil == null OU suspendedUntil > now) — évaluation paresseuse
+  // aux points d'application (fil, publication), pas de cron.
+  suspendedUntil DateTime?
+  // ADM Étape 6 — avertissements de modération visibles dans le profil de
+  // l'utilisateur (directive : « notification côté app utilisateur, pas de DM
+  // pour rester E2EE ») — écrits par l'action warn, lus par leur titulaire
+  // (preuve de possession, /api/moderation/warnings).
+  warnings UserWarning[] @relation("userWarnings")
   // ADM Étape 0 (rupture ADMIN_API_KEY) : suspendedBy (String, clé secrète en
   // clair) → suspendedById (FK AdminUser) — identité traçable, jamais de secret.
   suspendedById Int?
@@ -207,6 +217,28 @@ model ModerationAction {
   @@index([adminUserId])
 }
 
+// ADM Étape 6 — avertissement de modération, visible par l'utilisateur AVERTI
+// dans son profil (directive queue UI : « notification côté app utilisateur,
+// pas de DM pour rester E2EE »). Écrit par l'action warn (même transaction
+// que ModerationAction + AdminAudit). `note` = texte de justification de la
+// décision (catégorie + texte — format §6 d'ADMIN-RBAC.md) ; aucune donnée
+// de DM n'y figure jamais (aucune modération DM, invariant §1.4).
+model UserWarning {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("userWarnings", fields: [userId], references: [id])
+  // catégorie fermée §6 : SPAM | HARASSMENT | SCAM | CSAM | OTHER
+  category    String
+  // texte libre de la justification (celui saisi par l'admin, sans le préfixe
+  // catégorie — la catégorie a sa colonne) ; ≥ 20 chars imposés à l'endpoint
+  note        String
+  createdById Int
+  createdBy   AdminUser @relation("adminIssuedWarnings", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ADM Étape 0 — couche administration (rupture ADMIN_API_KEY)
 // ADM Étape 3 — auth (login+TOTP+break-glass) : voir docs/proofs/ADM-step3-4.md
@@ -237,6 +269,7 @@ model AdminUser {
   suspendedUsers    User[]             @relation("userSuspendedBy")
   handledReports    Report[]           @relation("reportHandledBy")
   moderationActions ModerationAction[]
+  issuedWarnings    UserWarning[]      @relation("adminIssuedWarnings") // Étape 6 : warn → notification profil
 
   @@index([role])
 }

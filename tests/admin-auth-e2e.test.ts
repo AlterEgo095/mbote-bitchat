@@ -719,8 +719,10 @@ describe("ADM 3+4 · F — token interne (double contrôle /api/moderation/*)", 
   });
 
   test("F7 · chaîne BFF complète : cookie navigateur → proxy → app principale → 200", async () => {
-    const aud = must(fixturesByEmail.get("aud@e2e.test"), "fixture aud");
-    const login = await freshLogin(aud.email, aud.password, freshIp());
+    // ADM Étape 6 — arbitrage §12.17 : auditor STRICT → 403 sur la queue ; la
+    // chaîne BFF est prouvée avec une session SUPPORT (rôle minimal autorisé).
+    const sup = must(fixturesByEmail.get("sup@e2e.test"), "fixture sup");
+    const login = await freshLogin(sup.email, sup.password, freshIp());
     expect(login.status).toBe(200);
     const proxied = await panelFetch("GET", "/api/admin/moderation/queue?limit=10", {
       cookie: login.cookie,
@@ -728,6 +730,14 @@ describe("ADM 3+4 · F — token interne (double contrôle /api/moderation/*)", 
     expect(proxied.status).toBe(200);
     expect(proxied.body.openTotal).toBeNumber();
     record("F7 proxy queue", proxied.body);
+    // ET l'auditor reçoit bien 403 propagé à l'identique (uniforme) :
+    const aud = must(fixturesByEmail.get("aud@e2e.test"), "fixture aud");
+    const loginAud = await freshLogin(aud.email, aud.password, freshIp());
+    const proxiedAud = await panelFetch("GET", "/api/admin/moderation/queue?limit=10", {
+      cookie: loginAud.cookie,
+    });
+    expect(proxiedAud.status).toBe(403);
+    expect(proxiedAud.body).toEqual({ error: "unauthorized" });
   });
 });
 
@@ -744,11 +754,11 @@ describe("ADM 3+4 · G — sessions indépendantes (2 admins simultanés)", () =
 
     const a1 = await mainFetch("POST", "/api/moderation/action", {
       session: { token: must(lsa.cookie, "cookie G1 SA"), csrf: String(lsa.body.csrfToken), actorId: String(sa.id) },
-      body: { action: "hide", targetKind: "post", targetId: postWarnHide, reason: "e2e G1 hide par super-admin" },
+      body: { action: "hide", targetKind: "post", targetId: postWarnHide, category: "SPAM", justification: "e2e G1 hide par super-admin (§6)" },
     });
     const a2 = await mainFetch("POST", "/api/moderation/action", {
       session: { token: must(lmod.cookie, "cookie G1 MOD"), csrf: String(lmod.body.csrfToken), actorId: String(mod.id) },
-      body: { action: "unhide", targetKind: "post", targetId: postWarnHide, reason: "e2e G1 unhide par moderator" },
+      body: { action: "unhide", targetKind: "post", targetId: postWarnHide, category: "OTHER", justification: "e2e G1 unhide par moderator (§6)" },
     });
     expect(a1.status).toBe(200);
     expect(a2.status).toBe(200);
@@ -784,7 +794,10 @@ function expectedFor(minRole: RoleName, role: RoleName): number {
 const matrixActions: MatrixAction[] = [
   {
     id: "queue.view",
-    minRole: "auditor",
+    // ADM Étape 6 — arbitrage §12.17 : auditor STRICT (lecture seule
+    // AdminAudit) → queue.view = support. La cellule auditor passe 200 → 403
+    // (contrainte montée d'un cran, pas affaiblie).
+    minRole: "support",
     run: (_role, s) => mainFetch("GET", "/api/moderation/queue", { session: s }),
   },
   {
@@ -793,7 +806,7 @@ const matrixActions: MatrixAction[] = [
     run: (_role, s) =>
       mainFetch("POST", "/api/moderation/action", {
         session: s,
-        body: { action: "warn", targetKind: "user", targetId: bobPubkey, reason: "matrice warn" },
+        body: { action: "warn", targetKind: "user", targetId: bobPubkey, category: "SPAM", justification: "cellule matrice RBAC — warn" },
       }),
   },
   {
@@ -802,7 +815,7 @@ const matrixActions: MatrixAction[] = [
     run: (_role, s) =>
       mainFetch("POST", "/api/moderation/action", {
         session: s,
-        body: { action: "hide", targetKind: "post", targetId: postWarnHide, reason: "matrice hide" },
+        body: { action: "hide", targetKind: "post", targetId: postWarnHide, category: "SPAM", justification: "cellule matrice RBAC — hide" },
       }),
   },
   {
@@ -811,7 +824,7 @@ const matrixActions: MatrixAction[] = [
     run: (_role, s) =>
       mainFetch("POST", "/api/moderation/action", {
         session: s,
-        body: { action: "unhide", targetKind: "post", targetId: postWarnHide, reason: "matrice unhide" },
+        body: { action: "unhide", targetKind: "post", targetId: postWarnHide, category: "OTHER", justification: "cellule matrice RBAC — unhide" },
       }),
   },
   {
@@ -820,7 +833,7 @@ const matrixActions: MatrixAction[] = [
     run: (_role, s) =>
       mainFetch("POST", "/api/moderation/action", {
         session: s,
-        body: { action: "suspend", targetKind: "user", targetId: bobPubkey, reason: "matrice suspend" },
+        body: { action: "suspend", targetKind: "user", targetId: bobPubkey, category: "HARASSMENT", justification: "cellule matrice RBAC — suspend" },
       }),
   },
   {
@@ -829,7 +842,7 @@ const matrixActions: MatrixAction[] = [
     run: (_role, s) =>
       mainFetch("POST", "/api/moderation/action", {
         session: s,
-        body: { action: "unsuspend", targetKind: "user", targetId: bobPubkey, reason: "matrice unsuspend" },
+        body: { action: "unsuspend", targetKind: "user", targetId: bobPubkey, category: "OTHER", justification: "cellule matrice RBAC — unsuspend" },
       }),
   },
   {
@@ -842,7 +855,8 @@ const matrixActions: MatrixAction[] = [
           action: "purge",
           targetKind: "post",
           targetId: role === "moderator" ? postPurgeMod : postPurgeSA,
-          reason: "matrice purge",
+          category: "SPAM",
+          justification: "cellule matrice RBAC — purge",
         },
       }),
   },

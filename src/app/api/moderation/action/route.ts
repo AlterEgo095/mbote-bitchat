@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { trackApiRequest } from "@/lib/mbote/state-store";
 import { MODERATION_ACTIONS, purgePostWithAudit } from "@/lib/mbote/moderation";
 import { isDenied, requireAdmin, roleAtLeast, writeAdminAudit, type AdminContext } from "@/lib/mbote/admin-auth";
+import { parseJustification } from "@/lib/mbote/justification";
 
 export const dynamic = "force-dynamic";
 
@@ -10,14 +11,30 @@ export const dynamic = "force-dynamic";
  * Rôles MINIMAUX PAR ACTION — matrice RBAC §4 (ADMIN-RBAC.md) câblée à
  * l'Étape 4 : warn = support · hide/unhide/suspend/unsuspend/purge = moderator.
  * (support et auditor = lecture seule — directive Étape 4.)
+ * ADM Étape 6 : report.dismiss = support (matrice §4 #6 — sort du périmètre
+ * E6, arbitrage §12.12 de la spec : « dismiss n'existe PAS dans
+ * MODERATION_ACTIONS (Étape 0) — reste au périmètre E6 (queue UI) »).
  */
 const ACTION_MIN_ROLE: Record<string, string> = {
   warn: "support",
+  dismiss: "support",
   hide: "moderator",
   unhide: "moderator",
   suspend: "moderator",
   unsuspend: "moderator",
   purge: "moderator",
+};
+
+/**
+ * Durées de suspension TEMPORAIRE — directive Étape 6 (« Suspend temporaire
+ * (24h / 7j) »). "indefinite" = comportement A3 historique (levée manuelle
+ * par unsuspend uniquement). Stockage : User.suspendedUntil (migration 0006),
+ * évaluation paresseuse aux points d'application (fil, publication).
+ */
+const SUSPEND_DURATIONS_MS: Record<string, number | null> = {
+  "24h": 24 * 3600_000,
+  "7d": 7 * 24 * 3600_000,
+  indefinite: null,
 };
 
 /**
@@ -30,23 +47,31 @@ const ACTION_MIN_ROLE: Record<string, string> = {
  *  AUSSI porter le token interne du panneau (`x-admin-internal`) ET l'acteur
  *  nominatif (`x-admin-actor` == session) — le token SEUL ne peut RIEN faire.
  *  401/403 avec message uniforme `unauthorized` (aucune fuite de couche).
- *  Rôles par action : matrice RBAC §4 (warn=support · autres mutations=moderator).
- *  L'acteur est `AdminUser.id` (traçable) ;
- *  chaque action écrit `ModerationAction` (label `admin-<id>`) ET `AdminAudit`
- *  (append-only) dans la même transaction. Aucune réponse ne contient de secret.
+ *  Rôles par action : matrice RBAC §4.
  *
- *  Actions (fil public UNIQUEMENT — AUCUNE modération DM, E2EE par conception) :
+ *  ADM Étape 6 — JUSTIFICATION §6 OBLIGATOIRE (ADMIN-RBAC.md, invariant §1.7) :
+ *  chaque action exige {category ∈ SPAM|HARASSMENT|SCAM|CSAM|OTHER,
+ *  justification ≥ 20 chars} — refus 422 sinon (validation SERVEUR). Format
+ *  stocké : « CATÉGORIE: texte ». Les actions sont :
  *   - hide      (post)   : masqué — DISPARAÎT du fil public, RESTE en DB (audit)
  *   - unhide    (post)   : retour au fil public
  *   - purge     (post)   : SUPPRIMÉ en DB (cascade likes/réponses) — traces
  *                          ModerationAction + AdminAudit conservées
- *   - warn      (user)   : avertissement enregistré (audit) — la notification
- *                          à l'utilisateur est hors périmètre A3
- *   - suspend   (user)   : posts absents du fil public + publication refusée 403
- *   - unsuspend (user)   : levée de suspension
+ *   - dismiss   (report) : signalement clos SANS action sur le contenu
+ *                          (status=dismissed) — NOUVEAU Étape 6
+ *   - warn      (user)   : avertissement enregistré + NOTIFICATION visible dans
+ *                          le profil de l'utilisateur (UserWarning, migration
+ *                          0006 — pas de DM, E2EE par conception)
+ *   - suspend   (user)   : temporaire 24h/7d (suspendedUntil) ou indéfinie —
+ *                          posts absents du fil public + publication refusée
+ *                          403 tant que la suspension tient (évaluation
+ *                          paresseuse, pas de cron)
+ *   - unsuspend (user)   : levée de suspension (suspendedAt/until/by cleared)
  *
- *  Chaque action clôture les signalements ouverts liés (status=actioned,
- *  handledById = admin) et laisse UNE trace ModerationAction + UNE AdminAudit.
+ *  Chaque action écrit ModerationAction (label `admin-<id>`) ET AdminAudit
+ *  (append-only) dans la même transaction — la justification y figure au
+ *  format §6. L'acteur est `AdminUser.id` (traçable). Aucune réponse ne
+ *  contient de secret.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 export async function POST(req: NextRequest) {
@@ -56,8 +81,14 @@ export async function POST(req: NextRequest) {
     if (isDenied(gate)) return gate;
     const ctx: AdminContext = gate;
 
-    const body = await req.json().catch(() => null);
-    const { action, targetKind, targetId, reason } = (body ?? {}) as Record<string, unknown>;
+    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+    const { action, targetKind, targetId } = (body ?? {}) as Record<string, unknown>;
+
+    // ADM Étape 6 — justification §6 obligatoire sur TOUTE mutation (422)
+    const just = parseJustification(body ?? {});
+    if (!just.ok) {
+      return NextResponse.json({ error: just.error }, { status: 422 });
+    }
 
     if (typeof action !== "string" || !(MODERATION_ACTIONS as readonly string[]).includes(action)) {
       return NextResponse.json(
@@ -69,17 +100,14 @@ export async function POST(req: NextRequest) {
     if (!roleAtLeast(ctx.role, ACTION_MIN_ROLE[action] ?? "moderator")) {
       return NextResponse.json({ error: "unauthorized" }, { status: 403 });
     }
-    if (targetKind !== "post" && targetKind !== "user") {
+    if (targetKind !== "post" && targetKind !== "user" && targetKind !== "report") {
       return NextResponse.json(
-        { error: "targetKind invalide (\"post\" | \"user\") — aucune modération DM (E2EE par conception)" },
+        { error: "targetKind invalide (\"post\" | \"user\" | \"report\") — aucune modération DM (E2EE par conception)" },
         { status: 400 }
       );
     }
     if (typeof targetId !== "string" || targetId.length === 0 || targetId.length > 128) {
       return NextResponse.json({ error: "targetId invalide" }, { status: 400 });
-    }
-    if (reason != null && (typeof reason !== "string" || reason.length > 500)) {
-      return NextResponse.json({ error: "reason invalide (≤ 500 caractères)" }, { status: 400 });
     }
 
     const handledAt = new Date();
@@ -90,6 +118,61 @@ export async function POST(req: NextRequest) {
       ip: ctx.ip,
       userAgent: ctx.userAgent,
     };
+
+    // ── actions sur un signalement (dismiss — NOUVEAU Étape 6) ──────────────
+    if (targetKind === "report") {
+      if (action !== "dismiss") {
+        return NextResponse.json(
+          { error: `action "${action}" ne s'applique pas à un report (dismiss seul)` },
+          { status: 400 }
+        );
+      }
+      const report = await db.report.findUnique({ where: { id: targetId } });
+      if (!report) {
+        return NextResponse.json({ error: "Signalement introuvable" }, { status: 404 });
+      }
+      if (report.handledById !== null) {
+        return NextResponse.json(
+          { error: "Signalement déjà traité (status=" + report.status + ")" },
+          { status: 409 }
+        );
+      }
+      const result = await db.$transaction(async (tx) => {
+        const row = await tx.report.update({
+          where: { id: targetId },
+          data: { status: "dismissed", handledAt, handledById: ctx.adminUserId },
+          select: { id: true, status: true, handledAt: true },
+        });
+        const trace = await tx.moderationAction.create({
+          data: {
+            adminUserId: ctx.adminUserId,
+            actorLabel: ctx.actorLabel,
+            action: "dismiss",
+            targetKind: "report",
+            targetId,
+            reason: just.value.formatted,
+          },
+        });
+        await writeAdminAudit({
+          tx,
+          actorId: ctx.adminUserId,
+          actorRole: ctx.role,
+          action: "dismiss",
+          targetType: "report",
+          targetId,
+          before: { status: report.status },
+          after: { status: row.status },
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+          justification: just.value.formatted,
+        });
+        return { row, trace };
+      });
+      return NextResponse.json({
+        action: result.trace,
+        affected: { report: { id: result.row.id, status: result.row.status } },
+      });
+    }
 
     // ── actions sur un contenu public ──
     if (targetKind === "post") {
@@ -134,7 +217,7 @@ export async function POST(req: NextRequest) {
               action: "hide",
               targetKind: "post",
               targetId,
-              reason: typeof reason === "string" ? reason : null,
+              reason: just.value.formatted,
               reportIds: JSON.stringify(openReports.map((r) => r.id)),
             },
           });
@@ -148,7 +231,7 @@ export async function POST(req: NextRequest) {
             after: { hiddenAt: row.hiddenAt, reportsClosed: openReports.length },
             ip: ctx.ip,
             userAgent: ctx.userAgent,
-            justification: typeof reason === "string" ? reason : null,
+            justification: just.value.formatted,
           });
           return { row, trace, closed: openReports.map((r) => r.id) };
         });
@@ -175,7 +258,7 @@ export async function POST(req: NextRequest) {
               action: "unhide",
               targetKind: "post",
               targetId,
-              reason: typeof reason === "string" ? reason : null,
+              reason: just.value.formatted,
             },
           });
           await writeAdminAudit({
@@ -188,7 +271,7 @@ export async function POST(req: NextRequest) {
             after: { hiddenAt: row.hiddenAt },
             ip: ctx.ip,
             userAgent: ctx.userAgent,
-            justification: typeof reason === "string" ? reason : null,
+            justification: just.value.formatted,
           });
           return { row, trace };
         });
@@ -204,7 +287,7 @@ export async function POST(req: NextRequest) {
           purgePostWithAudit(tx, {
             postId: targetId,
             actor,
-            reason: typeof reason === "string" ? reason : null,
+            reason: just.value.formatted,
           })
         );
         return NextResponse.json({
@@ -240,10 +323,24 @@ export async function POST(req: NextRequest) {
     }
     const user = await db.user.findUnique({
       where: { pubkey: targetId },
-      select: { id: true, pubkey: true, nickname: true, suspendedAt: true },
+      select: { id: true, pubkey: true, nickname: true, suspendedAt: true, suspendedUntil: true },
     });
     if (!user) {
       return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 404 });
+    }
+
+    // suspension : durée obligatoire et valide (24h | 7d | indefinite)
+    let suspendedUntil: Date | null = null;
+    if (action === "suspend") {
+      const duration = (body?.duration as string) ?? "indefinite";
+      if (!(duration in SUSPEND_DURATIONS_MS)) {
+        return NextResponse.json(
+          { error: "duration invalide (24h | 7d | indefinite)" },
+          { status: 400 }
+        );
+      }
+      const ms = SUSPEND_DURATIONS_MS[duration];
+      suspendedUntil = ms === null ? null : new Date(handledAt.getTime() + ms);
     }
 
     // signalements ouverts sur les posts de cet utilisateur (clôture au passage)
@@ -258,15 +355,26 @@ export async function POST(req: NextRequest) {
     const result = await db.$transaction(async (tx) => {
       const data =
         action === "suspend"
-          ? { suspendedAt: handledAt, suspendedById: ctx.adminUserId }
+          ? { suspendedAt: handledAt, suspendedById: ctx.adminUserId, suspendedUntil }
           : action === "unsuspend"
-            ? { suspendedAt: null, suspendedById: null }
+            ? { suspendedAt: null, suspendedById: null, suspendedUntil: null }
             : {};
       const row = await tx.user.update({
         where: { id: user.id },
         data,
-        select: { pubkey: true, suspendedAt: true },
+        select: { pubkey: true, suspendedAt: true, suspendedUntil: true },
       });
+      // ADM Étape 6 — warn = avertissement visible dans le profil de l'utilisateur
+      if (action === "warn") {
+        await tx.userWarning.create({
+          data: {
+            userId: user.id,
+            category: just.value.category,
+            note: just.value.text,
+            createdById: ctx.adminUserId,
+          },
+        });
+      }
       if (openReports.length > 0) {
         await tx.report.updateMany({
           where: { id: { in: openReports.map((r) => r.id) } },
@@ -280,12 +388,13 @@ export async function POST(req: NextRequest) {
           action,
           targetKind: "user",
           targetId,
-          reason: typeof reason === "string" ? reason : null,
+          reason: just.value.formatted,
           reportIds: JSON.stringify(openReports.map((r) => r.id)),
           meta: JSON.stringify({
             nickname: user.nickname,
             closedReports: openReports.length,
-            ...(action === "warn" ? { note: "avertissement enregistré (notification hors périmètre A3)" } : {}),
+            ...(action === "warn" ? { warning: { category: just.value.category } } : {}),
+            ...(action === "suspend" ? { duration: (body?.duration as string) ?? "indefinite", suspendedUntil } : {}),
           }),
         },
       });
@@ -296,11 +405,16 @@ export async function POST(req: NextRequest) {
         action,
         targetType: "user",
         targetId,
-        before: { suspendedAt: user.suspendedAt },
-        after: { suspendedAt: row.suspendedAt, reportsClosed: openReports.length },
+        before: { suspendedAt: user.suspendedAt, suspendedUntil: user.suspendedUntil },
+        after: {
+          suspendedAt: row.suspendedAt,
+          suspendedUntil: row.suspendedUntil,
+          reportsClosed: openReports.length,
+          ...(action === "warn" ? { warningIssued: just.value.category } : {}),
+        },
         ip: ctx.ip,
         userAgent: ctx.userAgent,
-        justification: typeof reason === "string" ? reason : null,
+        justification: just.value.formatted,
       });
       return { row, trace };
     });
@@ -308,8 +422,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       action: result.trace,
       affected: {
-        user: { pubkey: result.row.pubkey, suspendedAt: result.row.suspendedAt },
+        user: {
+          pubkey: result.row.pubkey,
+          suspendedAt: result.row.suspendedAt,
+          suspendedUntil: result.row.suspendedUntil,
+        },
         reportsClosed: openReports.length,
+        ...(action === "warn" ? { warningIssued: true } : {}),
       },
     });
   } catch (e) {

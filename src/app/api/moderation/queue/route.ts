@@ -12,8 +12,9 @@ export const dynamic = "force-dynamic";
  *  GET /api/moderation/queue — file de modération (ADMIN)
  * ─────────────────────────────────────────────────────────────────────────────
  *  ADM Étape 0 — RUPTURE ADMIN_API_KEY : auth par SESSION admin (lecture).
- *  ADM Étape 4 — alignement matrice RBAC §4 : queue.view = rôle ≥ AUDITOR
- *  (lecture seule) + double contrôle token interne + acteur nominatif.
+ *  ADM Étape 4 — alignement matrice RBAC §4 : double contrôle token interne +
+ *  acteur nominatif. ADM Étape 6 — arbitrage §12.17 (auditor STRICT, lecture
+ *  seule AdminAudit) : queue.view = rôle ≥ SUPPORT (resserré depuis auditor).
  *  401/403 avec message uniforme `unauthorized`. Aucune clé n'est lue ici.
  *
  *  Chaque entrée = un signalement + son CONTEXTE : contenu ciblé (extrait,
@@ -27,7 +28,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const done = trackApiRequest("moderation.queue");
   try {
-    const gate = await requireAdmin(req, { minRole: "auditor" });
+    const gate = await requireAdmin(req, { minRole: "support" });
     if (isDenied(gate)) return gate;
 
     const sp = req.nextUrl.searchParams;

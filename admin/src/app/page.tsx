@@ -27,6 +27,14 @@ export default async function Home() {
           <div className="flex items-center gap-3">
             {initial.authenticated && (
               <Link
+                href="/queue"
+                className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+              >
+                File de modération →
+              </Link>
+            )}
+            {initial.authenticated && (
+              <Link
                 href="/dashboard"
                 className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
               >

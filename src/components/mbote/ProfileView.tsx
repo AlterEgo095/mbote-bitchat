@@ -74,6 +74,30 @@ export function ProfileView({
     refetchInterval: forceOffline ? false : 6000,
   });
 
+  // ADM Étape 6 — avertissements de modération adressés à CETTE identité
+  // (visible dans le profil — directive : « pas de DM pour rester E2EE »).
+  // Lecture par preuve de possession courte durée (même mécanique F-07 que
+  // la lecture DM) : impossible de lire les avertissements d'autrui.
+  const warnings = useQuery({
+    queryKey: ["warnings", myPub],
+    queryFn: async () => {
+      const ts = Date.now();
+      const signature = await signPayload(
+        identity.signPriv,
+        `${myPub}|warnings-read|${ts}`
+      );
+      const res = await fetch(
+        `/api/moderation/warnings?me=${encodeURIComponent(myPub)}&ts=${ts}&signature=${encodeURIComponent(signature)}`
+      );
+      if (!res.ok) throw new Error("avertissements indisponibles");
+      return (await res.json()) as {
+        warnings: Array<{ id: string; category: string; note: string; createdAt: string }>;
+      };
+    },
+    refetchInterval: forceOffline ? false : 30000,
+    retry: 1,
+  });
+
   const [editOpen, setEditOpen] = useState(false);
   const [nickname, setNickname] = useState(identity.nickname);
   const [bio, setBio] = useState(identity.bio ?? "");
@@ -125,6 +149,39 @@ export function ProfileView({
 
   return (
     <div className="space-y-5">
+      {/* ADM Étape 6 — avertissements de modération (visibles du titulaire seul) */}
+      {warnings.data && warnings.data.warnings.length > 0 && (
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="size-4 text-amber-600" aria-hidden="true" />
+              <h2 className="text-sm font-semibold">
+                Avertissement{warnings.data.warnings.length > 1 ? "s" : ""} de la modération
+              </h2>
+            </div>
+            <ul className="mt-3 space-y-2">
+              {warnings.data.warnings.map((w) => (
+                <li
+                  key={w.id}
+                  className="rounded-lg border border-amber-200 bg-amber-50 p-3"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                    {w.category}
+                  </p>
+                  <p className="mt-1 text-sm text-amber-950">{w.note}</p>
+                  <p className="mt-1 text-[11px] text-amber-800/70">
+                    {new Date(w.createdAt).toLocaleString("fr-FR")}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Visible uniquement par vous — aucun message privé (E2EE par conception).
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Carte d'identité */}
       <Card>
         <CardContent className="p-5">
