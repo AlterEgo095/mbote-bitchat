@@ -1,0 +1,9 @@
+objectKey: media/e50b97b2-b24c-40c3-9f70-b82302496091 size: 2097152 sha256: 1e075c8d478ad218…
+PUT présigné: 200 OK
+GET présigné: 200 bytes: 2097152 sha256 match: true
+GET signature falsifiée: 403 REFUSÉ (validation réelle)
+attente 61 s pour expiration…
+GET expiré: 403 REFUSÉ
+PUT expiré: 403 REFUSÉ
+  body GET expiré: <?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>AccessDenied</Code><Message>Request has expired</Message><Resource>/mbote-media-test/media/547326ed-47d5-4061-a046-7b9123348678</Resource><RequestId
