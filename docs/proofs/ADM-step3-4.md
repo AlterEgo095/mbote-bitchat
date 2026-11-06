@@ -140,6 +140,7 @@ Méthode canari automatisée (e2e, section I) : le harness enregistre CHAQUE pay
 - **Rate limit en charge réelle** — le test unitaire/e2e (6ᵉ → 429) suffit pour cette étape ; limiteur en mémoire locale : un redémarrage réinitialise les compteurs (fenêtre 5 min, acceptable mono-VPS).
 - **Rotation self-service du mot de passe** — Étape 7 (gestion des admins).
 - **Secure cookie en dev** — posé uniquement en `NODE_ENV=production` (arbitrage §12.10) ; à revérifier derrière CF Access.
+- **Implémentation TOTP maison** validée par les vecteurs RFC 6238 App. B — **revue sécurité indépendante recommandée avant ouverture publique** (note de validation Étape 3+4, 2026-11-05 : acceptable pour l'usage actuel admin interne, pas public ; traçabilité uniquement, pas de re-travail).
 
 ## 8. DISCIPLINE
 

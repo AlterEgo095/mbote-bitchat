@@ -29,14 +29,29 @@ revenue à l'identique dans la CI A1 **et** la CI A2 avant correction
 
 ## 2. Worktrees : EXTERNE OBLIGATOIRE + trois pièges PROUVÉS (incidents A3 2026-11-04, ADM 2026-11-05)
 
-### 0. Worktree EXTERNE = OBLIGATOIRE pour toute branche de travail (récidive : 3 flips)
+### 0. Worktree EXTERNE = OBLIGATOIRE pour toute branche de travail (récidive : 4 flips)
 
-Trois incidents prouvés (A1/A2, ADM Étape 0, ADM Étapes 1+2) : le superviseur
-du sandbox a remis `HEAD` du repo principal sur `main` PENDANT le travail —
-les commits d'Étape 0 ont atterri sur `main` et ont dû être réalignés sur
-`feat/adm-mvp` (reflog 2026-11-05, §3.7 de la preuve ADM-step1-2). La cause
-racine est l'environnement, pas les commandes : **la mitigation par commande
-atomique ne suffit pas**.
+Quatre incidents prouvés (A1/A2, ADM Étape 0, ADM Étapes 1+2, ADM Étape 5 —
+2026-11-05) : le superviseur du sandbox a remis `HEAD` du repo principal sur
+`main` PENDANT le travail — les commits d'Étape 0 ont atterri sur `main` et
+ont dû être réalignés sur `feat/adm-mvp` (reflog 2026-11-05, §3.7 de la preuve
+ADM-step1-2). La cause racine est l'environnement, pas les commandes : **la
+mitigation par commande atomique ne suffit pas**.
+
+**Récidive #4 (Étape 5) — sans coût grâce à la règle** : le flip a ÉGALEMENT
+supprimé le répertoire du worktree `/home/z/wt-adm` (fichiers non commités
+du tour précédent). Aucune perte : les commits étaient durables dans le repo
+principal. **Récupération canonique** (la seule intervention tolérée sur le
+repo principal, cwd HORS de `/home/z/my-project`) :
+
+```bash
+git -C /home/z/my-project worktree prune                              # métadonnées orphelines
+git -C /home/z/my-project worktree add /home/z/wt-adm feat/adm-mvp    # re-création
+# puis dans le worktree : bun install && bunx prisma generate (piège §1)
+```
+
+Leçon : **commit tôt, commit souvent** — seul ce qui est commité survit à un
+flip (§2b ci-dessous).
 
 **Règle non négociable (ADM et B1, toute branche future)** :
 
@@ -117,6 +132,31 @@ DATABASE_URL="file:$(pwd)/db/custom.db" ADMIN_INTERNAL_TOKEN=… bunx next dev -
 # 4. git exclusivement via -C :
 git -C /home/z/wt-adm add … && git -C /home/z/wt-adm commit …
 ```
+
+---
+
+## 2c. Captures navigateur : BUILD PRODUCTION obligatoire (hydratation dev Turbopack muette)
+
+**Incidents prouvés (ADM Étapes 3+4 puis Étape 5)** : en `next dev`
+(Turbopack), l'app admin **ne s'hydrate pas** — SILENCIEUSEMENT (aucune erreur
+console ; détecté par sonde `__reactFiber$` sur le DOM). Les clics ne
+produisent aucun effet, les états client ne se montent pas. En **build
+production** (`next build` + `next start`) l'hydratation fonctionne.
+
+**Pattern obligatoire pour toute preuve navigateur (agent-browser)** :
+
+```bash
+# dans le worktree — JAMAIS next dev pour capturer :
+bunx next build                            # app principale OU admin selon la preuve
+bunx next start -p 3102                    # (ou le port de preuve) — NODE_ENV=production
+```
+
+- Les captures sont prises contre les builds production des DEUX apps quand la
+  chaîne complète est en jeu (panneau :3102 ↔ principale :3101).
+- Cause racine suspectée : frontière `use client` mal placée ou composant
+  serveur/client mélangé — **non déboguée volontairement** (aucun impact prod :
+  le déploiement est standalone/build). Si un jour elle bloque les preuves,
+  la tracer comme incident à part entière.
 
 ---
 

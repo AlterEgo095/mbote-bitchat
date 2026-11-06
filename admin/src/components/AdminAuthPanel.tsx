@@ -134,13 +134,25 @@ export function AdminAuthPanel({ initial }: { initial: AuthPanelInitial }) {
   async function handleLogout() {
     setBusy(true);
     try {
-      await fetch("/api/admin/auth/logout", {
+      const res = await fetch("/api/admin/auth/logout", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-csrf": csrfRef.current },
       });
+      // DÉFAUT CORRIGÉ (preuves Étape 5) : l'ancien code passait en « anonymous »
+      // SANS vérifier res.ok — sur une page fraîchement chargée, csrfRef est
+      // vide → 403 serveur → session TOUJOURS VIVANTE mais l'UI affichait le
+      // formulaire de login (mensonge de sécurité). On reste authed + erreur.
+      if (!res.ok) {
+        setError(
+          "Déconnexion refusée par le serveur (session peut-être déjà expirée) — rechargez la page."
+        );
+        return;
+      }
       csrfRef.current = "";
       setPendingEnroll(null);
       setState({ phase: "anonymous" });
+    } catch {
+      setError("App principale injoignable.");
     } finally {
       setBusy(false);
     }

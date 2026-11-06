@@ -1,0 +1,1 @@
+{"csrfToken":"J7e47lUm4pr2Rr4AlHPz1U3KQxx8ZcGWME7CWDO5vjk","email":"auditor@step5.proof","role":"auditor","totpEnrolled":true,"expiresAt":"2026-11-06T14:36:08.240Z"}

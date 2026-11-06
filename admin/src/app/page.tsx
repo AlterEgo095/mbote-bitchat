@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { BackendStatus } from "@/components/BackendStatus";
 import { AdminAuthPanel } from "@/components/AdminAuthPanel";
 import { getPanelSessionServer } from "@/lib/admin-backend";
@@ -23,9 +24,19 @@ export default async function Home() {
           <h1 className="text-lg font-semibold tracking-tight text-zinc-900">
             Mbote Admin
           </h1>
-          <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
-            auth — Étape 3+4
-          </span>
+          <div className="flex items-center gap-3">
+            {initial.authenticated && (
+              <Link
+                href="/dashboard"
+                className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+              >
+                Tableau de bord →
+              </Link>
+            )}
+            <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+              auth — Étape 3+4
+            </span>
+          </div>
         </div>
       </header>
 
