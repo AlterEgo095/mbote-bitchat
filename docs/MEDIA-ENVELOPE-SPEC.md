@@ -228,6 +228,17 @@ DANS LES PIXELS** (auto-rotation sharp avant ré-encodage).
    strip EXIF exige expo-image-manipulator et son harness n'est pas
    exécutable dans ce sandbox → **NON TESTÉ** explicitement (extension B3).
    Un code natif non prouvé serait de la preuve fantôme.
+10. **Micro-images < 32 Ko — TRANCHEMENT B3 (2026-11-06, clarification
+   direction)** : strip canvas appliqué, invariant taille non garanti (le
+   ré-encodage peut agrandir). Un mode strip-lossless (réécriture EXIF sans
+   ré-encodage) est reporté à **B4+**. Documenté, pas résolu : la garantie
+   privacy (aucune métadonnée) reste intégrale, seule la borne « ≤ original »
+   est levée sous 32 Ko (le serveur borne le ciphertext de toute façon —
+   Content-Length signé ≤ 5 Mo). Implémentation actuelle : garde
+   `bytes.length >= 32 * 1024` dans `stripExifClient` (media-client.ts).
+   *Note de trace : la directive nommait « docs/specs/MEDIA-ENVELOPE-SPEC.md »
+   — la spec vit à `docs/MEDIA-ENVELOPE-SPEC.md` depuis B1 ; le présent
+   arbitrage y est appliqué à l'identique.*
 
 ---
 
