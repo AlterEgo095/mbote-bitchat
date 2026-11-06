@@ -46,7 +46,7 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "error",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "mobile/**"]
+  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "mobile/**", "admin/**"]
 }, {
   // Outils (scripts, tests, mini-services) : les console.log sont des sorties légitimes
   files: ["scripts/**", "tests/**", "mini-services/**"],

@@ -1,0 +1,25 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# MinIO local — intégration socle média B1 (directive : upload → check → delete)
+# ─────────────────────────────────────────────────────────────────────────────
+# Usage : docker compose -f deploy/docker-compose.minio.yml up -d
+#         bun test tests/media-minio-integration.test.ts
+#         docker compose -f deploy/docker-compose.minio.yml down -v
+# (NON EXÉCUTABLE dans le sandbox de dev — pas de docker ; documenté
+#  docs/proofs/B1-media-foundation.md §NON TESTÉ. Réjouable sur VPS/dev local.)
+services:
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: mbote-media-test
+      MINIO_ROOT_PASSWORD: mbote-media-test-secret
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      - /data
