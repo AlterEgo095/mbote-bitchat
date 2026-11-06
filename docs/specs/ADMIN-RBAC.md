@@ -14,6 +14,7 @@
 5. **Le panneau n'est jamais exposé sans Cloudflare Access** (décision §4.5). L'IP allowlist nginx est un fallback documenté, pas un remplaçant.
 6. **`ADMIN_API_KEY` reste détruite** : seul le CLI de purge la lit (timing-safe, jamais stocké, jamais renvoyé).
 7. **Toute mutation = justification** (catégorie + ≥ 20 caractères, §6) et **ligne `AdminAudit`** dans la même transaction que l'action.
+8. **Toute mutation UI reflète le retour serveur 2xx — pas d'optimistic update avant confirmation.** (Directive Étape 6, clarification 1.) Première occurrence de la classe : défaut logout `AdminAuthPanel` — l'UI basculait en « anonymous » sans vérifier `res.ok`, mentant sur l'état de la session (ADM-step5.md §6.2, corrigé). L'invariant s'applique à tout composant client présent et futur : auth panel (Étape 3+4), dashboard (Étape 5), queue (Étape 6) — chaque action attend la réponse serveur puis reflète son résultat, erreur comprise.
 
 ---
 
@@ -29,7 +30,10 @@ system (0) < auditor (1) < support (2) < moderator (3) < super-admin (4)
 - `roleAtLeast(role, min)` : la porte générique existante. Le MVP n'ajoute **aucun** rôle.
 - Le pseudo-user **`system`** (seed migration 0004, id 1) : `passwordHash = null`, **jamais de login, jamais de session, jamais de chemin HTTP** (`admin-auth.ts:80`). Acteur exclusif du CLI.
 
-### 2.3 Création / désactivation des comptes
+### 2.3 Rôles futurs (traçabilité, PAS d'implémentation MVP)
+> « Rôle compliance (lecture seule stats + backup status + audit) à considérer si certification SOC 2 / ISO 27001. » — directive Étape 6, clarification 2. L'`auditor` du MVP reste strictement lecture seule sur `AdminAudit` uniquement (arbitrage §12.17) ; un éventuel rôle `compliance` étendrait la lecture aux métriques dashboard SANS aucune mutation — à trancher au moment d'une certification, pas avant.
+
+### 2.4 Création / désactivation des comptes
 - **Création : CLI uniquement** (Étape 3 : `scripts/admin-create.ts` → mot de passe temporaire + secret TOTP affichés une fois). **Pas d'UI de gestion des comptes dans le MVP** (hors périmètre §11).
 - **Désactivation : CLI** (`--disable`) — jamais de `DELETE` (les FK `hiddenBy`/`suspendedBy`/`handledBy` et l'audit référencent l'id). Un admin désactivé → toutes ses sessions deviennent instantanément invalides (`admin-auth.ts:79`).
 
@@ -54,9 +58,9 @@ Le cookie n'est émis QUE par le domaine admin (`admin.mbotemesh.aenews.online`)
 
 | # | Action | Rôle min | Chemin | Livrée |
 |---|---|---|---|---|
-| 1 | `dashboard.view` (4 métriques) | `auditor` | endpoint interne (E5) | Étape 5 |
-| 2 | `queue.view` (file de signalements + contexte) | `auditor` | `GET /api/moderation/queue` | **Étape 0** |
-| 3 | `users.view` (recherche + fiche) | `auditor` | endpoint interne (E7) | Étape 7 |
+| 1 | `dashboard.view` (4 métriques) | `support` | endpoint interne (E5) | Étape 5 — matrice v1.0 disait `auditor` ; l'implémentation testée (A5 : auditor → 403) impose support, alignée ici sous arbitrage §12.17 |
+| 2 | `queue.view` (file de signalements + contexte) | `support` | `GET /api/moderation/queue` + `GET /api/internal/admin/queue` (E6, cursor) | **Étape 0** — rôle resserré à l'Étape 6 (arbitrage §12.17 : auditor strict = lecture seule `AdminAudit`) |
+| 3 | `users.view` (recherche + fiche) | `auditor` | endpoint interne (E7) | Étape 7 — à RE-TRANCHER sous arbitrage §12.17 (auditor strict ne lirait que l'audit) |
 | 4 | `audit.view` (journal, lecture seule) | `auditor` | endpoint interne (E8) | Étape 8 |
 | 5 | `user.warn` | `support` | endpoint interne (E7) | Étape 7 |
 | 6 | `report.dismiss` (sans action) | `support` | `POST /api/moderation/action` | **Étape 0** |
@@ -257,3 +261,18 @@ explicitement ici, implémentés et testés (preuve : docs/proofs/ADM-step3-4.md
     Actions : queue.view · user.warn · post.hide · post.unhide · user.suspend ·
     user.unsuspend · post.purge · auth.login · auth.logout · auth.break-glass ·
     internal.verify (tests/admin-auth-e2e.test.ts, section H).
+17. **Auditor STRICT (directive Étape 6, clarification 2)** : l'auditor est
+    lecture seule sur `AdminAudit` UNIQUEMENT. `queue.view` passe de `auditor`
+    (spec v1.0, matrice Étape 4) à `support` — appliqué aux DEUX surfaces :
+    `/api/moderation/queue` (Étape 0) et le nouvel endpoint interne cursor
+    `/api/internal/admin/queue` (Étape 6). La matrice 55 est ré-alignée :
+    auditor → 403 sur queue.view (les tests sont mis à jour, pas affaiblis —
+    la contrainte monte d'un cran).
+18. **« Warn : 1 modérateur » (directive Étape 6)** : « 1 modérateur » désigne
+    le MODE (mono-session immédiat, pas four-eyes), pas un changement de
+    rôle — le plancher matrice §4 reste `user.warn = support`, hérité de
+    l'arbitrage Étape 4 n°9. hide/unhide/suspend : moderator (inchangé).
+19. **UI non-optimiste (directive Étape 6, clarification 1)** : invariant §1.8
+    codé dans la queue UI — chaque action attend le 2xx (ou l'erreur) du
+    serveur puis REJETTE la page depuis la réponse authentifiée ; aucun état
+    local ne présage du résultat. Bug §6.2 ADM-step5.md = cas fondateur.
