@@ -1,0 +1,1 @@
+{"mode":"search","items":[{"pubkey":"step7-alice-pubkey-0123456789abcdef","pseudo":"Alice Kinshasa","createdAt":"2026-11-06T22:06:13.548Z","postCount":4,"openReports":1,"warningCount":0,"suspendedAt":null,"suspendedUntil":null,"status":"actif"}],"total":1,"page":{"size":20,"sort":"inscription","status":"all","period":"all","q":"alice"}}

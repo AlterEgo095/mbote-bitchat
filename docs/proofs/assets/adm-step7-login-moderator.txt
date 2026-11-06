@@ -1,0 +1,1 @@
+{"csrfToken":"UQS9_WISsYYW16GgC6xo-UgB0Zs8ve5kUN3ID4cRqHc","email":"moderator@step7.proof","role":"moderator","totpEnrolled":true,"expiresAt":"2026-11-07T06:06:23.017Z"}

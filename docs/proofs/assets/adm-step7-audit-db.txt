@@ -1,0 +1,18 @@
+{
+  "audits": [
+    {
+      "action": "warn",
+      "actorRole": "moderator",
+      "justification": "SPAM: Spam répété sur le fil public — avertissement après 1 signalement vérifié"
+    },
+    {
+      "action": "suspend",
+      "actorRole": "moderator",
+      "justification": "SPAM: Relais de spam confirmé — suspension temporaire 24 h pour contraindre l'arrêt"
+    }
+  ],
+  "warning": {
+    "category": "SPAM",
+    "note": "Spam répété sur le fil public — avertissement après 1 signalement vérifié"
+  }
+}
