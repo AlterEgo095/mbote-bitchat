@@ -387,6 +387,21 @@ arbitrage §6.9 (reporté B3).
    muette. Ajout `media-src 'self' blob:` (blob lié à son origine — aucun
    média distant ouvert). Deux preuves de plus que « les preuves navigateur
    voient ce que les tests unitaires ne voient jamais ».
+9. **Audit UI non-optimiste (§1.8 ADMIN-RBAC) des composants B3 — TRAITEMENT
+   B4 (2026-11-06, clarification direction)** : le correctif anti-rebond
+   250 ms (§8.2-5) est un débounce d'ENTRÉE (course pointerdown/click — il ne
+   présage d'aucun état serveur, donc ne viole pas l'invariant). Audit des
+   surfaces B3 : `VoiceNote` (lecteur pur — zéro mutation serveur) CONFORME ;
+   `sendPendingVoice` (toast « envoyée » + bulle uniquement APRÈS
+   `uploadVoiceNote` + `apiSendDm` 2xx, spinner pendant le vol) CONFORME.
+   **Un cas réel trouvé et corrigé** : `setPendingVoice(null)` était exécuté
+   AVANT l'envoi — en cas d'échec (upload ou dm), la preview disparaissait
+   comme si la note avait été traitée, l'enregistrement était perdu sans
+   retour serveur. Correction : la preview est RESTAURÉE dans le catch
+   (l'état UI reflète le résultat réel : échec → rien envoyé, enregistrement
+   toujours éditable/envoyable). Invariant : toute mutation UI reflète le
+   retour serveur 2xx — y compris l'ÉCHEC qui ne doit pas faire disparaître
+   l'objet de la mutation.
 
 ### 8.3 Surfaces livrées
 
@@ -404,3 +419,64 @@ Payload dm2 voix (plaintext JSON — serveur aveugle) :
   "bytes": 25890, "objectKey": "media/<uuid>", "durationMs": 30240,
   "peaks": [0.42, 0.61, …] }
 ```
+
+### 8.4 Audit exhaustif Permissions-Policy (clarification direction B4, 2026-11-06)
+
+Le bug `microphone=()` de B3 révèle un problème SYSTÉMIQUE : les policies
+historiques étaient copiées du template durci sans révision par cible.
+Nuance structurante : **une directive ABSENTE du header n'est pas refusée —
+elle retombe sur le défaut navigateur (autorisée en contexte same-origin,
+`*` en top-level)**. L'audit porte donc autant sur les directives présentes
+que sur les ABSENTES.
+
+| Directive | Valeur actuelle | Utilisé en V1 ? | Valeur cible V1 | Impact futur |
+|---|---|---|---|---|
+| `camera` | `()` (template durci — BUG B4 latent) | **OUI — B4 vidéo** (getUserMedia vidéo) | `(self)` — **FIX B4 appliqué AVANT le code** (prérequis bloquant) | — |
+| `microphone` | `(self)` (fix B3) | OUI — B3 voix, B4 vidéo (piste audio) | `(self)` | — |
+| `geolocation` | `()` | NON | `()` | dette : recherche « proximité » mesh envisagée → réviser vers `(self)` LE JOUR de la feature (tracé ici, pas ailleurs) |
+| `payment` | `()` | NON | `()` | — |
+| `usb` | ABSENTE (= autorisée par défaut) | NON | `()` | fermer le défaut permissif |
+| `accelerometer` | ABSENTE | NON | `()` | fingerprinting de mouvement |
+| `gyroscope` | ABSENTE | NON | `()` | idem |
+| `magnetometer` | ABSENTE | NON | `()` | idem |
+| `fullscreen` | ABSENTE (= autorisée) | **OUI — B4** (plein écran vidéo natif) | `(self)` | expliciter la même-origine (l'app n'a pas d'iframe) |
+| `display-capture` | ABSENTE | NON | `()` | partage d'écran hors V1 |
+| `autoplay` | ABSENTE | NON (lecture toujours après geste utilisateur) | `(self)` | garde : si un jour une preview auto (souris) — aucun autoplay distant possible |
+| `clipboard-read` | ABSENTE | NON | `()` | — |
+| `clipboard-write` | ABSENTE | NON | `()` | réviser si feature « copier le texte du message » |
+| `screen-wake-lock` | ABSENTE | NON | `()` | l'écran allumé pendant l'enregistrement vidéo serait un confort — NON rétenu V1 (non testé), dette UX à évaluer en usage réel |
+| `idle-detection` | ABSENTE | NON | `()` | — |
+| `bluetooth` | ABSENTE | NON | `()` | le « mesh BLE » de l'app NATIVE ne passe JAMAIS par Web Bluetooth (RN natif) — hors périmètre web à vie |
+| `serial` | ABSENTE | NON | `()` | — |
+| `midi` | ABSENTE | NON | `()` | — |
+| `nfc` | ABSENTE | NON | `()` | — |
+| `hid` | ABSENTE | NON | `()` | — |
+
+**Header cible V1 (appliqué en B4, AVANT l'écriture du recorder — directive) :**
+
+```
+Permissions-Policy: camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), accelerometer=(), gyroscope=(), magnetometer=(), fullscreen=(self), display-capture=(), autoplay=(self), clipboard-read=(), clipboard-write=(), screen-wake-lock=(), idle-detection=(), bluetooth=(), serial=(), midi=(), nfc=(), hid=()
+```
+
+*Note de trace : la directive nommait « §8.3 » — occupé par les surfaces
+livrées ; le tableau vit en §8.4, appliqué à l'identique.*
+
+### 8.5 Safari/iOS voice notes — DÉCISION TRANCHÉE (clarification direction B4, 2026-11-06)
+
+**DÉCISION : Option B pour le MVP, Option A jalonnée — les DEUX sont
+écrites, rien n'est laissé en suspens.**
+
+- **Option B (retenue MVP — déjà implémentée B3)** : UX différenciée — le
+  bouton micro est DÉSACTIVÉ sur Safari + message explicite
+  (`VOICE_UNSUPPORTED_MESSAGE`, opus.ts) : « Voice notes disponibles sur
+  Chrome/Firefox uniquement ». Acceptable pour le MVP : le navigateur cible
+  du déploiement RDC (Chrome Android) supporte Opus nativement.
+- **Option A (identifiée + chiffrée + jalonnée)** : fallback WASM
+  `@wasm-audio-encoders/opus` (licence MIT, vérifiée) — **estimation 2–3 jp**
+  (intégration encodeur + tests Safari réels NON possibles dans le sandbox —
+  test manuel requis). Jalon tracé dans SCALE-ARCHITECTURE §8 : **avant
+  ouverture publique** (borne dure), même mécanique que la dette RN.
+
+La migration Option B → Option A est purement additive (le mode d'échec
+« bouton désactivé » reste la seconde barrière — le sniff conteneur à la
+réception refusant tout non-Opus).

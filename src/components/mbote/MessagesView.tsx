@@ -751,7 +751,12 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
   };
 
   /** B3 : preview → envoi (uploadVoiceNote → dm2). Invariant B2 : l'upload
-   *  EST l'orchestration observable — aucun état « envoyé » avant le 2xx. */
+   *  EST l'orchestration observable — aucun état « envoyé » avant le 2xx.
+   *  Clarification 4 B4 (invariant §1.8 ADMIN-RBAC) : la preview n'est PAS
+   *  jetée avant confirmation — en cas d'échec elle est RESTAURÉE (l'état UI
+   *  reflète le résultat réel : rien envoyé, enregistrement toujours
+   *  envoyable). Avant ce fix, `setPendingVoice(null)` précoce perdait
+   *  l'enregistrement en cas d'erreur réseau sans aucun retour serveur. */
   const sendPendingVoice = async () => {
     const voice = pendingVoice;
     if (!voice || !peer?.pubkey) return;
@@ -772,6 +777,7 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
         description: `Opus ${(uploaded.durationMs / 1000).toFixed(1)} s · ${humanBytes(uploaded.plainBytes)} · chiffrée (AES-256-GCM)`,
       });
     } catch (e) {
+      setPendingVoice(voice); // échec → preview restaurée (invariant §1.8)
       toast.error("Échec d'envoi vocal", {
         description: e instanceof Error ? e.message : undefined,
       });
