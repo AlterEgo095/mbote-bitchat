@@ -1,1 +1,1 @@
-{"csrfToken":"iNz7EPduAufI1lLf7cJlSy3CloyTUI2ap50YcdJU5KY","email":"auditor@step6.proof","role":"auditor","totpEnrolled":true,"expiresAt":"2026-11-06T18:13:04.680Z"}
+{"csrfToken":"meOr_sR4Yu05Ue0bRd86Cq3xzQc54ir_a5PWbavuXkc","email":"auditor@step6.proof","role":"auditor","totpEnrolled":true,"expiresAt":"2026-11-06T20:56:49.880Z"}
