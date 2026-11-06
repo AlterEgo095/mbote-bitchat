@@ -79,14 +79,17 @@ import { closeWebOutbox } from "@/lib/mbote/transports/web-outbox";
 
 import { MboteAvatar } from "./Avatar";
 // F-34 (audit Vague 5) : code-splitting des vues secondaires — FeedView
-// reste eager (vue par défaut + candidat LCP), les 4 autres vues + le
-// tunnel BitChat sont chargés à la demande (bundle initial allégé).
+// reste eager (vue par défaut + candidat LCP). ARBITRAGE B2 (2026-11-06) :
+// MessagesView repasse en import EAGER — le dynamic(ssr:false) le montait
+// dans un sous-arbre DÉTACHÉ du root hydraté (fiber sans HostRoot en amont,
+// constat navigateur) → tout setState de la vue était un NO-OP silencieux
+// (dialog d'attachement d'image mort, handlers inertes). La vue porte les
+// états les plus lourds (DM, queue média, dialogs) : fiabilité > taille de
+// bundle initial. ChannelsView/NetworkView/ProfileView restent dynamic
+// (hors périmètre B2 — note NON TESTÉ).
+import { MessagesView } from "./MessagesView";
 const ChannelsView = dynamic(
   () => import("./ChannelsView").then((m) => m.ChannelsView),
-  { ssr: false, loading: ViewSkeleton }
-);
-const MessagesView = dynamic(
-  () => import("./MessagesView").then((m) => m.MessagesView),
   { ssr: false, loading: ViewSkeleton }
 );
 const NetworkView = dynamic(

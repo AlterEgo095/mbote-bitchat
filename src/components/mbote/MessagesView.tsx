@@ -8,14 +8,18 @@ import {
   AlertTriangle,
   Bot,
   Clock,
+  ImageOff,
+  Image as ImageIcon,
   KeyRound,
-  Lock,
   Loader2,
+  Lock,
   MessageSquarePlus,
+  Paperclip,
   Send,
   ShieldAlert,
   ShieldCheck,
   ShieldQuestion,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +47,16 @@ import { openMessage, sealMessage, shortKey, signPayload } from "@/lib/mbote/cry
 import { dm2ProofMessage, dmReadProofMessage, trustVerifyProofMessage } from "@/lib/mbote/proof";
 import { newDmMsgId, nextDmSeq } from "@/lib/mbote/dm-sequence";
 import {
+  attachUploadQueueFlusher,
+  downloadImage,
+  enqueueOfflineUpload,
+  MediaClientError,
+  sessionCekFor,
+  uploadImage,
+  type UploadStage,
+  type UploadedMedia,
+} from "@/lib/mbote/media-client";
+import {
   confirmLocalTrust,
   evaluateLocalTrust,
   type TrustLevel,
@@ -60,12 +74,156 @@ interface QueuedDm {
   queuedAt: number;
 }
 
+// ── B2 — payload média d'un dm2 (spec MEDIA-ENVELOPE-SPEC §7.3) ──────────────
+// Le plaintext dm2 pour un média est un JSON : le CEK voyage DANS le dm2 E2EE —
+// le serveur reste aveugle. Tout plaintext non-JSON (historique) = texte brut.
+interface MediaDmPayload {
+  kind: "media";
+  text: string;
+  mediaId: string;
+  cek: string;
+  mediaType: string;
+  bytes: number;
+  objectKey: string;
+}
+
+function parseDmBody(body: string): MediaDmPayload | null {
+  if (!body.startsWith("{")) return null;
+  try {
+    const p = JSON.parse(body) as Partial<MediaDmPayload>;
+    if (
+      p?.kind === "media" &&
+      typeof p.mediaId === "string" &&
+      typeof p.cek === "string" &&
+      typeof p.mediaType === "string"
+    ) {
+      return { kind: "media", text: p.text ?? "", mediaId: p.mediaId, cek: p.cek, mediaType: p.mediaType, bytes: p.bytes ?? 0, objectKey: p.objectKey ?? "" };
+    }
+  } catch {
+    /* plaintext historique — texte brut */
+  }
+  return null;
+}
+
+function humanBytes(n: number): string {
+  if (n < 1024) return `${n} o`;
+  if (n < 1048576) return `${(n / 1024).toFixed(0)} Ko`;
+  return `${(n / 1048576).toFixed(1)} Mo`;
+}
+
 interface MessagesViewProps {
   identity: StoredIdentity;
   isOnline: boolean;
   forceOffline: boolean;
   /** F-15 : délègue la mise en file à MboteApp (propriétaire de l'outbox). */
   onQueueDm?: (payload: Record<string, unknown>, clientRef: string) => void;
+}
+
+// ── B2 — bulle média : vignette lazy (download → decrypt → magic bytes) ──────
+
+interface MediaBubbleProps {
+  payload: MediaDmPayload;
+  mine: boolean;
+  me: string;
+  signPriv: CryptoKey;
+}
+
+function MediaBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+  const [errCode, setErrCode] = useState<string | null>(null);
+  const [fullOpen, setFullOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // À MOI : le CEK de session est le fallback si le dm2 n'a pas encore
+      // été refetché — même clé que celle utilisée à l'upload.
+      const session = sessionCekFor(payload.mediaId);
+      try {
+        const img = await downloadImage({
+          mediaId: payload.mediaId,
+          cekB64: payload.cek || session?.cekB64 || "",
+          declaredType: payload.mediaType,
+          me,
+          sign: (p) => signPayload(signPriv, p),
+        });
+        if (!cancelled) {
+          setUrl(URL.createObjectURL(img.blob));
+          setStatus("ok");
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setStatus("error");
+          setErrCode(e instanceof MediaClientError ? e.code : "unknown");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [payload.mediaId, payload.cek, payload.mediaType, me, signPriv]);
+
+  if (status === "error") {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-black/10 p-2.5 text-xs" role="alert">
+        <ImageOff className="size-4 shrink-0 opacity-70" aria-hidden="true" />
+        <span>
+          {errCode === "magic-bytes-mismatch"
+            ? "Média refusé — le contenu ne correspond pas au type annoncé (protection MIME spoofing)."
+            : errCode === "decrypt-failed"
+              ? "Média indéchiffrable (CEK absent ou objet altéré)."
+              : "Média indisponible."}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => status === "ok" && setFullOpen(true)}
+        className="block overflow-hidden rounded-lg"
+        aria-label={`Image reçue — ${humanBytes(payload.bytes)} (${payload.mediaType})`}
+      >
+        {status === "ok" && url ? (
+          // eslint-disable-next-line @next/next/no-img-element -- blob local déchiffré client, pas d'optimisation possible
+          <img
+            src={url}
+            alt={`Image partagée (${humanBytes(payload.bytes)})`}
+            className="max-h-44 w-auto max-w-[280px] rounded-lg object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <span
+            className={`flex h-32 w-44 items-center justify-center gap-2 rounded-lg text-xs ${mine ? "bg-primary-foreground/15" : "bg-background/60"}`}
+          >
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            décryptage…
+          </span>
+        )}
+      </button>
+      <Dialog open={fullOpen} onOpenChange={setFullOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm">
+              <ImageIcon className="size-4 text-primary" aria-hidden="true" />
+              Image chiffrée · {humanBytes(payload.bytes)} · {payload.mediaType}
+            </DialogTitle>
+            <DialogDescription>
+              Déchiffrée localement (AES-256-GCM) — magic bytes vérifiés avant rendu.
+            </DialogDescription>
+          </DialogHeader>
+          {url && (
+            // eslint-disable-next-line @next/next/no-img-element -- blob local déchiffré client
+            <img src={url} alt="Image partagée en plein écran" className="max-h-[70vh] w-auto rounded-lg object-contain" />
+          )}
+          {payload.text && <p className="text-sm text-muted-foreground">{payload.text}</p>}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }
 
 export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: MessagesViewProps) {
@@ -97,6 +255,22 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // ── B2 : upload média (picker → preview → orchestré → dm2) ──
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingFile, setPendingFile] = useState<{
+    name: string;
+    bytes: Uint8Array;
+    mediaType: string;
+    previewUrl: string;
+  } | null>(null);
+  const [uploadState, setUploadState] = useState<{
+    stage: UploadStage;
+    fraction?: number;
+    message?: string;
+  } | null>(null);
+  // file hors-ligne : ref de queue → destinataire (dm2 auto au retour réseau)
+  const queuePeerRef = useRef<Map<string, string>>(new Map());
 
   const peer: UserPublic | undefined = useMemo(() => {
     const fromConv = conversations.data?.conversations.find((c) => c.peer.pubkey === selectedPub)
@@ -330,6 +504,179 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
     }
   };
 
+  // ── B2 : envoi du dm2 MÉDIA (payload JSON — CEK dans le canal E2EE, §7.3) ──
+  const sendMediaDm = async (media: UploadedMedia, peerPub: string, text: string) => {
+    const target = peerPub === selectedPub ? peer : users.data?.users.find((u) => u.pubkey === peerPub);
+    if (!target?.ecdhPub) {
+      toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
+      return;
+    }
+    const payloadMedia: MediaDmPayload = {
+      kind: "media",
+      text,
+      mediaId: media.mediaId,
+      cek: media.cekB64,
+      mediaType: media.mediaType,
+      bytes: media.plainBytes,
+      objectKey: media.objectKey,
+    };
+    const sealed = await sealMessage(identity.ecdhPriv, target.ecdhPub, JSON.stringify(payloadMedia));
+    const msgId = newDmMsgId();
+    const seq = nextDmSeq(myPub, peerPub);
+    const ts = Date.now();
+    const signature = await signPayload(
+      identity.signPriv,
+      dm2ProofMessage(myPub, peerPub, msgId, seq, sealed.iv, sealed.ciphertext, ts)
+    );
+    await apiSendDm({
+      senderKey: myPub,
+      recipientKey: peerPub,
+      iv: sealed.iv,
+      ciphertext: sealed.ciphertext,
+      msgId,
+      seq,
+      ts,
+      signature,
+    });
+    await qc.invalidateQueries({ queryKey: ["dms", myPub, peerPub] });
+    await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
+  };
+
+  // B2 : au retour du réseau, la file des uploads re-orchestre — puis le dm2
+  // part automatiquement vers le destinataire d'origine.
+  useEffect(() => {
+    const detach = attachUploadQueueFlusher(identity.pubkey, (p) => signPayload(identity.signPriv, p),
+      (item, media) => {
+        const peerPub = queuePeerRef.current.get(item.ref);
+        queuePeerRef.current.delete(item.ref);
+        if (peerPub && peerPub !== "") {
+          void sendMediaDm(media, peerPub, "").then(() =>
+            toast.success("Image envoyée après reprise réseau")
+          ).catch((e) =>
+            toast.error("Image uploadée mais envoi échoué", {
+              description: e instanceof Error ? e.message : undefined,
+            })
+          );
+        }
+      });
+    return detach;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-branche sur changement d'identité
+  }, [identity.pubkey, identity.signPriv]);
+
+  // B2 : picker → preview (nom + taille) — validation d'entrée AVANT tout
+  const pickFile = async (file: File) => {
+    if (peer?.isBot) {
+      toast.info("Le bot ne reçoit pas d'images — choisissez un contact humain.");
+      return;
+    }
+    if (!peer?.ecdhPub) {
+      toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
+      return;
+    }
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      toast.error(`Type ${file.type || "inconnu"} refusé — images jpeg, png ou webp uniquement`);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error(`Fichier de ${(file.size / 1048576).toFixed(1)} Mo — la limite est 5 Mo`);
+      return;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    setPendingFile({
+      name: file.name,
+      bytes,
+      mediaType: file.type,
+      previewUrl: URL.createObjectURL(file),
+    });
+  };
+
+  // B2 : upload orchestré (strip → chiffrement → PUT → finalize) → dm2
+  const attachAndSend = async () => {
+    const file = pendingFile;
+    if (!file || !peer?.pubkey) return;
+    const peerPub = peer.pubkey;
+    setPendingFile(null);
+    setUploadState({ stage: "strip" });
+    try {
+      const media = await uploadImage({
+        bytes: file.bytes,
+        mediaType: file.mediaType,
+        me: myPub,
+        sign: (p) => signPayload(identity.signPriv, p),
+        onProgress: (stage, info) => setUploadState({ stage, fraction: info?.fraction, message: info?.message }),
+      });
+      await sendMediaDm(media, peerPub, "");
+      toast.success("Image envoyée", {
+        description: `Chiffrée (AES-256-GCM) · ${humanBytes(media.plainBytes)} · EXIF nettoyé`,
+      });
+    } catch (e) {
+      if (e instanceof MediaClientError && (e.code === "put-failed" || e.code === "presign-failed")) {
+        // réseau tombé en cours d'upload → FILE (reprise au retour du réseau)
+        const item = enqueueOfflineUpload(file.name, file.bytes, file.mediaType);
+        queuePeerRef.current.set(item.ref, peerPub);
+        toast.info("Upload interrompu — conservé sur l'appareil", {
+          description: "L'image partira automatiquement au retour du réseau.",
+        });
+      } else {
+        toast.error("Échec d'upload", {
+          description: e instanceof Error ? e.message : undefined,
+        });
+      }
+    } finally {
+      setUploadState(null);
+    }
+  };
+
+  // B2-fix (bug préexistant découvert par la preuve navigateur) : le Dialogue
+  // « nouvelle conversation » est partagé par les DEUX returns — avant ce fix,
+  // le clic « Nouvelle conversation » depuis l'état VIDE montait le state sans
+  // jamais rendre le Dialog (early return sans JSX) : impossible de démarrer
+  // une conversation depuis l'état vide.
+  const newConvDialog = (
+    <Dialog open={newConvOpen} onOpenChange={setNewConvOpen}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="size-4 text-primary" aria-hidden="true" />
+            Choisir un contact
+          </DialogTitle>
+          <DialogDescription>
+            Seules les identités publiées sur le réseau apparaissent — toujours.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-80 space-y-1 overflow-y-auto scrollbar-thin">
+          {(users.data?.users ?? [])
+            .filter((u) => u.pubkey !== myPub)
+            .map((u) => (
+              <button
+                key={u.pubkey}
+                onClick={() => {
+                  setSelectedPub(u.pubkey);
+                  setNewConvOpen(false);
+                }}
+                className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left hover:bg-accent"
+              >
+                <MboteAvatar pubkey={u.pubkey} nickname={u.nickname} size={34} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">
+                    {u.nickname}
+                    {u.isBot && <span className="ml-1 text-[10px] text-primary">bot</span>}
+                  </p>
+                  <p className="truncate font-mono text-[10px] text-muted-foreground">
+                    {shortKey(u.pubkey, 8)}
+                  </p>
+                </div>
+                {u.ecdhPub && (
+                  <Lock className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+                )}
+              </button>
+            ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (!peer && !conversations.isLoading) {
     return (
       <div className="space-y-4">
@@ -349,6 +696,7 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
             </Button>
           </CardContent>
         </Card>
+        {newConvDialog}
       </div>
     );
   }
@@ -518,6 +866,7 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                       const body = peer.ecdhPub
                         ? (plain[m.id] ?? "…déchiffrement")
                         : "🔒 ciphertext (clés de démo indisponibles)";
+                      const media = parseDmBody(body);
                       return (
                         <div
                           key={m.id}
@@ -530,12 +879,17 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                                 : "rounded-bl-md bg-muted text-foreground"
                             }`}
                           >
-                            <p className="whitespace-pre-wrap break-words">{body}</p>
+                            {media ? (
+                              <MediaBubble payload={media} mine={mine} me={myPub} signPriv={identity.signPriv} />
+                            ) : (
+                              <p className="whitespace-pre-wrap break-words">{body}</p>
+                            )}
                             <p
                               className={`mt-1 flex items-center gap-1 text-[10px] ${
                                 mine ? "text-primary-foreground/70" : "text-muted-foreground"
                               }`}
                             >
+                              {media && <ImageIcon className="size-2.5" aria-hidden="true" />}
                               <Lock className="size-2.5" aria-hidden="true" />
                               {formatDistanceToNow(new Date(m.createdAt), {
                                 addSuffix: true,
@@ -572,7 +926,54 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
               </ScrollArea>
 
               <div className="border-t p-3">
+                {/* B2 : bandeau d'upload en cours (états observables) */}
+                {uploadState && (
+                  <div
+                    className="mb-2 flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <Loader2 className="size-3.5 animate-spin text-primary" aria-hidden="true" />
+                    <span className="flex-1">
+                      {uploadState.stage === "strip"
+                        ? "Nettoyage EXIF (GPS, dates, appareil)…"
+                        : uploadState.stage === "encrypt"
+                          ? "Chiffrement de bout en bout…"
+                          : uploadState.stage === "presign"
+                            ? "Demande d'URL d'upload…"
+                            : uploadState.stage === "put"
+                              ? `Envoi chiffré au bucket… ${Math.round((uploadState.fraction ?? 0) * 100)} %`
+                              : uploadState.stage === "finalize"
+                                ? "Finalisation (vérification serveur)…"
+                                : "Terminé"}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
+                  {/* B2 : pièce jointe image — picker natif, preview avant envoi */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = ""; // permet re-sélection du même fichier
+                      if (f) void pickFile(f);
+                    }}
+                    aria-label="Choisir une image à envoyer"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-11 shrink-0"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!peer.ecdhPub || sending || uploadState !== null || trustBlocked || peer.isBot}
+                    aria-label="Joindre une image"
+                    title="Joindre une image (jpeg, png, webp — 5 Mo max)"
+                  >
+                    <Paperclip className="size-4" aria-hidden="true" />
+                  </Button>
                   <Input
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
@@ -622,6 +1023,46 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
         </div>
       </div>
 
+      {/* B2 : dialogue de PREVIEW avant upload (nom, taille, annulable) */}
+      <Dialog open={pendingFile !== null} onOpenChange={(open) => !open && setPendingFile(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ImageIcon className="size-4 text-primary" aria-hidden="true" />
+              Envoyer une image
+            </DialogTitle>
+            <DialogDescription>
+              EXIF/GPS supprimés, chiffrement sur ton appareil, puis envoi au bucket —
+              le serveur ne verra que du chiffré.
+            </DialogDescription>
+          </DialogHeader>
+          {pendingFile && (
+            <div className="space-y-3">
+              {/* eslint-disable-next-line @next/next/no-img-element -- blob local de preview */}
+              <img
+                src={pendingFile.previewUrl}
+                alt={`Aperçu de ${pendingFile.name}`}
+                className="max-h-56 w-full rounded-lg object-contain"
+              />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="truncate">{pendingFile.name}</span>
+                <span>{humanBytes(pendingFile.bytes.length)}</span>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setPendingFile(null)}>
+                  <X className="size-4" aria-hidden="true" />
+                  Annuler
+                </Button>
+                <Button className="flex-1" onClick={attachAndSend}>
+                  <ImageIcon className="size-4" aria-hidden="true" />
+                  Chiffrer et envoyer
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* A2 : dialogue du numéro de sécurité (vérification hors-bande) */}
       <Dialog open={trustDialogOpen} onOpenChange={setTrustDialogOpen}>
         <DialogContent className="max-w-md">
@@ -664,48 +1105,8 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
         </DialogContent>
       </Dialog>
 
-      {/* Dialogue nouvelle conversation */}
-      <Dialog open={newConvOpen} onOpenChange={setNewConvOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <KeyRound className="size-4 text-primary" aria-hidden="true" />
-              Choisir un contact
-            </DialogTitle>
-            <DialogDescription>
-              Seules les identités publiées sur le réseau apparaissent — toujours.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="max-h-80 space-y-1 overflow-y-auto scrollbar-thin">
-            {(users.data?.users ?? [])
-              .filter((u) => u.pubkey !== myPub)
-              .map((u) => (
-                <button
-                  key={u.pubkey}
-                  onClick={() => {
-                    setSelectedPub(u.pubkey);
-                    setNewConvOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left hover:bg-accent"
-                >
-                  <MboteAvatar pubkey={u.pubkey} nickname={u.nickname} size={34} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">
-                      {u.nickname}
-                      {u.isBot && <span className="ml-1 text-[10px] text-primary">bot</span>}
-                    </p>
-                    <p className="truncate font-mono text-[10px] text-muted-foreground">
-                      {shortKey(u.pubkey, 8)}
-                    </p>
-                  </div>
-                  {u.ecdhPub && (
-                    <Lock className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
-                  )}
-                </button>
-              ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Dialogue nouvelle conversation (variable partagée — B2-fix) */}
+      {newConvDialog}
     </div>
   );
 }

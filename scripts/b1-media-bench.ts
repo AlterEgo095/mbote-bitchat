@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { generateCek, encryptMedia, decryptMedia } from "../src/lib/mbote/media/crypto";
 
 interface Sample { medianMs: number; p95Ms: number; minMs: number; maxMs: number; runs: number }
+interface BenchRow { taille: string; octets: number; runs: number; encrypt: Sample & { debitMoS: number }; decrypt: Sample & { debitMoS: number } }
 
 function stats(samplesMs: number[]): Sample {
   const s = [...samplesMs].sort((a, b) => a - b);
@@ -38,7 +39,7 @@ function makeNoise(bytes: number): Uint8Array {
   return buf;
 }
 
-async function bench(sizeBytes: number, runs: number): Promise<Record<string, unknown>> {
+async function bench(sizeBytes: number, runs: number): Promise<BenchRow> {
   const cek = generateCek();
   const plaintext = makeNoise(sizeBytes);
   const label = sizeBytes >= 1024 * 1024 ? `${sizeBytes / (1024 * 1024)} Mo` : `${Math.round(sizeBytes / 1024)} Ko`;

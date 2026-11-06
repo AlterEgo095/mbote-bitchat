@@ -172,5 +172,33 @@ export function envelopesEqual(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb);
 }
 
+export interface EnvelopeInfo {
+  version: string;
+  iv: Uint8Array;
+  ciphertextBytes: number;
+  tag: Uint8Array;
+}
+
+/**
+ * Validation STRUCTURELLE d'une enveloppe SANS déchiffrement (B2 finalize —
+ * arbitrage spec §6.7-ii) : le serveur est aveugle (E2EE), il vérifie que
+ * l'objet est bien une enveloppe v1 bien formée (préfixe, 4 segments,
+ * IV 12 o, tag 16 o, ciphertext non vide). Toute malformation →
+ * `MediaCryptoError("bad-envelope")` — même parse strict que decryptMedia.
+ */
+export function inspectEnvelope(envelope: string): EnvelopeInfo {
+  const parts = envelope.split(":");
+  if (parts.length !== 4 || parts[0] !== ENVELOPE_VERSION) {
+    throw new MediaCryptoError("bad-envelope", "format attendu v1:iv:ciphertext:tag");
+  }
+  const iv = b64urlToBytes(parts[1], "iv", IV_BYTES);
+  const ciphertext = b64urlToBytes(parts[2], "ciphertext", null);
+  if (ciphertext.length === 0) {
+    throw new MediaCryptoError("bad-envelope", "ciphertext vide");
+  }
+  const tag = b64urlToBytes(parts[3], "tag", TAG_BYTES);
+  return { version: ENVELOPE_VERSION, iv, ciphertextBytes: ciphertext.length, tag };
+}
+
 /** Exports internes pour les tests (garde IV, scellé à IV imposé). */
 export const __testing = { sealWithIv, registerIv, ivRegistry, IV_REGISTRY_LIMIT, ivKey };

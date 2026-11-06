@@ -191,3 +191,125 @@ DANS LES PIXELS** (auto-rotation sharp avant ré-encodage).
 6. **Branche depuis `main`** : le socle média ne dépend d'aucun code ADM
    (routes admin, panneau) — zéro conflit au merge, déploiement ordonné
    ADM → B1.
+7. **« magic bytes » sous E2EE — TRANCHEMENT B2 (2026-11-06)** : la directive
+   B2 demande à `finalize` de valider « contenu valide (magic bytes) ». Or
+   l'objet stocké est le CIPHERTEXT du client (enveloppe §1) — le serveur
+   ne peut mathématiquement PAS lire les magic bytes du plaintext sans
+   casser l'E2EE. Le contrôle est donc découpé en trois barrières, chacune
+   prouvée :
+   - **(i) à l'entrée (client honnête)** : `stripExif` ré-encode via
+     sharp/canvas — un PDF renommé `.jpg` est refusé AVANT tout chiffrement
+     (decode fail → `bad-image`) ;
+   - **(ii) à `finalize` (serveur, aveugle)** : validation structurelle de
+     l'enveloppe (v1:iv:ciphertext:tag — IV 12 o, tag 16 o, ciphertext non
+     vide, taille = Content-Length signé) + existence réelle de l'objet dans
+     le bucket. Un client malveillant qui PUT du chiffré arbitraire passe
+     cette barrière — assumé, c'est le prix de l'E2EE ;
+   - **(iii) à la lecture (destinataire)** : après decrypt, `sniffImageType`
+     vérifie les MAGIC BYTES du plaintext (JPEG FFD8 / PNG 89504E47 /
+     WEBP RIFF…WEBP) contre le `mediaType` déclaré dans le dm2 — toute
+     divergence → `MediaTypeError("magic-bytes-mismatch")`, rendu REFUSÉ.
+     Un PDF déguisé en jpeg n'est donc jamais rendu, même par un client
+     malveillant.
+   Compromis assumé : un ciphertext de garbage peut OCCUPER du stockage
+   (borne : quota 500 Mo + rate limit 20/h + TTL presign 15 min) mais ne
+   peut jamais être RENDU comme image à un destinataire.
+8. **Presignature GET de lecture — qui peut lire ?** Toute identité
+   authentifiée (preuve de possession courte durée) peut obtenir la
+   presignature GET d'un média finalisé : le contenu est de toute façon
+   indéchiffrable sans le CEK, qui voyage UNIQUEMENT dans le dm2 E2EE (§3).
+   Le mediaId (cuid non énumérable) + l'authentification ferment
+   l'énumération anonyme ; la confidentialité réelle reste E2EE. Le serveur
+   ne fait aucun ACL fin sur les médias — impossible par conception (il ne
+   sait pas qui les a reçus).
+9. **Portée B2 — web complet, mobile reporté** : le client B2 livre
+   `media-client.ts` (module TS pur : WebCrypto + fetch + queue offline)
+   et l'UI web minimale. Le client RN (mobile/) partage le socle mais son
+   strip EXIF exige expo-image-manipulator et son harness n'est pas
+   exécutable dans ce sandbox → **NON TESTÉ** explicitement (extension B3).
+   Un code natif non prouvé serait de la preuve fantôme.
+
+---
+
+## 7. Flux B2 — upload présigné → finalize → lecture décryptée (implémenté)
+
+### 7.1 Endpoints serveur (app principale)
+
+| Endpoint | Méthode | Auth | Rôle |
+|---|---|---|---|
+| `/api/media/upload-url` | POST | preuve `${me}\|media-upload\|${mediaType}\|${sizeBytes}\|${ts}` (15 min) | validations → Media `pending` + presigned PUT |
+| `/api/media/finalize` | POST | preuve `${me}\|media-finalize\|${mediaId}\|${ts}` (15 min) | existence bucket + structure enveloppe + taille → `finalized` + presigned GET |
+| `/api/media/download-url` | GET | preuve `${me}\|media-dl\|${mediaId}\|${ts}` (15 min) | presigned GET (arbitrage §6.8) |
+
+Chaîne de validation `upload-url` (dans l'ordre) : session configurée (503 si
+`MEDIA_S3_*` absent) → rate limit **20 uploads/h/utilisateur** (429) →
+`mediaType` whitelist `image/jpeg|png|webp` (400) → `sizeBytes` entier > 0 et
+≤ 5 Mo (400) → quota **500 Mo** cumulé `SUM(sizeBytes)` des médias finalisés
+de l'owner (429) → création `Media(pending)` + `newObjectKey()` → presigned
+PUT `ttl=900 s` avec `contentLength = sizeBytes` **lié par la signature**
+(toute taille différente est rejetée par le S3 lui-même).
+
+Chaîne de validation `finalize` : media existe + owner + `pending` (404/403) →
+objet présent dans le bucket (fetch presigned GET serveur → 400 si 404) →
+taille lue = `sizeBytes` (422) → enveloppe structurellement valide
+(`inspectEnvelope` : v1, IV 12 o, tag 16 o, ciphertext non vide — 422) →
+`finalized`. Une ligne `pending` non finalisée 20 min après création est
+orpheline (jamais comptée au quota).
+
+### 7.2 Client `src/lib/mbote/media-client.ts` (web, RN-compatible)
+
+- `encryptBytes(bytes)` — WebCrypto (`globalThis.crypto.subtle`, RN polyfill
+  ok) : CEK 32 o CSPRNG **par objet**, IV 12 o CSPRNG unique + **garde de
+  session** (Set — miroir client de la garde serveur §1.3), AES-256-GCM,
+  enveloppe `v1:iv:ciphertext:tag` base64url — **identique au format B1**
+  (interopérabilité testée : `decryptMedia` B1 lit une enveloppe client).
+- `decryptBytes(envelope, cek)` — WebCrypto, échec propre (auth-failed).
+- `sniffImageType(bytes)` — magic bytes purs JS (§6.7-iii).
+- `uploadImage({ bytes, mediaType, strip?, onProgress? })` — orchestration :
+  strip (injectable : `stripExifClient` canvas en web, sharp en harness) →
+  chiffrement → `upload-url` → PUT présigné (Content-Length = octets de
+  l'enveloppe, ASCII pur) → `finalize` → CEK gardé **en mémoire de session**
+  (`sessionCekFor(mediaId)`) pour la relecture de ses propres images →
+  `{ mediaId, objectKey, cek, mediaType, bytes, sha256 }`.
+- `downloadImage({ mediaId, cek, declaredType? })` — `download-url` → GET →
+  decrypt → **sniff magic bytes** (§6.7-iii) → Blob typé.
+- `stripExifClient` — ré-encodage canvas SANS aucune métadonnée, orientation
+  cuite (`imageOrientation: "from-image"`), jpeg (sans alpha) ou png (avec
+  alpha). **Invariant « post-strip ≤ original » appliqué aux images ≥ 32 Ko
+  uniquement** (arbitrage B2 : le ré-encodage canvas peut légèrement agrandir
+  les micro-images — un JPEG 4×3 px de 517 o ré-encodé → ~760 o — l'invariant
+  strict y est mathématiquement irréalisable ; la garantie privacy reste
+  intégrale et le serveur borne le ciphertext de toute façon).
+- `MediaUploadQueue` (**mémoire de session** — jamais persistée, B2-MVP) :
+  uploads interrompus conservés avec leurs OCTETS en mémoire (localStorage
+  refusé : plain bytes non persistables + quota DOM) ; à l'événement `online`,
+  ré-orchestration COMPLÈTE (re-strip → re-chiffrement → re-présignation :
+  les URLs de 15 min sont forcément expirées) en re-signant à chaque tentative.
+  Fermeture de l'onglet = perte des médias en file (assumé MVP — l'utilisateur
+  refait l'attache ; noté NON TESTÉ → UX).
+- Fenêtres : les preuves media sont fenêtres COURTES (15 min, comme dm-read) —
+  la queue re-signe à chaque tentative (le geste est effectif au moment du
+  fetch, jamais stocké).
+
+### 7.3 Encapsulation DM (payload média)
+
+Le message média est un DM **ordinaire** (sealMessage ECDH existant, A1 v2,
+même outbox) dont le plaintext est un JSON :
+
+```jsonc
+{ "kind": "media", "text": "…", "mediaId": "…", "cek": "…b64url…",
+  "mediaType": "image/jpeg", "bytes": 482133, "objectKey": "media/<uuid>" }
+```
+
+Le CEK voyage DONC dans le dm2 E2EE (spec §3) — le serveur reste aveugle. Le
+rendu client : `JSON.parse` du plaintext → `kind === "media"` → bulle média
+(vignette → full), sinon texte brut (rétro-compat totale : les anciens
+plaintexts ne sont pas du JSON `kind:media`).
+
+### 7.4 UI minimale (web — « juste assez pour tester »)
+
+Dans `MessagesView` : bouton 📎 → picker image → preview (nom, taille) →
+upload orchestré avec états (`strip → chiffrement → PUT → finalize`, % sur le
+PUT) → envoi du dm2 média. Réception : vignette (128 px, lazy via
+`downloadImage` + cache mémoire blob) → clic → Dialog plein. Mobile RN :
+arbitrage §6.9 (reporté B3).

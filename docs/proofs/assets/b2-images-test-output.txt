@@ -1,0 +1,23 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/media-b2-flow.test.ts:
+(pass) B2 — chaîne complète upload → finalize → lecture (weed réel + proxy) > U1+U2 — 500 Ko GPS : SHA-256 identique, EXIF/GPS absent après le voyage complet [285.39ms]
+(pass) B2 — chaîne complète upload → finalize → lecture (weed réel + proxy) > U3 — interop : decryptMedia socle B1 lit EXACTEMENT une enveloppe encryptBytes client [5.30ms]
+(pass) B2 — refus d'entrée (serveur) > R1 — application/pdf → 400 [4.86ms]
+(pass) B2 — refus d'entrée (serveur) > R2 — 6 Mo → 400 [6.12ms]
+(pass) B2 — refus d'entrée (serveur) > R3 — preuve invalide (signée par une AUTRE clé) → 401 [4.09ms]
+(pass) B2 — refus d'entrée (serveur) > R10 — download-url sans preuve → 401 · média inconnu → 404 [8.20ms]
+(pass) B2 — finalize : contrôles serveur (aveugle) > R6 — finalize SANS PUT → 400 objet absent [17.30ms]
+(pass) B2 — finalize : contrôles serveur (aveugle) > R7 — enveloppe garbage (taille exacte liée) → finalize 422 [34.26ms]
+(pass) B2 — finalize : contrôles serveur (aveugle) > R8 — fenêtre finalize > 20 min → 410 [27.69ms]
+(pass) B2 — MIME spoofing (arbitrage §6.7 : barrière AU RENDU) > R9 — PDF chiffré déclaré image/jpeg : finalize 200 puis RENDU REFUSÉ [35.41ms]
+(pass) B2 — rate limit + quota > R4 — 21e upload de l'heure → 429 (20/h/utilisateur) [149.66ms]
+(pass) B2 — rate limit + quota > R5 — quota : owner à 501 Mo finalized → 429 [25.24ms]
+(pass) B2 — proxy média (anti open-proxy) > P1 — chemin hors whitelist (bucket fantôme / clé non uuid) → 404 · routes API NON captées [34.81ms]
+(pass) B2 — E2E deux appareils simulés (émetteur → serveur → destinataire) > U4 — A upload + dm2 E2EE → B reçoit, déchiffre le dm2 ET l'image, SHA-256 identique [88.19ms]
+(pass) B2 — file hors-ligne (re-orchestration) > R11 — queue : flush rejoue (re-strip/re-chiffre/re-signe) → upload réussi ; item invalide → failed [39.82ms]
+
+ 15 pass
+ 0 fail
+ 78 expect() calls
+Ran 15 tests across 1 file. [877.00ms]

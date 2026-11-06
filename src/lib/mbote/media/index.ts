@@ -19,7 +19,9 @@ export {
   encryptMedia,
   decryptMedia,
   envelopesEqual,
+  inspectEnvelope,
   type EncryptedMedia,
+  type EnvelopeInfo,
 } from "./crypto";
 export {
   MediaExifError,

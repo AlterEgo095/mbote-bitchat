@@ -169,6 +169,33 @@ export function relayHelloProofMessage(pubkey: string, ts: number): string {
   return `${pubkey}|relay-hello|${ts}`;
 }
 
+/**
+ * B2 — chaînes canoniques MÉDIA (upload présigné → finalize → lecture).
+ * Fenêtre COURTE (15 min, comme dm-read — §7.2 de MEDIA-ENVELOPE-SPEC) :
+ * l'upload/l'upload-url/l'usage sont des gestes EN LIGNE effectifs ; la queue
+ * offline re-signe à CHAQUE tentative (jamais de preuve stockée).
+ *   media-upload  : `${me}|media-upload|${mediaType}|${sizeBytes}|${ts}`
+ *                   (les paramètres sont couverts — anti-tamper de la demande)
+ *   media-finalize: `${me}|media-finalize|${mediaId}|${ts}`
+ *   media-dl      : `${me}|media-dl|${mediaId}|${ts}`
+ */
+export function mediaUploadProofMessage(
+  me: string,
+  mediaType: string,
+  sizeBytes: number,
+  ts: number
+): string {
+  return `${me}|media-upload|${mediaType}|${sizeBytes}|${ts}`;
+}
+
+export function mediaFinalizeProofMessage(me: string, mediaId: string, ts: number): string {
+  return `${me}|media-finalize|${mediaId}|${ts}`;
+}
+
+export function mediaDownloadProofMessage(me: string, mediaId: string, ts: number): string {
+  return `${me}|media-dl|${mediaId}|${ts}`;
+}
+
 /** Chaîne canonique des publications (historique, inchangée) */
 export function postSignatureMessage(pubkey: string, content: string, ts: number): string {
   return `${pubkey}|${content}|${ts}`;

@@ -314,3 +314,24 @@ model DirectMessage {
   @@index([senderKey, recipientKey])
   @@index([recipientKey, createdAt])
 }
+
+// B2 — médias chiffrés E2EE (socle B1 activé). Le serveur stocke le
+// CIPHERTEXT du client dans un bucket S3-compatible (clés sans identité,
+// spec MEDIA-ENVELOPE-SPEC §4.2) et ne tient ici que la correspondance
+// mediaId ↔ objectKey + le décompte de quota. Aucun plaintext ne transite.
+// cycle de vie : pending (upload-url) → finalized (finalize) | orphan (jamais finalisé).
+model Media {
+  id          String    @id @default(cuid())
+  objectKey   String    @unique // media/<uuid v4> — assertObjectKey (whitelist stricte)
+  ownerPubkey String // clé ECDSA du propriétaire (preuve de possession exigée)
+  mediaType   String // image/jpeg | image/png | image/webp (whitelist §2)
+  sizeBytes   Int // taille du CIPHERTEXT stocké (= Content-Length signé du PUT)
+  plainBytes  Int // taille plaintext déclarée par le client (contrôle destinataire)
+  sha256      String? // empreinte du ciphertext (contrôle/dédup, déclarée par le client)
+  status      String    @default("pending") // pending | finalized
+  createdAt   DateTime  @default(now())
+  finalizedAt DateTime?
+
+  @@index([ownerPubkey, createdAt]) // quota SUM(sizeBytes) finalized par owner
+  @@index([status, createdAt]) // purge des pending orphelins
+}

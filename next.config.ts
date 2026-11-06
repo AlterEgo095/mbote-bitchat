@@ -39,6 +39,22 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
+  // B2 : les presigned URLs S3 sont MÊME ORIGINE (CSP connect-src 'self' et
+  // pas de preflight CORS sur MinIO/SeaweedFS). Le serveur renvoie les URLs au
+  // format /media-proxy/<bucket>/media/<uuid>?X-Amz-… (préfixe DÉDIÉ — ne
+  // capte jamais /api/media/*), relayées AVEUGLEMENT par /api/media/proxy
+  // (whitelist bucket + uuid v4, méthodes PUT/GET, validation SigV4 inchangée
+  // — voir route proxy).
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: "/media-proxy/:bucket/media/:key*",
+          destination: "/api/media/proxy/:bucket/media/:key*",
+        },
+      ],
+    };
+  },
   async headers() {
     return [
       {
