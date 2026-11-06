@@ -4,6 +4,13 @@ import { trackApiRequest } from "@/lib/mbote/state-store";
 import { MODERATION_ACTIONS, purgePostWithAudit } from "@/lib/mbote/moderation";
 import { isDenied, requireAdmin, roleAtLeast, writeAdminAudit, type AdminContext } from "@/lib/mbote/admin-auth";
 import { parseJustification } from "@/lib/mbote/justification";
+import {
+  SUSPEND_DURATIONS_MS,
+  applyUserSuspension,
+  applyUserUnsuspension,
+  applyUserWarning,
+  findModerationTarget,
+} from "@/lib/mbote/user-moderation";
 
 export const dynamic = "force-dynamic";
 
@@ -26,16 +33,10 @@ const ACTION_MIN_ROLE: Record<string, string> = {
 };
 
 /**
- * Durées de suspension TEMPORAIRE — directive Étape 6 (« Suspend temporaire
- * (24h / 7j) »). "indefinite" = comportement A3 historique (levée manuelle
- * par unsuspend uniquement). Stockage : User.suspendedUntil (migration 0006),
- * évaluation paresseuse aux points d'application (fil, publication).
+ * Durées de suspension — EXTRAITE Étape 7 : SUSPEND_DURATIONS_MS vit dans
+ * src/lib/mbote/user-moderation.ts (partagée avec les endpoints internes E7 ;
+ * "30d" ajouté à l'unification). imported en tête de fichier.
  */
-const SUSPEND_DURATIONS_MS: Record<string, number | null> = {
-  "24h": 24 * 3600_000,
-  "7d": 7 * 24 * 3600_000,
-  indefinite: null,
-};
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -62,10 +63,11 @@ const SUSPEND_DURATIONS_MS: Record<string, number | null> = {
  *   - warn      (user)   : avertissement enregistré + NOTIFICATION visible dans
  *                          le profil de l'utilisateur (UserWarning, migration
  *                          0006 — pas de DM, E2EE par conception)
- *   - suspend   (user)   : temporaire 24h/7d (suspendedUntil) ou indéfinie —
- *                          posts absents du fil public + publication refusée
- *                          403 tant que la suspension tient (évaluation
- *                          paresseuse, pas de cron)
+ *   - suspend   (user)   : temporaire 24h/7d/30d (suspendedUntil — "30d"
+ *                          ajouté Étape 7) ou indéfinie — posts absents du
+ *                          fil public + publication refusée 403 tant que la
+ *                          suspension tient (évaluation paresseuse, pas de
+ *                          cron) ; transaction partagée user-moderation.ts
  *   - unsuspend (user)   : levée de suspension (suspendedAt/until/by cleared)
  *
  *  Chaque action écrit ModerationAction (label `admin-<id>`) ET AdminAudit
@@ -321,113 +323,41 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const user = await db.user.findUnique({
-      where: { pubkey: targetId },
-      select: { id: true, pubkey: true, nickname: true, suspendedAt: true, suspendedUntil: true },
-    });
+    const user = await findModerationTarget(targetId);
     if (!user) {
       return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 404 });
     }
 
-    // suspension : durée obligatoire et valide (24h | 7d | indefinite)
-    let suspendedUntil: Date | null = null;
+    // suspension : durée obligatoire et valide (24h | 7d | 30d | indefinite) —
+    // Étape 7 : "30d" ajouté au jeu Étape 6 (lib partagée user-moderation)
     if (action === "suspend") {
       const duration = (body?.duration as string) ?? "indefinite";
       if (!(duration in SUSPEND_DURATIONS_MS)) {
         return NextResponse.json(
-          { error: "duration invalide (24h | 7d | indefinite)" },
+          { error: "duration invalide (24h | 7d | 30d | indefinite)" },
           { status: 400 }
         );
       }
-      const ms = SUSPEND_DURATIONS_MS[duration];
-      suspendedUntil = ms === null ? null : new Date(handledAt.getTime() + ms);
     }
 
-    // signalements ouverts sur les posts de cet utilisateur (clôture au passage)
-    const userPostIds = (
-      await db.post.findMany({ where: { authorId: user.id }, select: { id: true } })
-    ).map((p) => p.id);
-    const openReports = await db.report.findMany({
-      where: { targetKind: { in: ["post", "comment"] }, targetId: { in: userPostIds }, status: "open" },
-      select: { id: true },
-    });
-
-    const result = await db.$transaction(async (tx) => {
-      const data =
-        action === "suspend"
-          ? { suspendedAt: handledAt, suspendedById: ctx.adminUserId, suspendedUntil }
-          : action === "unsuspend"
-            ? { suspendedAt: null, suspendedById: null, suspendedUntil: null }
-            : {};
-      const row = await tx.user.update({
-        where: { id: user.id },
-        data,
-        select: { pubkey: true, suspendedAt: true, suspendedUntil: true },
-      });
-      // ADM Étape 6 — warn = avertissement visible dans le profil de l'utilisateur
-      if (action === "warn") {
-        await tx.userWarning.create({
-          data: {
-            userId: user.id,
-            category: just.value.category,
-            note: just.value.text,
-            createdById: ctx.adminUserId,
-          },
-        });
-      }
-      if (openReports.length > 0) {
-        await tx.report.updateMany({
-          where: { id: { in: openReports.map((r) => r.id) } },
-          data: { status: "actioned", handledAt, handledById: ctx.adminUserId },
-        });
-      }
-      const trace = await tx.moderationAction.create({
-        data: {
-          adminUserId: ctx.adminUserId,
-          actorLabel: ctx.actorLabel,
-          action,
-          targetKind: "user",
-          targetId,
-          reason: just.value.formatted,
-          reportIds: JSON.stringify(openReports.map((r) => r.id)),
-          meta: JSON.stringify({
-            nickname: user.nickname,
-            closedReports: openReports.length,
-            ...(action === "warn" ? { warning: { category: just.value.category } } : {}),
-            ...(action === "suspend" ? { duration: (body?.duration as string) ?? "indefinite", suspendedUntil } : {}),
-          }),
-        },
-      });
-      await writeAdminAudit({
-        tx,
-        actorId: ctx.adminUserId,
-        actorRole: ctx.role,
-        action,
-        targetType: "user",
-        targetId,
-        before: { suspendedAt: user.suspendedAt, suspendedUntil: user.suspendedUntil },
-        after: {
-          suspendedAt: row.suspendedAt,
-          suspendedUntil: row.suspendedUntil,
-          reportsClosed: openReports.length,
-          ...(action === "warn" ? { warningIssued: just.value.category } : {}),
-        },
-        ip: ctx.ip,
-        userAgent: ctx.userAgent,
-        justification: just.value.formatted,
-      });
-      return { row, trace };
-    });
+    // Étape 7 — la transaction warn/suspend/unsuspend vit DANS la lib partagée
+    // (src/lib/mbote/user-moderation.ts) : /api/moderation/action et les
+    // endpoints internes E7 (/api/internal/admin/users/[id]/*) exécutent la
+    // MÊME sémantique (UserWarning + reports clos + ModerationAction +
+    // AdminAudit, une seule transaction). Réponse inchangée (tests Étape 6).
+    const justArg = { user, ctx, just: just.value };
+    const outcome =
+      action === "warn"
+        ? await applyUserWarning(justArg)
+        : action === "suspend"
+          ? await applyUserSuspension(justArg, (body?.duration as string) ?? "indefinite")
+          : await applyUserUnsuspension(justArg);
 
     return NextResponse.json({
-      action: result.trace,
+      action: outcome.trace,
       affected: {
-        user: {
-          pubkey: result.row.pubkey,
-          suspendedAt: result.row.suspendedAt,
-          suspendedUntil: result.row.suspendedUntil,
-        },
-        reportsClosed: openReports.length,
+        user: outcome.user,
+        reportsClosed: outcome.reportsClosed,
         ...(action === "warn" ? { warningIssued: true } : {}),
       },
     });

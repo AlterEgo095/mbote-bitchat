@@ -60,12 +60,12 @@ Le cookie n'est émis QUE par le domaine admin (`admin.mbotemesh.aenews.online`)
 |---|---|---|---|---|
 | 1 | `dashboard.view` (4 métriques) | `support` | endpoint interne (E5) | Étape 5 — matrice v1.0 disait `auditor` ; l'implémentation testée (A5 : auditor → 403) impose support, alignée ici sous arbitrage §12.17 |
 | 2 | `queue.view` (file de signalements + contexte) | `support` | `GET /api/moderation/queue` + `GET /api/internal/admin/queue` (E6, cursor) | **Étape 0** — rôle resserré à l'Étape 6 (arbitrage §12.17 : auditor strict = lecture seule `AdminAudit`) |
-| 3 | `users.view` (recherche + fiche) | `auditor` | endpoint interne (E7) | Étape 7 — à RE-TRANCHER sous arbitrage §12.17 (auditor strict ne lirait que l'audit) |
+| 3 | `users.view` (recherche + fiche) | `support` | `GET /api/internal/admin/users` + `/[id]` (E7) | Étape 7 — RE-TRANCHÉ par la directive explicite (« requireAdmin('support') ») : arbitrage §13.1 ; l'auditor strict reste 403 (tests E7) |
 | 4 | `audit.view` (journal, lecture seule) | `auditor` | endpoint interne (E8) | Étape 8 |
-| 5 | `user.warn` | `support` | endpoint interne (E7) | Étape 7 |
+| 5 | `user.warn` | `support` (endpoint legacy) · `moderator` (endpoints E7) | `POST /api/moderation/action` (legacy) · `POST /api/internal/admin/users/[id]/warn` (E7) | Étape 0 (legacy) · **Étape 7** — la directive « Warn (1 modérateur) » impose moderator sur les endpoints E7 : arbitrage §13.1 (harmonisation à l'Étape 8 — la queue UI utilise encore le chemin legacy) |
 | 6 | `report.dismiss` (sans action) | `support` | `POST /api/moderation/action` | **Étape 0** |
 | 7 | `post.hide` / `post.unhide` (réversible) | `moderator` | `POST /api/moderation/action` | **Étape 0** |
-| 8 | `user.suspend` / `user.unsuspend` (réversible) | `moderator` | endpoint interne (E7) | Étape 7 |
+| 8 | `user.suspend` / `user.unsuspend` (réversible) | `moderator` | `POST /api/internal/admin/users/[id]/{suspend,unsuspend}` (E7) + legacy `POST /api/moderation/action` | Étape 0 (legacy) · **Étape 7** (E7, durées 24h/7d/30d — arbitrage §13.3) |
 | 9 | `ban.request` (four-eyes, **définitif**) | `moderator` | endpoint interne (E9) | Étape 9 |
 | 10 | `post.purge.request` (four-eyes, irréversible) | `moderator` | endpoint interne (E9) | Étape 9 |
 | 11 | `four-eyes.approve` / `.reject` | `moderator` **≠ auteur** | endpoint interne (E9) | Étape 9 |
@@ -276,3 +276,55 @@ explicitement ici, implémentés et testés (preuve : docs/proofs/ADM-step3-4.md
     codé dans la queue UI — chaque action attend le 2xx (ou l'erreur) du
     serveur puis REJETTE la page depuis la réponse authentifiée ; aucun état
     local ne présage du résultat. Bug §6.2 ADM-step5.md = cas fondateur.
+
+---
+
+## 13. ARBITRAGES ÉTAPE 7 (2026-11-06 — directive « gestion utilisateurs », tracés en code + tests)
+
+1. **`users.view` = support (matrice §4 #3 re-tranchée)** : la directive Étape 7
+   explicite (« page /users protégée requireAdmin('support') ») prime sur la
+   matrice v1.0 (`auditor`) qui anticipait elle-même ce re-tranchement
+   (« à RE-TRANCHER sous arbitrage §12.17 »). L'auditor strict (§12.17) reste
+   403 sur l'annuaire et les fiches — testé (E7·A).
+2. **Identifiant opératoire = PUBKEY** : les URLs `/users/[id]` portent la
+   pubkey (identité publique stable), pas le cuid interne. Raison : les traces
+   ModerationAction/AdminAudit des Étapes 0+6 écrivent déjà
+   `targetType='user'`/`targetKind='user'` avec `targetId=<pubkey>` — la fiche
+   filtre l'historique sur exactement cette clé (aucune migration de traces).
+3. **Durées E7 = 24h | 7d | 30d (pas `indefinite`)** : la directive (« dropdown
+   24h/7j/30j ») ferme le jeu des endpoints `/users/[id]/suspend` — une
+   suspension « indéfinie » n'est pas offertable sur la fiche MVP ; la levée
+   passe par `unsuspend` (§13.5). L'endpoint legacy `/api/moderation/action`
+   conserve `indefinite` (comportement A3, non cassé). `SUSPEND_DURATIONS_MS`
+   est unifiée dans `user-moderation.ts` ("30d" ajouté au jeu Étape 6).
+4. **« sessions révoquées si applicable » = NO-OP documenté** : il n'existe
+   AUCUNE session utilisateur (identité = paire de clés locale, pas de login).
+   La réponse suspend porte `sessionsRevoked: 0` — le champ prépare la forme
+   future sans promettre un effet inexistant.
+5. **`unsuspend` exposé sur la fiche (hors lettre de la directive)** : le
+   périmètre strict dit « view/suspend/warn », mais sans levée une suspension
+   30d est irréversible 30 jours — intenable en exploitation. La sémantique
+   existait déjà (Étape 0) : la fiche l'expose (moderator + justification §6).
+6. **« Reports reçus » = reports OUVERTS** (colonne annuaire + fiche) : cohérent
+   avec le poids de la queue (Étape 6) — la colonne pilote l'action, la
+   statistique historique (tous reports confondus) n'est pas rendue.
+7. **Filtre statut `banni` accepté → 0 ligne** : aucun champ schéma avant
+   l'Étape 9 (four-eyes). Le filtre ne renvoie PAS 400 — l'UI peut l'afficher
+   et l'état « banni » apparaîtra à l'Étape 9 sans nouvelle validation.
+8. **Tri `inscription` = DESC (plus récents d'abord)** : tranché pour le flux
+   de travail support (les comptes récents sont les plus suspects — sybil).
+   Tri `reports` = poids DESC puis ancienneté ASC (tiebreak identique queue).
+   Garde de VUE : un curseur émis sous un tri est REFUSÉ (400) sous l'autre
+   (le `k` du curseur est croisé avec le tri courant).
+9. **AUCUNE route ban** (interne ni BFF) : `POST */ban` → 404 — testé (E7·G,
+   les deux surfaces). Le bouton UI est désactivé avec tooltip « approbation
+   par 2 admins requise — Étape 9 ». Unban (= unsuspend) reste un bouton
+   distinct ; l'Étape 9 ajoutera ban définitif + purge en four-eyes.
+10. **Recherche LIKE, limite 20, sans pagination** : la directive borne la
+    recherche à 20 résultats — le mode recherche ne rend PAS de curseur
+    (affiner la requête plutôt que paginer). `%`/`_` échappés (testés).
+11. **Transaction unifiée `user-moderation.ts`** : warn/suspend/unsuspend
+    exécutent la MÊME transaction (User.update + UserWarning + reports clos +
+    ModerationAction + AdminAudit) depuis les DEUX surfaces (legacy
+    `/api/moderation/action` et endpoints E7). Prouvé : les suites E3-4 (83),
+    E6 (30) et E7 (42) passent à l'identique après extraction.
