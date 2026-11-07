@@ -1031,6 +1031,11 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
           description: "L'image partira automatiquement au retour du réseau.",
         });
       } else {
+        // Clarification 4 É9+C1 (invariant §1.8, symétrie voix/vidéo) : échec
+        // sans retour serveur 2xx → preview RESTAURÉE, rien perdu. (Avant ce
+        // fix, l'image était jetée en cas d'échec non-réseau — même classe que
+        // le bug setPendingVoice(null) précoce B3.)
+        setPendingFile(file);
         toast.error("Échec d'upload", {
           description: e instanceof Error ? e.message : undefined,
         });

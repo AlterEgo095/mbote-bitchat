@@ -577,6 +577,16 @@ Payload dm2 vidéo (plaintext JSON — serveur aveugle) :
 
 - **Transcodage** : AUCUN en V1 (arbitrage §9.2-1) — rien à tester.
 - **HLS** : V1 = MP4/WebM direct (arbitrage §9.2-4).
+- **Dette streaming chiffré — TRANCHÉE 2026-11-06 (clarification direction
+  Étape 9+C1)** : la lecture progressive full-blob (§9.2-4) livre la vidéo
+  entière avant le premier rendu — acceptable pour des clips ≤ 60 s, pas pour
+  des durées longues. La vraie lecture progressive nécessite **HLS chiffré
+  segment par segment** (AES-128 par segment via CEK dédiée, manifest
+  protégé — compatible E2EE : chaque segment est chiffré côté client avant
+  upload, le serveur reste aveugle). Estimation **3–4 jp supplémentaires**.
+  **Bloquant pour ouverture publique si la vidéo devient un usage courant** —
+  à programmer en **B5+**. Ne pas laisser « full-blob » sans cette trace : la
+  dette est assumée, datée et jalonnée (référence croisée SCALE-ARCHITECTURE §8).
 - **Vidéo > 60 s** : refusée par construction (auto-stop + garde 61 s) — le
   comportement d'UX au-delà (message, découpage) est hors V1.
 - **Mesh BLE** : la vidéo est IMPOSSIBLE par conception sur BLE (budget octets
