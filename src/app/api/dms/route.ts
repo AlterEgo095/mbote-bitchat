@@ -254,6 +254,17 @@ export async function POST(req: NextRequest) {
     // livraison temps réel : boîtes aux lettres des deux parties (contenu opaque)
     relayNotify("dm:new", { message }, [`dm:${senderKey}`, `dm:${recipientKey}`]);
 
+    // C1 : knock PUSH fire-and-forget (KNOCK SANS CONTENU — { type, fromLabel }
+    // uniquement, E2EE oblige). JAMAIS bloquant ni faillible pour l'API (même
+    // règle que relayNotify). Rate limit outbound 1/30 s/destinataire dans le
+    // sender ; 410 → purge douce ; TOUJOURS envoyé (le relay n'expose pas la
+    // présence par clé — tranché dans docs/proofs/C1-push.md).
+    const { sendPushToUser } = await import("@/lib/mbote/push/sender");
+    void sendPushToUser(recipientKey, {
+      type: "new_message",
+      fromLabel: sender.nickname,
+    }).catch(() => undefined);
+
     return NextResponse.json({ message });
   } catch (e) {
     if (e instanceof ReplayRefusedError) {

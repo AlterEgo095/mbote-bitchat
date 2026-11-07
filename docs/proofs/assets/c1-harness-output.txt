@@ -1,0 +1,22 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/push-c1.test.ts:
+[push-service] écoute https://127.0.0.1:3204 — capture → /home/z/wt-b1/db/push-c1-capture.jsonl
+[push-service] PID 20068
+(pass) C1 · unitaires (toujours) > C1g — urlBase64ToUint8Array : décodage SANS Buffer (règle §6) [0.50ms]
+(pass) C1 · subscribe / unsubscribe > S8 — /api/push/config → 200 + publicKey VAPID [49.64ms]
+(pass) C1 · subscribe / unsubscribe > S1 — subscribe signé → 200/201 + active [45.89ms]
+(pass) C1 · subscribe / unsubscribe > S2 — signature invalide → 401 · S3 — champs manquants → 400 [15.21ms]
+(pass) C1 · subscribe / unsubscribe > S4 — UPSERT : 2 appels même endpoint → 1 ligne (réactivé) [44.80ms]
+(pass) C1 · subscribe / unsubscribe > S6 — user inconnu → 404 [9.66ms]
+(pass) C1 · subscribe / unsubscribe > S5 — rate limit subscribe : 11ᵉ / heure → 429 (user DÉDIÉ) [119.59ms]
+(pass) C1 · subscribe / unsubscribe > S7 — unsubscribe : disabledAt + idempotent + anti-énumération [73.31ms]
+(pass) C1 · knock réel (fil capté) > P1 — DM → KNOCK knock-only : { type, fromLabel }, AUCUN contenu [366.06ms]
+(pass) C1 · knock réel (fil capté) > P2 — rate limit OUTBOUND : 2 DM en < 30 s → 1 SEUL push [1552.75ms]
+(pass) C1 · knock réel (fil capté) > P3 — 410 Gone → disabledAt posé (purge douce) [430.13ms]
+(pass) C1 · knock réel (fil capté) > P4 — 429 du push service → backoff passif (pas de crash) [24.40ms]
+
+ 12 pass
+ 0 fail
+ 41 expect() calls
+Ran 12 tests across 1 file. [5.40s]

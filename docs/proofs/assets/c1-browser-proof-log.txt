@@ -1,0 +1,13 @@
+[c1-browser] contexte A — permission refusée (message explicite)
+[c1-browser] capture c1-profile-card.png
+[c1-browser] carte Notifications visible (bouton Activer — config VAPID OK)
+[c1-browser] capture c1-push-denied.png
+[c1-browser] refus → message explicite : Notifications bloquées — réautorisez-les dans les réglages du navigateur pour ce site
+[c1-browser] contexte B — permission grantée, flux Activer (résultat = réel)
+[c1-browser] SW actif — scope http://127.0.0.1:3103/
+[c1-browser] capture c1-push-enabled.png
+[c1-browser] flux Activer complet — notice réelle : Subscription refusée par le navigateur : Registration failed - permission denied
+[c1-browser] subscription pushManager : (aucun — push service interne indisponible en sandbox)
+[c1-browser] notification rendue : "Mbote" / "Nouveau message de Bob (preuve navigateur)"
+[c1-browser] capture c1-notification-rendered.png
+[c1-browser] TERMINÉ — preuves dans docs/proofs/assets/c1-*

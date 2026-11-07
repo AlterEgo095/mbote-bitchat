@@ -25,6 +25,12 @@ services:
       - SEED_SECRET=${SEED_SECRET:-}
       - MBOTE_BOT_KEY=${MBOTE_BOT_KEY:-}
       - ADMIN_API_KEY=${ADMIN_API_KEY:-}
+      # C1 — push notifications (Web Push VAPID) : sans elles le push est
+      # DÉSACTIVÉ fail-closed (GET /api/push/config → 503, UI masquée).
+      # Générer : bunx web-push generate-vapid-keys
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@mbotemesh.aenews.online}
     volumes:
       - mbote-data:/app/db
     restart: unless-stopped

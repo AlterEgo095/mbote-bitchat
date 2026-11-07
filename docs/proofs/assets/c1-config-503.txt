@@ -1,0 +1,1 @@
+{"error":"Push non configuré côté serveur (clés VAPID absentes)"}

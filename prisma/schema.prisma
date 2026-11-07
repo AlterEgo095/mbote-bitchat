@@ -335,3 +335,25 @@ model Media {
   @@index([ownerPubkey, createdAt]) // quota SUM(sizeBytes) finalized par owner
   @@index([status, createdAt]) // purge des pending orphelins
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C1 — PUSH NOTIFICATIONS (Web Push VAPID pour la PWA — knock SANS contenu)
+// ─────────────────────────────────────────────────────────────────────────────
+// Le payload push est un KNOCK : { type, fromLabel } — AUCUN contenu de
+// message (E2EE oblige : le serveur ne peut pas lire ce qu'il notifie).
+// Upsert idempotent par ENDPOINT (unique) ; disabledAt = purge douce (410
+// Gone du push service ou unsubscribe signé) — la ligne reste pour l'audit.
+model PushSubscription {
+  id          String   @id @default(cuid())
+  userId      String // FK logique User.pubkey (identité à clés locales)
+  endpoint    String   @unique // URL du push service — évite les doublons
+  keysP256dh  String // clé ECDH du navigateur (RFC 8291)
+  keysAuth    String // secret d'auth du navigateur (RFC 8291)
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now()) // maj à chaque re-subscribe (upsert)
+  disabledAt  DateTime?
+
+  @@index([userId, disabledAt]) // les destinataires actifs d'un knock
+  @@index([disabledAt]) // purge des abonnements morts (410)
+}
