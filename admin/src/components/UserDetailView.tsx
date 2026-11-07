@@ -104,7 +104,6 @@ export function UserDetailView({
   initial: UserDetailLoadState;
 }) {
   const [state, setState] = useState<UserDetailLoadState>(initial);
-  const [refreshing, setRefreshing] = useState(false);
   const [acting, setActing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [form, setForm] = useState<DetailAction | null>(null);

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { ADMIN_COOKIE, callBackend, getPanelSessionServer } from "@/lib/admin-backend";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,9 +119,14 @@ export default async function AuditDetailPage({
     );
   }
 
-  const loaded = backendDown
-    ? ({ kind: "error", code: "backend-unreachable" } as const)
-    : await loadDetail(session!.adminUserId, id);
+  // backendDown ⇒ erreur réseau affichée ; sinon session est garanti non-null
+  // (le redirect « / » a déjà traité le cas !session && !backendDown, et le
+  // bloc « Accès refusé » a déjà traité session null restant) — le narrowing
+  // explicite remplace la non-null assertion (règle ESLint panneau).
+  const loaded =
+    backendDown || !session
+      ? ({ kind: "error", code: "backend-unreachable" } as const)
+      : await loadDetail(session.adminUserId, id);
 
   return (
     <div className="flex min-h-screen flex-col">
