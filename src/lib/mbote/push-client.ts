@@ -7,7 +7,7 @@
  *  PUR JS (WebCrypto + btoa) — RÈGLE DEV-SETUP §6 : AUCUN import node dans
  *  un fichier 'use client' (la garde ESLint mbote-client-guard/no-node-in-
  *  client échouerait le lint). L'applicationServerKey VAPID (base64url) est
- *  décodée SANS Buffer.
+ *  décodée sans le global node (btoa pur).
  *
  *  SIGNATURE (même mécanique que /api/dms — preuve de possession) :
  *    subscribe   : `${me}|push-sub|${endpoint}|${p256dh}|${auth}|${ts}`
