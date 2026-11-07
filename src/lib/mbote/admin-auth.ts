@@ -156,7 +156,7 @@ export type AdminGate = AdminContext | NextResponse;
  */
 export async function requireAdmin(
   req: NextRequest,
-  opts: { minRole?: string; mutation?: boolean } = {}
+  opts: { minRole?: string; exactRoles?: string[]; mutation?: boolean } = {}
 ): Promise<AdminGate> {
   // 1. double contrôle : seul le panneau admin (token interne) parle ici
   if (!internalTokenOk(req)) return denied(401);
@@ -175,8 +175,17 @@ export async function requireAdmin(
     if (!csrf || !safeEqual(csrf, ctx.csrfToken)) return denied(403);
   }
 
-  // 5. rôle
-  if (!roleAtLeast(ctx.role, opts.minRole ?? "moderator")) return denied(403);
+  // 5. rôle — DEUX modes :
+  //    - exactRoles (Étape 8, audit) : liste FERMÉE — l'appartenance exacte
+  //      prime (audit.view = auditor + super-admin ; support/moderator → 403
+  //      MÊME s'ils sont hiérarchiquement au-dessus de l'auditor : le journal
+  //      n'est pas un instrument de leur travail, c'est celui de l'auditeur).
+  //    - minRole (défaut, historique) : hiérarchie roleAtLeast.
+  if (opts.exactRoles) {
+    if (!opts.exactRoles.includes(ctx.role)) return denied(403);
+  } else if (!roleAtLeast(ctx.role, opts.minRole ?? "moderator")) {
+    return denied(403);
+  }
 
   return ctx;
 }

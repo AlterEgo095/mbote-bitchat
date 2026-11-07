@@ -61,7 +61,7 @@ Le cookie n'est émis QUE par le domaine admin (`admin.mbotemesh.aenews.online`)
 | 1 | `dashboard.view` (4 métriques) | `support` | endpoint interne (E5) | Étape 5 — matrice v1.0 disait `auditor` ; l'implémentation testée (A5 : auditor → 403) impose support, alignée ici sous arbitrage §12.17 |
 | 2 | `queue.view` (file de signalements + contexte) | `support` | `GET /api/moderation/queue` + `GET /api/internal/admin/queue` (E6, cursor) | **Étape 0** — rôle resserré à l'Étape 6 (arbitrage §12.17 : auditor strict = lecture seule `AdminAudit`) |
 | 3 | `users.view` (recherche + fiche) | `support` | `GET /api/internal/admin/users` + `/[id]` (E7) | Étape 7 — RE-TRANCHÉ par la directive explicite (« requireAdmin('support') ») : arbitrage §13.1 ; l'auditor strict reste 403 (tests E7) |
-| 4 | `audit.view` (journal, lecture seule) | `auditor` | endpoint interne (E8) | Étape 8 |
+| 4 | `audit.view` (journal, lecture seule) | `auditor` | endpoint interne (E8) | **Étape 8** — porte EXACTE auditor + super-admin (PAS une hiérarchie — arbitrage §14.1 : support/moderator → 403 testés) |
 | 5 | `user.warn` | `support` (endpoint legacy) · `moderator` (endpoints E7) | `POST /api/moderation/action` (legacy) · `POST /api/internal/admin/users/[id]/warn` (E7) | Étape 0 (legacy) · **Étape 7** — la directive « Warn (1 modérateur) » impose moderator sur les endpoints E7 : arbitrage §13.1 (harmonisation à l'Étape 8 — la queue UI utilise encore le chemin legacy) |
 | 6 | `report.dismiss` (sans action) | `support` | `POST /api/moderation/action` | **Étape 0** |
 | 7 | `post.hide` / `post.unhide` (réversible) | `moderator` | `POST /api/moderation/action` | **Étape 0** |
@@ -328,3 +328,55 @@ explicitement ici, implémentés et testés (preuve : docs/proofs/ADM-step3-4.md
     ModerationAction + AdminAudit) depuis les DEUX surfaces (legacy
     `/api/moderation/action` et endpoints E7). Prouvé : les suites E3-4 (83),
     E6 (30) et E7 (42) passent à l'identique après extraction.
+
+---
+
+## 14. ARBITRAGES ÉTAPE 8 (2026-11-06 — directive « audit viewer », tracés en code + tests)
+
+1. **`audit.view` = porte EXACTE `auditor` + `super-admin` (PAS une
+   hiérarchie)** : la directive Étape 8 teste explicitement support → 403
+   ET moderator → 403 (« auditor est plus restrictif que les autres ») —
+   incompatible avec un `minRole` (auditor est le PLUS BAS des rôles humains :
+   tout `minRole ≥ auditor` les admettrait). Implémentation : option
+   `exactRoles` de `requireAdmin` (additive — le mode `minRole` historique
+   est inchangé pour les 10 autres actions de la matrice). Le super-admin
+   conserve l'accès (règle structurelle : le rôle sommet n'est jamais exclu —
+   il a déjà break-glass sur tout le reste).
+2. **Export CSV sans beforeJson/afterJson** (directive, à la lettre) : les
+   états avant/après restent accessibles par la fiche `/audit/[id]` — l'export
+   est un INSTRUMENT DE LECTURE (tableur, jointe de signalement), pas un miroir
+   de la table.
+3. **Limite export = 10 000 lignes → 422 avec message** (COUNT préalable,
+   jamais de troncature silencieuse : un export tronqué serait une preuve
+   incomplète). La UI affiche le message et invite à affiner les filtres.
+4. **CSV RFC 4180 strict, PAS de BOM** : CRLF, guillemets doublés,
+   `charset=utf-8` déclaré — parsable automatisable (les tests le prouvent) ;
+   le BOM casserait des parseurs stricts. Chiffrement du CSV à l'export :
+   **reporté, tranché** — le panneau est derrière Cloudflare Access + HTTPS ;
+   un chiffrement ajouterait une clé à gérer sans menace réelle documentée.
+   À ré-évaluer avec le rôle compliance (§2.3) si certification — NON TESTÉ
+   (aucune fuite prouvée possible tant que CF Access couvre le panneau).
+5. **Lien cible : `targetType='user'` → `/users/<pubkey>`** (arbitrage §13.2 —
+   les traces écrivent la pubkey) ; post/report/AdminUser/AdminSession n'ont
+   PAS de fiche admin → texte brut (l'Étape 9 ajoutera la cible post au
+   four-eyes le cas échéant).
+6. **Période : `since` (24h|7d|30d) OU `from/to` custom — from/to PRIME**
+   (la plage explicite est plus précise) ; les deux ensemble → 400 (jamais
+   d'union ambiguë). Plage custom bornée à 366 jours (garde anti-scan).
+7. **Export côté UI = fetch JS (pas `<a href>`)** : le 422 (limite) doit être
+   AFFICHABLE — un `<a>` laisse le navigateur montrer un JSON nu. 200 → blob
+   téléchargé avec le nom de Content-Disposition (même mécanique que les
+   médias B2). Le BFF relaye le CSV OCTET POUR OCTET (callBackend parse du
+   JSON — inadapté ; fetch dédié avec les mêmes en-têtes).
+8. **FACETS dans la réponse liste** (acteurs, actions, targetTypes distincts
+   de l'ensemble FILTRÉ) : les dropdowns de la UI n'exigent aucun second
+   endpoint — un seul cerveau de filtres (lib `admin-audit.ts` partagée liste
+   + export).
+9. **Recherche cible : `type:id` (égalité double) OU sous-chaîne de targetId**
+   — la directive illustre avec « user:123 » : le format combiné est le cas
+   nominal ; la sous-chaîne couvre les cuids partiels. `targetType`/`targetId`
+   sont indexés (migration 0004, `@@index([targetType, targetId])`).
+10. **L'export n'écrit RIEN** — pas même une ligne d'audit « export » : lire
+    n'est pas une action modératoire ; une trace d'export pourrait en outre
+    gonfler le journal de bruit à chaque refresh. (Ré-évaluer en Étape 9 si
+    le four-eyes exige la traçabilité des lectures sensibles.)

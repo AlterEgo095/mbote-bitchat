@@ -1,0 +1,5 @@
+{
+  "update": "\nInvalid `prisma.adminAudit.update()` invocation:\n\n\nForeign key constraint violated on the foreign key",
+  "delete": "\nInvalid `prisma.adminAudit.delete()` invocation:\n\n\nForeign key constraint violated on the foreign key",
+  "actionAfterUpdateAttempt": "warn"
+}

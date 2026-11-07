@@ -1,0 +1,3 @@
+timestamp,acteur,role,action,targetType,targetId,justification
+2026-11-07T00:10:00.723Z,auditor@step8.proof,auditor,walk,user,step8-walk-000,
+2026-11-07T00:09:59.722Z,auditor@step8.proof,auditor,wal

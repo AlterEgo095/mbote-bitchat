@@ -1,0 +1,14 @@
+HTTP/1.1 200 OK
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: no-referrer
+Vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding
+Cache-Control: no-store
+Content-Disposition: attachment; filename="audit-2026-11-07-00-10-34.csv"
+Content-Type: text/csv; charset=utf-8
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+Date: Sat, 07 Nov 2026 00:10:33 GMT
+Transfer-Encoding: chunked
+

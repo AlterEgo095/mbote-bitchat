@@ -108,8 +108,10 @@ async function main(): Promise<void> {
       bio: "Vendeuse de tissus au marché central — compte public de démonstration.",
     },
   });
-  const bob = await db.user.create({ data: { pubkey: "step7-bob-pubkey", nickname: "Bob Lubumbashi" } });
-  const carol = await db.user.create({ data: { pubkey: "step7-carol-pubkey", nickname: "Carol Goma" } });
+  // bob/carol : comptes de fond d'annuaire (fillers page 1 — les preuves
+  // s'ancrent sur Alice ; ces créations sont volontairement non nommées).
+  await db.user.create({ data: { pubkey: "step7-bob-pubkey", nickname: "Bob Lubumbashi" } });
+  await db.user.create({ data: { pubkey: "step7-carol-pubkey", nickname: "Carol Goma" } });
 
   // cible de suspension (clé réelle — post signé par le runner)
   const suspUser = await db.user.create({
