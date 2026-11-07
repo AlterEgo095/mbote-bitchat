@@ -223,3 +223,34 @@ périmé sans `dedupFingerprint` (A1) → typecheck Docker en échec (run CI
 41940394873). La garde de parité a joué son rôle : elle refusera de nouveau de
 construire si le miroir diverge. La parité est de plus vérifiée en CI à chaque
 push (`tests.yml` → `bun scripts/check-protocol-parity.ts`).
+
+---
+
+## 6. Règle composant client — ZÉRO import node dans un fichier `'use client'` (2026-11-06, clarification direction Étape 9+C1)
+
+> **« Aucun import node (`Buffer`, `process`, `fs`, `path`, `node:crypto`,
+> `require`) dans un fichier commençant par `'use client'`. Utiliser
+> exclusivement les helpers de `src/lib/mbote/`. »**
+
+Classe de bug récurrente côté app principale — **3 occurrences** (B2/B3/B4,
+dont `Buffer` dans `VideoBubble.tsx` B4 : vidéo indéchiffrable côté expéditeur)
+attrapées à chaque fois par les preuves navigateur et **JAMAIS par le harnais
+bun** (le harnais tourne sous bun, où `Buffer` existe — la classe est
+invisible côté tests).
+
+**Garde systémique (la 4ᵉ occurrence est désormais impossible)** :
+
+- Règle ESLint custom `mbote-client-guard/no-node-in-client` (activée dans les
+  DEUX `eslint.config.mjs` — racine ET `admin/`) : échoue le lint dès qu'un
+  fichier dont la 1ʳᵉ instruction est `'use client'` importe/requiert un
+  module node (`buffer|fs|path|crypto|os|child_process|util|stream|http|https|url`,
+  avec ou sans préfixe `node:`), appelle `require()`, ou référence les
+  globals `Buffer` / `process` (sauf `process.env.*`, remplacé inline par
+  Next). Le choix « règle custom inline » plutôt que `no-restricted-imports`
+  est tranché : `no-restricted-imports` ne peut pas cibler la directive
+  `'use client'` (il frapperait tout le code serveur légitime).
+- Grep exhaustif du 2026-11-06 (renouvelable en une ligne) :
+  `rg -l "^'use client'" src/ admin/src/` croisé avec
+  `rg "from '(node:)?(buffer|fs|path|crypto|os)"` — **43 fichiers
+  `'use client'` (36 app principale + 7 panneau admin), 0 occurrence**
+  (classe éteinte).
