@@ -1,0 +1,6 @@
+{
+  "status": 403,
+  "body": {
+    "error": "Publication refusée — compte banni définitivement (four-eyes)"
+  }
+}

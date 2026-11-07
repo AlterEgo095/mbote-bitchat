@@ -1,0 +1,23 @@
+{
+  "bannedAt": "2026-11-07T09:40:10.919Z",
+  "bannedById": 3,
+  "sa2Id": 3,
+  "bannedByIdCorrect": true,
+  "postsTotal": 2,
+  "postsHidden": 2,
+  "hiddenByExecutor": true,
+  "pendingStatus": "executed",
+  "pendingApprovedBy": 3,
+  "pendingExecutedAt": "2026-11-07T09:40:10.925Z",
+  "cycleLines": 2,
+  "cycleActions": [
+    "pendingaction_created",
+    "ban"
+  ],
+  "fourEyes": {
+    "pendingActionId": 1,
+    "requestedBy": "admin-2",
+    "requestedByEmail": "super@step9.proof",
+    "approvedBy": "admin-3"
+  }
+}

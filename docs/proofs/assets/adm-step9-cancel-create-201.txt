@@ -1,0 +1,1 @@
+{"pendingAction":{"id":3,"actionType":"ban_user","targetType":"user","targetId":"step9-cancel-target-pubkey","status":"pending","expiresAt":"2026-11-07T10:40:11.215Z"}}

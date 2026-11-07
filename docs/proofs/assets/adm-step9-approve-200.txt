@@ -1,0 +1,1 @@
+{"executed":{"pendingActionId":1,"actionType":"ban_user","requestedBy":{"id":2,"email":"super@step9.proof"},"approvedBy":{"id":3,"email":"super2@step9.proof"},"outcome":{"pubkey":"BDld0wJIWFWqGeUCf8wiEvGjL68n2z5D6oTCuMCh2gBOlyGPczocHc7QPeB1UdotvrOFOpe2FbbkCYOSbJ4Xfvk","bannedAt":"2026-11-07T09:40:10.919Z","postsHidden":2,"reportsClosed":0}}}

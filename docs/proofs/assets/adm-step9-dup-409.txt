@@ -1,0 +1,1 @@
+{"error":"Une intention ban_user est déjà en attente pour cette cible (#1)"}

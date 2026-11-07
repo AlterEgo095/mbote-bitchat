@@ -1,0 +1,15 @@
+{
+  "postGone": true,
+  "auditLines": 2,
+  "actions": [
+    "pendingaction_created",
+    "purge"
+  ],
+  "beforeKeepsContent": true,
+  "fourEyes": {
+    "pendingActionId": 2,
+    "requestedBy": "admin-2",
+    "requestedByEmail": "super@step9.proof",
+    "approvedBy": "admin-3"
+  }
+}

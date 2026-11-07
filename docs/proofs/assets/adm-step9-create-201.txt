@@ -1,0 +1,1 @@
+{"pendingAction":{"id":1,"actionType":"ban_user","targetType":"user","targetId":"BDld0wJIWFWqGeUCf8wiEvGjL68n2z5D6oTCuMCh2gBOlyGPczocHc7QPeB1UdotvrOFOpe2FbbkCYOSbJ4Xfvk","status":"pending","expiresAt":"2026-11-07T10:40:10.762Z"}}
