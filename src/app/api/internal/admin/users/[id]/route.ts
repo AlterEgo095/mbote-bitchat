@@ -51,7 +51,7 @@ export async function GET(
       select: {
         id: true,
         pubkey: true, nickname: true, bio: true, createdAt: true,
-        suspendedAt: true, suspendedUntil: true,
+        suspendedAt: true, suspendedUntil: true, bannedAt: true,
         _count: { select: { posts: true, warnings: true } },
       },
     });
@@ -106,9 +106,11 @@ export async function GET(
         pseudo: user.nickname,
         bio: user.bio,
         createdAt: user.createdAt,
-        status: suspendedActive ? "suspendu" : "actif",
+        // banni PRIME sur suspendu (É9 four-eyes — statut le plus grave)
+        status: user.bannedAt !== null ? "banni" : suspendedActive ? "suspendu" : "actif",
         suspendedAt: user.suspendedAt,
         suspendedUntil: user.suspendedUntil,
+        bannedAt: user.bannedAt,
       },
       counts: {
         posts: user._count.posts,

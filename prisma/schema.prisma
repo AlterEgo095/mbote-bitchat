@@ -33,6 +33,14 @@ model User {
   // clair) → suspendedById (FK AdminUser) — identité traçable, jamais de secret.
   suspendedById Int?
   suspendedByAdmin AdminUser? @relation("userSuspendedBy", fields: [suspendedById], references: [id])
+  // ADM Étape 9 (four-eyes) — ban DÉFINITIF : écritures bloquées aux points
+  // d'application, pas de unban UI (ADMIN-RBAC §5). Posé UNIQUEMENT par
+  // l'exécution d'une PendingAction approuvée par un second admin — JAMAIS en
+  // direct. (Le « disabledAt » de la directive = bannedAt ici : sémantique
+  // identique, nom aligné sur le schéma §5 existant.)
+  bannedAt DateTime?
+  bannedById Int?
+  bannedByAdmin AdminUser? @relation("userBannedBy", fields: [bannedById], references: [id])
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -267,9 +275,12 @@ model AdminUser {
   audits            AdminAudit[]       @relation("auditActor")
   hiddenPosts       Post[]             @relation("postHiddenBy")
   suspendedUsers    User[]             @relation("userSuspendedBy")
+  bannedUsers       User[]             @relation("userBannedBy")
   handledReports    Report[]           @relation("reportHandledBy")
   moderationActions ModerationAction[]
   issuedWarnings    UserWarning[]      @relation("adminIssuedWarnings") // Étape 6 : warn → notification profil
+  requestedActions  PendingAction[]    @relation("pendingActionCreatedBy") // Étape 9 : four-eyes
+  approvedActions   PendingAction[]    @relation("pendingActionApprovedBy") // Étape 9
 
   @@index([role])
 }
@@ -330,6 +341,41 @@ model AdminAudit {
   @@index([actorId])
   @@index([action])
   @@index([createdAt])
+  @@index([targetType, targetId])
+}
+
+// ADM Étape 9 — FOUR-EYES (ADMIN-RBAC §5) : aucune action IRRÉVERSIBLE (ban
+// définitif, purge) n'est exécutée par un seul admin. L'intention est posée
+// (justification §6 ≥ 20 chars) puis approuvée par un SECOND admin DISTINCT
+// (id ET session différents) dans l'heure. Toute la chaîne est audité :
+// pendingaction_created / _cancelled / _expired — et l'EXÉCUTION écrit la
+// ligne d'audit de la vraie action (ban | purge) dans la MÊME transaction.
+// Statuts (tranché 2026-11-06, directive É9 : annulation par le demandeur
+// uniquement — le « rejected » de la v1.0 §5 fusionne dans « cancelled ») :
+//   pending → executed | cancelled | expired
+model PendingAction {
+  id          Int      @id @default(autoincrement())
+  actionType  String   // ban_user | purge_post
+  targetType  String   // user | post — cible réelle, identifiants opératoires
+  targetId    String   // pubkey (user) | id du post
+  payloadJson String?  // contexte figé à la demande (nickname, snippet…)
+  justification String // forme §6 « CATÉGORIE: texte » (≥ 20 chars, serveur)
+  status      String   @default("pending") // pending | executed | cancelled | expired
+  createdById Int
+  createdBy   AdminUser @relation("pendingActionCreatedBy", fields: [createdById], references: [id])
+  // L'approbateur doit être un AUTRE admin ET une AUTRE session (anti
+  // auto-approbation en 2 onglets) — la double garde est appliquée au code.
+  createdBySessionId String
+  approvedById Int?
+  approvedBy   AdminUser? @relation("pendingActionApprovedBy", fields: [approvedById], references: [id])
+  approvedAt  DateTime?
+  executedAt  DateTime?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime // createdAt + 1 h — évalué PARESSEUSEMENT (approbation → 410)
+
+  @@index([status])
+  @@index([createdById])
+  @@index([expiresAt])
   @@index([targetType, targetId])
 }
 

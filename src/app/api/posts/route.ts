@@ -142,6 +142,7 @@ export async function GET(req: NextRequest) {
         {
           author: {
             OR: [{ suspendedAt: null }, { suspendedUntil: { lt: now } }],
+            bannedAt: null, // É9 : double barrière — les posts bannis sont déjà masqués (hiddenAt)
           },
         },
         ...(blockedKeys.length > 0 ? [{ author: { pubkey: { notIn: blockedKeys } } }] : []),
@@ -301,6 +302,15 @@ export async function POST(req: NextRequest) {
             ? "Publication refusée — compte suspendu par la modération (temporaire)"
             : "Publication refusée — compte suspendu par la modération",
         },
+        { status: 403 }
+      );
+    }
+    // ADM Étape 9 (four-eyes) : un compte BANNI (PendingAction approuvée) ne
+    // publie plus JAMAIS — pas de unban UI (§5). Garde distincte de la
+    // suspension : le message ne doit pas prêter à un recours inutile.
+    if (author.bannedAt != null) {
+      return NextResponse.json(
+        { error: "Publication refusée — compte banni définitivement (four-eyes)" },
         { status: 403 }
       );
     }

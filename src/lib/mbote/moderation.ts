@@ -112,6 +112,18 @@ export async function purgePostWithAudit(
     postId: string;
     actor: PurgeActor;
     reason?: string | null;
+    // ADM Étape 9 (four-eyes) : présent UNIQUEMENT quand la purge est
+    // exécutée via une PendingAction approuvée — injecté dans meta +
+    // afterJson de la MÊME ligne d'audit (le cycle four-eyes = 2 lignes
+    // exactement : pendingaction_created + purge, cf. pending-action.ts).
+    // Le CLI n'envoie pas ce champ — une seule définition, un seul
+    // comportement d'audit, acteur CLI inchangé.
+    fourEyes?: {
+      pendingActionId: number;
+      requestedById: number;
+      requestedByEmail: string;
+      approvedById: number;
+    };
   }
 ): Promise<PurgeOutcome> {
   const post = await tx.post.findUnique({
@@ -160,6 +172,9 @@ export async function purgePostWithAudit(
     repliesPurged,
     likeCount: post.likeCount,
     closedReports: openReports.length,
+    ...(params.fourEyes
+      ? { fourEyes: { pendingActionId: params.fourEyes.pendingActionId, requestedBy: `admin-${params.fourEyes.requestedById}`, requestedByEmail: params.fourEyes.requestedByEmail, approvedBy: `admin-${params.fourEyes.approvedById}` } }
+      : {}),
   };
 
   await tx.moderationAction.create({

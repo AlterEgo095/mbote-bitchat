@@ -13,7 +13,8 @@ import { ADMIN_COOKIE, callBackend, getPanelSessionServer, type PanelSession } f
 //  Données INITIALES calculées serveur (pattern queue/dashboard) : fiche
 //  visible au premier rendu. Actions warn/suspend/unsuspend via BFF avec
 //  justification §6 — invariant §1.8 (refetch serveur après chaque action).
-//  Ban : bouton désactivé (four-eyes Étape 9).
+//  Ban (É9) : bouton actif pour super-admin — crée une INTENTION four-eyes
+//  (/pending-actions), jamais d'exécution directe.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const dynamic = "force-dynamic";

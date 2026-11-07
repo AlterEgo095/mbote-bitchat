@@ -59,10 +59,10 @@ const SUSPENDED_SQL = `(u.suspendedAt IS NOT NULL AND (u.suspendedUntil IS NULL 
 const STATUS_COND: Record<string, { cond: string; needsNow: boolean }> = {
   actif: { cond: `NOT ${SUSPENDED_SQL}`, needsNow: true },
   suspendu: { cond: SUSPENDED_SQL, needsNow: true },
-  // banni : aucun champ schéma avant Étape 9 (four-eyes) — filtre accepté,
-  // retourne 0 ligne (arbitrage §13.7, pas de 400 : l'UI peut l'afficher).
-  // PAS de placeholder : aucun paramètre ne doit être poussé (bug sondé).  
-  banni: { cond: `1 = 0`, needsNow: false },
+  // banni : ADM Étape 9 (four-eyes) — User.bannedAt posé par l'exécution d'une
+  // PendingAction approuvée (arbitrage §13.7 levé ; 0 ligne tant que personne
+  // n'est banni). PAS de placeholder : aucun paramètre ne doit être poussé.
+  banni: { cond: `u.bannedAt IS NOT NULL`, needsNow: false },
 };
 
 interface UsersCursor {
@@ -134,10 +134,10 @@ export async function GET(req: NextRequest) {
       const needle = `%${escapeLike(q.trim())}%`;
       const rows = await db.$queryRawUnsafe<Array<{
         pubkey: string; nickname: string; createdAt: Date;
-        suspendedAt: Date | null; suspendedUntil: Date | null;
+        suspendedAt: Date | null; suspendedUntil: Date | null; bannedAt: Date | null;
         postCount: number; openReports: number; warningCount: number;
       }>>(
-        `SELECT u.pubkey, u.nickname, u.createdAt, u.suspendedAt, u.suspendedUntil,
+        `SELECT u.pubkey, u.nickname, u.createdAt, u.suspendedAt, u.suspendedUntil, u.bannedAt,
                 (SELECT COUNT(*) FROM Post p WHERE p.authorId = u.id) AS postCount,
                 (SELECT COUNT(*) FROM Report r JOIN Post p2 ON p2.id = r.targetId
                   WHERE p2.authorId = u.id AND r.status = 'open') AS openReports,
@@ -223,11 +223,11 @@ export async function GET(req: NextRequest) {
 
     const rows = await db.$queryRawUnsafe<Array<{
       pubkey: string; nickname: string; createdAt: Date;
-      suspendedAt: Date | null; suspendedUntil: Date | null;
+      suspendedAt: Date | null; suspendedUntil: Date | null; bannedAt: Date | null;
       postCount: number; openReports: number; warningCount: number; weight: number;
     }>>(
       `SELECT * FROM (
-         SELECT u.pubkey, u.nickname, u.createdAt, u.suspendedAt, u.suspendedUntil,
+         SELECT u.pubkey, u.nickname, u.createdAt, u.suspendedAt, u.suspendedUntil, u.bannedAt,
                 (SELECT COUNT(*) FROM Post p WHERE p.authorId = u.id) AS postCount,
                 (SELECT COUNT(*) FROM Report r JOIN Post p2 ON p2.id = r.targetId
                   WHERE p2.authorId = u.id AND r.status = 'open') AS openReports,
@@ -273,7 +273,7 @@ export async function GET(req: NextRequest) {
 
 function mapItem(r: {
   pubkey: string; nickname: string; createdAt: Date;
-  suspendedAt: Date | null; suspendedUntil: Date | null;
+  suspendedAt: Date | null; suspendedUntil: Date | null; bannedAt: Date | null;
   postCount: number; openReports: number; warningCount: number;
 }) {
   const now = Date.now();
@@ -289,6 +289,9 @@ function mapItem(r: {
     warningCount: Number(r.warningCount),
     suspendedAt: r.suspendedAt,
     suspendedUntil: r.suspendedUntil,
-    status: suspendedActive ? "suspendu" : "actif",
+    bannedAt: r.bannedAt,
+    // banni PRIME (un banni peut avoir été suspendu avant — le statut affiché
+    // est le plus grave) : É9 four-eyes.
+    status: r.bannedAt !== null ? "banni" : suspendedActive ? "suspendu" : "actif",
   };
 }

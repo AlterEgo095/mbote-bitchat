@@ -67,14 +67,15 @@ Le cookie n'est émis QUE par le domaine admin (`admin.mbotemesh.aenews.online`)
 | 6 | `report.dismiss` (sans action) | `support` | `POST /api/moderation/action` | **Étape 0** |
 | 7 | `post.hide` / `post.unhide` (réversible) | `moderator` | `POST /api/moderation/action` | **Étape 0** |
 | 8 | `user.suspend` / `user.unsuspend` (réversible) | `moderator` | `POST /api/internal/admin/users/[id]/{suspend,unsuspend}` (E7) + legacy `POST /api/moderation/action` | Étape 0 (legacy) · **Étape 7** (E7, durées 24h/7d/30d — arbitrage §13.3) |
-| 9 | `ban.request` (four-eyes, **définitif**) | `moderator` | endpoint interne (E9) | Étape 9 |
-| 10 | `post.purge.request` (four-eyes, irréversible) | `moderator` | endpoint interne (E9) | Étape 9 |
-| 11 | `four-eyes.approve` / `.reject` | `moderator` **≠ auteur** | endpoint interne (E9) | Étape 9 |
+| 9 | `ban.request` (four-eyes, **définitif**) | `super-admin` | `POST /api/internal/admin/pending-actions` (E9) | **Étape 9** — RE-TRANCHÉ par la directive É9 explicite (« Rôle super-admin requis ») : arbitrage §15.1 — la matrice v1.0 (`moderator`) est réalignée |
+| 10 | `post.purge.request` (four-eyes, irréversible) | `super-admin` | `POST /api/internal/admin/pending-actions` (E9, depuis la queue ou la fiche) | **Étape 9** — même tranchement §15.1 |
+| 11 | `four-eyes.approve` / `.cancel` | `super-admin` **≠ demandeur (id ET session)** | `POST /api/internal/admin/pending-actions/[id]/{approve,cancel}` (E9) | **Étape 9** — annulation par le DEMANDEUR seul (directive É9 : bouton « Annuler » si currentUser === requestedBy) ; le `reject` par l'approbateur de la v1.0 §5 fusionne dans `cancelled` (§15.2) |
 
 **Règles structurelles :**
 - Les actions **réversibles** (7, 8) restent mono-session (comportement Étape 0 conservé, e2e S10/S14).
-- Les actions **irréversibles** (9, 10) exigent **TOUJOURS le four-eyes** — y compris pour un `super-admin` isolé. Deux `moderator` distincts suffisent.
+- Les actions **irréversibles** (9, 10) exigent **TOUJOURS le four-eyes** — y compris pour un `super-admin` isolé. Deux `super-admin` DISTINCTS (id ET session) sont requis (É9).
 - `post.purge` direct existant (Étape 0, mono-session) est **retiré de la surface UI** à l'Étape 9 : le CLI le conserve (urgence sans panneau), l'UI ne passe plus que par four-eyes.
+- La file `/pending-actions` est visible dès `moderator` (les admins observent la chaîne) ; créer/approuver/annuler = super-admin (É9).
 
 ---
 
@@ -381,3 +382,50 @@ explicitement ici, implémentés et testés (preuve : docs/proofs/ADM-step3-4.md
     n'est pas une action modératoire ; une trace d'export pourrait en outre
     gonfler le journal de bruit à chaque refresh. (Ré-évaluer en Étape 9 si
     le four-eyes exige la traçabilité des lectures sensibles.)
+
+---
+
+## 15. ARBITRAGES ÉTAPE 9 (2026-11-06 — directive « four-eyes », tracés en code + tests)
+
+1. **Rôle = SUPER-ADMIN pour créer ET approuver (matrice §4 #9-11 réalignée)**
+   : la directive É9 dit explicitement « Rôle super-admin requis » pour
+   `POST /pending-actions` ET pour l'approbation, et « le bouton Ban définitif
+   est actif pour super-admin (plus grisé) ». La matrice v1.0 (#9-11
+   `moderator`, « deux moderator distincts suffisent ») anticipait elle-même
+   son re-tranchement — fait ici : la chaîne ban/purge exige deux super-admins
+   DISTINCTS (id **ET** session différents). Testé : moderator → 403 sur
+   create ET approve (E9·T1/E9·T9) ; support/auditor → 403 sur la file.
+2. **Statuts `pending | executed | cancelled | expired` (le `rejected` de la
+   v1.0 §5 fusionne dans `cancelled`)** : la directive É9 définit le bouton
+   « Annuler » (demandeur) et ne décrit AUCUN bouton « Rejeter » côté
+   approbateur — un approbateur qui refuse n'a qu'à ne pas agir (l'intention
+   expire en 1 h). Le cycle reste 100 % audité : `pendingaction_created`,
+   `_cancelled`, `_expired`, et l'EXÉCUTION porte la ligne de la VRAIE action
+   (`ban` | `purge`) — cycle nominal = **2 lignes AdminAudit exactement**
+   (request + execute), après requestedBy/approvedBy en afterJson.
+3. **« user disabledAt rempli » (directive) = `User.bannedAt` + `bannedById`**
+   : sémantique identique (compte désactivé définitivement), nom aligné sur le
+   schéma §5 v1.0 (`bannedAt/bannedBy`) déjà engagé dans les arbres de
+   décision. Pas de unban UI (§5 conservé) — un débannissement exigerait un
+   autre four-eyes ou un CLI (hors périmètre É9).
+4. **Ban = publication 403 + posts masqués** : la directive (« ses
+   posts/commentaires masqués, hiddenBy = admin qui a exécuté ») est implémentée
+   `Post.updateMany({hiddenAt: null}, {hiddenAt: now, hiddenById: exécutant})`
+   dans la même transaction ; double barrière feed (`bannedAt: null` sur
+   l'auteur) et publication (403 « banni définitivement » distincte du
+   message suspension — le message ne doit pas prêter à un recours inutile).
+5. **Timeout = évaluation PARESSEUSE (pas de cron)** — tranché à la directive
+   (« à trancher ») : expiresAt est évalué aux points d'application
+   (approbation → 410 Gone ; GET liste → balayage paresseux audité
+   `pendingaction_expired`, lignes grisées côté UI puis disparition du statut
+   pending au rejeu). Zéro job de fond — cohérent avec le pattern É6
+   (suspension paresseuse). NON TESTÉ : purge SQL des lignes expirées
+   (conservées pour l'audit — append-only de fait).
+6. **Doublon : 409 si une intention OUVERTE existe pour (actionType, cible)**
+   — sinon deux intentions identiques seraient approuvables successivement ;
+   un ban sur un utilisateur DÉJÀ banni → 409 aussi. La purge d'un post
+   supprimé entre-temps → 404 à l'approbation (cible disparue, ligne
+   d'audit créée à la demande reste tracée).
+7. **Notification = log structuré (`[pending-action:notify]`)** en attendant
+   SMTP — loggue les emails des autres super-admins actifs à CHAQUE création.
+   NON TESTÉ : envoi email réel (SMTP absent, fallback log assumé — directive).

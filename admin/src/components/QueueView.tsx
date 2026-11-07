@@ -89,7 +89,10 @@ function fmt(iso: string | null): string {
 }
 
 /** Label d'action — affiché sur le bouton qui ouvre le formulaire. */
-type MutableAction = "hide" | "unhide" | "dismiss" | "warn" | "suspend";
+// ADM Étape 9 (four-eyes) : MutableAction s'étend aux INTENTIONS four-eyes —
+// ban_user / purge_post ne mutent RIEN ici : elles créent une PendingAction
+// (/api/pending-actions) qu'un SECOND super-admin approuve sur /pending-actions.
+type MutableAction = "hide" | "unhide" | "dismiss" | "warn" | "suspend" | "ban_user" | "purge_post";
 
 const ACTION_LABEL: Record<MutableAction, string> = {
   hide: "Masquer le contenu",
@@ -97,6 +100,8 @@ const ACTION_LABEL: Record<MutableAction, string> = {
   dismiss: "Classer sans suite",
   warn: "Avertir l'auteur",
   suspend: "Suspendre l'auteur",
+  ban_user: "Demander un ban définitif de l'auteur (four-eyes)",
+  purge_post: "Demander la purge du contenu (four-eyes)",
 };
 
 export function QueueView({
@@ -124,6 +129,9 @@ export function QueueView({
   const level = ROLE_LEVEL[role] ?? 0;
   const canSupport = level >= ROLE_LEVEL.support; // dismiss + warn
   const canModerate = level >= ROLE_LEVEL.moderator; // hide/unhide/suspend
+  // É9 four-eyes : création d'intention = super-admin UNIQUEMENT (tranché
+  // 2026-11-06, matrice §4 #9-11 réalignée) — l'approbation est un autre admin.
+  const canRequestFourEyes = level >= ROLE_LEVEL["super-admin"];
 
   const fetchPage = useCallback(
     async (f: QueueFilters, c: string | null) => {
@@ -187,6 +195,45 @@ export function QueueView({
     setFormError(null);
     setActingId(item.id);
     try {
+      // É9 four-eyes : l'intention passe par /api/pending-actions — AUCUNE
+      // mutation directe, AUCUN refetch de cible spécial (la liste suit).
+      if (action === "ban_user" || action === "purge_post") {
+        const targetId = action === "purge_post" ? item.targetId : item.context.exists ? item.context.author.pubkey : null;
+        if (!targetId) {
+          setFormError("Cible introuvable (auteur inconnu) — rechargez la file.");
+          setActingId(null);
+          return;
+        }
+        const res = await fetch("/api/pending-actions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-admin-csrf": csrfToken },
+          body: JSON.stringify({
+            actionType: action,
+            targetId,
+            category: formCategory,
+            justification: formText,
+          }),
+        });
+        const body = (await res.json().catch(() => ({}))) as { error?: string; pendingAction?: { id: number } };
+        if (res.status === 201 && body.pendingAction) {
+          setNotice(
+            `Intention #${body.pendingAction.id} (${action === "ban_user" ? "ban définitif" : "purge"}) enregistrée — approuvée par un SECOND super-admin sur /pending-actions (1 h). Liste rejetée depuis le serveur.`
+          );
+          setForm(null);
+          setFormText("");
+          await fetchPage(filters, cursor);
+          return;
+        }
+        if (res.status === 422) setFormError(body.error ?? "Justification invalide (≥ 20 caractères).");
+        else if (res.status === 409) setFormError(body.error ?? "Une intention est déjà en attente pour cette cible (ou cible déjà traitée).");
+        else if (res.status === 410) setFormError(body.error ?? "Intention expirée.");
+        else if (res.status === 502) setFormError("Backend injoignable — intention non enregistrée, réessayez.");
+        else if (res.status === 401 || res.status === 403)
+          setFormError("Refusé par le serveur (401/403) — le four-eyes exige super-admin.");
+        else setFormError(body.error ?? `Erreur HTTP ${res.status}.`);
+        await fetchPage(filters, cursor);
+        return;
+      }
       // cible selon l'action : dismiss → le report lui-même ; warn/suspend →
       // l'auteur du contenu (pubkey opératoire) ; hide/unhide → le post.
       let targetKind: string;
@@ -584,17 +631,26 @@ export function QueueView({
         {canModerate && (
           <ActionBtn label={ACTION_LABEL.suspend} busy={busy} onClick={() => onOpen(item, "suspend")} />
         )}
-        {/* four-eyes Étape 9 — directive : désactivé + tooltip « approbation requise » */}
-        <button
-          type="button"
-          disabled
-          title="approbation requise"
-          aria-disabled="true"
-          data-testid="four-eyes-disabled"
-          className="min-h-11 cursor-not-allowed rounded-md border border-zinc-300 bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-400"
-        >
-          Bannir + purger (four-eyes)
-        </button>
+        {/* É9 four-eyes : actif pour super-admin (crée une INTENTION purge
+            approuvable par un second admin) — grisé sinon (directive É6/É9). */}
+        {canRequestFourEyes ? (
+          <ActionBtn
+            label="Purger (four-eyes)…"
+            busy={busy}
+            onClick={() => onOpen(item, "purge_post")}
+          />
+        ) : (
+          <button
+            type="button"
+            disabled
+            title="four-eyes : création ET approbation réservées au super-admin"
+            aria-disabled="true"
+            data-testid="four-eyes-disabled"
+            className="min-h-11 cursor-not-allowed rounded-md border border-zinc-300 bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-400"
+          >
+            Purger (four-eyes)
+          </button>
+        )}
       </div>
     );
   }

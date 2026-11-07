@@ -8,14 +8,17 @@
 // Le formulaire affiche l'erreur serveur (422 justification, 400 duration)
 // telle quelle.
 //
-// ACTIONS (directive Étape 7 + arbitrages §13) :
+// ACTIONS (directive Étape 7 + arbitrages §13 + Étape 9 four-eyes) :
 //   - Avertir            : moderator+ (§13.1) — justification §6, note visible
 //                          dans le profil de l'utilisateur (pas de DM, E2EE) ;
 //   - Suspendre          : moderator+ — dropdown 24 h / 7 j / 30 j (§13.3) ;
 //                          publication bloquée, DM possible (E2EE) ;
 //   - Lever la suspension: moderator+ (§13.5) — visible uniquement si suspendu ;
-//   - Ban définitif+purge: bouton DÉSACTIVÉ + tooltip « approbation par 2
-//                          admins requise — Étape 9 » (directive, four-eyes).
+//   - BAN DÉFINITIF      : Étape 9 four-eyes — bouton actif pour SUPER-ADMIN
+//                          UNIQUEMENT (tranché 2026-11-06, matrice §4 #9-11
+//                          réalignée) : il CRÉE une intention (ban_user) que
+//                          un SECOND admin doit approuver dans l'heure (page
+//                          /pending-actions). Jamais d'exécution directe ici.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useState } from "react";
@@ -29,9 +32,10 @@ export interface UserFiche {
     pseudo: string;
     bio: string | null;
     createdAt: string;
-    status: "actif" | "suspendu";
+    status: "actif" | "suspendu" | "banni";
     suspendedAt: string | null;
     suspendedUntil: string | null;
+    bannedAt: string | null;
   };
   counts: { posts: number; openReports: number; warnings: number; auditEntries: number };
   openReports: {
@@ -86,12 +90,13 @@ function fmt(iso: string | null): string {
   return timeFmt.format(new Date(iso));
 }
 
-type DetailAction = "warn" | "suspend" | "unsuspend";
+type DetailAction = "warn" | "suspend" | "unsuspend" | "ban_user";
 
 const ACTION_LABEL: Record<DetailAction, string> = {
   warn: "Avertir",
   suspend: "Suspendre",
   unsuspend: "Lever la suspension",
+  ban_user: "Demander un ban définitif (four-eyes)",
 };
 
 export function UserDetailView({
@@ -104,6 +109,7 @@ export function UserDetailView({
   initial: UserDetailLoadState;
 }) {
   const [state, setState] = useState<UserDetailLoadState>(initial);
+  const [refreshing, setRefreshing] = useState(false);
   const [acting, setActing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [form, setForm] = useState<DetailAction | null>(null);
@@ -114,6 +120,10 @@ export function UserDetailView({
 
   const level = ROLE_LEVEL[role] ?? 0;
   const canModerate = level >= ROLE_LEVEL.moderator;
+  // É9 four-eyes : SUPER-ADMIN UNIQUEMENT (tranché 2026-11-06 — la directive
+  // É9 dit « Rôle super-admin requis » pour créer ET approuver ; matrice §4
+  // #9-11 réalignée dans ADMIN-RBAC.md §15).
+  const canRequestFourEyes = level >= ROLE_LEVEL["super-admin"];
 
   const refetch = useCallback(async (pubkey: string) => {
     setRefreshing(true);
@@ -148,9 +158,64 @@ export function UserDetailView({
     }
   }, []);
 
+  /**
+   * MUTATION four-eyes (É9) — invariant §1.8 : la demande attend le 201 du
+   * serveur ; AUCUN état « intention posée » n'est affiché avant. La fiche est
+   * ensuite rejetée (le statut banni n'arrive qu'après EXÉCUTION par un second
+   * admin — refetch montre l'historique `pendingaction_created`).
+   */
+  async function submitFourEyesRequest() {
+    if (!form || form !== "ban_user" || state.kind !== "ready") return;
+    const pubkey = state.data.user.pubkey;
+    setFormError(null);
+    setActing(true);
+    try {
+      const res = await fetch("/api/pending-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-csrf": csrfToken },
+        body: JSON.stringify({
+          actionType: "ban_user",
+          targetId: pubkey,
+          category: formCategory,
+          justification: formText,
+        }),
+      });
+      const respBody = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        pendingAction?: { id: number; expiresAt: string };
+      };
+      if (res.status === 201 && respBody.pendingAction) {
+        const exp = respBody.pendingAction.expiresAt
+          ? new Date(respBody.pendingAction.expiresAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+          : "";
+        setNotice(
+          `Intention #${respBody.pendingAction.id} enregistrée — en attente d'approbation par un SECOND super-admin (expire à ${exp}). Aucun ban appliqué tant que le four-eyes n'est pas complété.`
+        );
+        setForm(null);
+        setFormText("");
+        await refetch(pubkey);
+        return;
+      }
+      if (res.status === 422) setFormError(respBody.error ?? "Justification invalide (≥ 20 caractères).");
+      else if (res.status === 409) setFormError(respBody.error ?? "Intention déjà en attente ou utilisateur déjà banni.");
+      else if (res.status === 400) setFormError(respBody.error ?? "Paramètre invalide.");
+      else if (res.status === 502) setFormError("Backend injoignable — intention non enregistrée, réessayez.");
+      else if (res.status === 401 || res.status === 403)
+        setFormError("Refusé par le serveur (401/403) — le four-eyes exige super-admin (et un second admin pour approuver).");
+      else setFormError(respBody.error ?? `Erreur HTTP ${res.status}.`);
+      await refetch(pubkey); // même sur erreur : l'état suit le serveur
+    } catch {
+      setFormError("App principale injoignable — intention non enregistrée.");
+      await refetch(pubkey);
+    } finally {
+      setActing(false);
+    }
+  }
+
   /** MUTATION — invariant §1.8 : attendre le serveur, PUIS refléter. */
   async function submitAction() {
     if (!form || state.kind !== "ready") return;
+    if (form === "ban_user") return submitFourEyesRequest();
     const pubkey = state.data.user.pubkey;
     setFormError(null);
     setActing(true);
@@ -238,7 +303,14 @@ export function UserDetailView({
           <h2 className="text-base font-semibold text-zinc-900" data-testid="fiche-pseudo">
             {f.user.pseudo}
           </h2>
-          {f.user.status === "suspendu" ? (
+          {f.user.status === "banni" ? (
+            <span
+              data-testid="fiche-statut"
+              className="inline-flex min-h-6 items-center rounded-full border border-red-400 bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-900"
+            >
+              banni définitivement {f.user.bannedAt ? `— depuis ${fmt(f.user.bannedAt)}` : ""} · four-eyes
+            </span>
+          ) : f.user.status === "suspendu" ? (
             <span
               data-testid="fiche-statut"
               className="inline-flex min-h-6 items-center rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-800"
@@ -283,7 +355,9 @@ export function UserDetailView({
       </div>
 
       <p className="text-xs text-zinc-500" aria-live="polite" data-testid="fiche-notice">
-        {notice ?? `Fiche servie à ${fmt(state.fetchedAt)} — toute action reflète le retour serveur (invariant §1.8).`}
+        {refreshing
+          ? "Rejet en cours depuis le serveur…"
+          : (notice ?? `Fiche servie à ${fmt(state.fetchedAt)} — toute action reflète le retour serveur (invariant §1.8).`)}
       </p>
 
       {/* ── actions (moderator+) ── */}
@@ -335,27 +409,52 @@ export function UserDetailView({
                 Lever la suspension
               </button>
             )}
-            {/* four-eyes Étape 9 — DÉSACTIVÉ (directive Étape 7, arbitrage §13.9) */}
-            <button
-              type="button"
-              disabled
-              title="approbation par 2 admins requise — Étape 9"
-              aria-disabled="true"
-              className="min-h-11 cursor-not-allowed rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-900 opacity-50"
-              data-testid="btn-ban"
-            >
-              Bannir + purger
-            </button>
+            {/* É9 four-eyes — ACTIF pour super-admin : crée une INTENTION
+                (jamais d'exécution directe). Pour un non-super-admin : grisé. */}
+            {canRequestFourEyes && f.user.status !== "banni" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setForm("ban_user");
+                  setFormError(null);
+                }}
+                disabled={acting}
+                title="Crée une intention — un SECOND super-admin doit approuver dans l'heure"
+                className="min-h-11 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-900 hover:bg-red-100 disabled:opacity-50"
+                data-testid="btn-ban"
+              >
+                Ban définitif…
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled
+                aria-disabled="true"
+                title={
+                  f.user.status === "banni"
+                    ? "Compte déjà banni définitivement — pas de unban UI (§5)"
+                    : "four-eyes : création ET approbation réservées au super-admin"
+                }
+                className="min-h-11 cursor-not-allowed rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-900 opacity-50"
+                data-testid="btn-ban"
+              >
+                Ban définitif…
+              </button>
+            )}
             <span className="text-[11px] text-zinc-500">
-              Ban définitif : <strong>désactivé</strong> — four-eyes Étape 9.
+              {canRequestFourEyes
+                ? "Ban définitif : INTENTION créée ici — approuvée par un second super-admin sur /pending-actions (1 h)."
+                : "Ban définitif : réservé au super-admin — four-eyes Étape 9."}
             </span>
           </div>
         )}
 
-        {form && canModerate && (
+        {form && (canModerate || (form === "ban_user" && canRequestFourEyes)) && (
           <div className="mt-3 rounded-md border border-zinc-300 bg-zinc-50 p-3" data-testid="justification-form">
             <p className="text-xs font-semibold text-zinc-700">
-              {ACTION_LABEL[form]} — justification obligatoire (ADMIN-RBAC §6)
+              {form === "ban_user"
+                ? "Demander un ban — justification ≥ 20 caractères (l'intention sera approvée par un second super-admin — four-eyes É9)"
+                : `${ACTION_LABEL[form]} — justification obligatoire (ADMIN-RBAC §6)`}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <label className="grid gap-1 text-xs text-zinc-600">
@@ -417,7 +516,11 @@ export function UserDetailView({
                 className="min-h-11 rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
                 data-testid="btn-confirm-action"
               >
-                {acting ? "En attente du serveur…" : "Confirmer (attend le serveur)"}
+                {acting
+                  ? "En attente du serveur…"
+                  : form === "ban_user"
+                    ? "Enregistrer l'intention (attend le serveur)"
+                    : "Confirmer (attend le serveur)"}
               </button>
             </div>
           </div>

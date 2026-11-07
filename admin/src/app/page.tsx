@@ -35,6 +35,14 @@ export default async function Home() {
             )}
             {initial.authenticated && (
               <Link
+                href="/pending-actions"
+                className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-900 shadow-sm transition hover:bg-red-100"
+              >
+                Four-eyes →
+              </Link>
+            )}
+            {initial.authenticated && (
+              <Link
                 href="/users"
                 className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
               >
