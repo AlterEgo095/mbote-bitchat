@@ -29,6 +29,12 @@ import {
   validateVoiceForSend,
   type SniffedOpusContainer,
 } from "./media/opus";
+import {
+  VIDEO_MAX_BYTES,
+  assertPlayableVideo,
+  validateVideoForSend,
+  type SniffedVideoContainer,
+} from "./media/video";
 
 function bytesToB64url(bytes: Uint8Array): string {
   let bin = "";
@@ -793,5 +799,222 @@ export async function downloadVoiceNote(opts: {
     bytes: plain.length,
     durationMs,
     peaks,
+  };
+}
+
+// ── B4 — vidéo (pipeline B2 identique, SANS strip sur la vidéo) ─────────────
+// Arbitrages spec §9 : la vidéo n'a PAS de strip EXIF V1 (les conteneurs
+// webm/mp4 n'ont pas d'EXIF GPS à striper — les métadonnées exotiques restent
+// de toute façon chiffrées et invisibles au serveur ; documenté §9.3) ; le
+// type déclaré à l'API est le CONTENEUR RÉEL sniffré (video/webm | video/mp4
+// — la lecture <video> en dépend) ; la THUMBNAIL, elle, est une image JPEG
+// régénérée localement : elle suit le chemin image B2 COMPLET (strip canvas
+// + chiffrement + presign + finalize).
+
+export interface UploadedVideoThumb {
+  mediaId: string;
+  cekB64: string;
+  mediaType: "image/jpeg";
+  bytes: number;
+  objectKey: string;
+}
+
+export interface UploadedVideo extends Omit<UploadedMedia, "previewDataUrl"> {
+  durationMs: number;
+  container: SniffedVideoContainer;
+  width: number;
+  height: number;
+  /** vignette uploadée (image B2 complète) — null si la capture a échoué */
+  thumb: UploadedVideoThumb | null;
+}
+
+export interface UploadVideoOptions {
+  bytes: Uint8Array;
+  /** durée mesurée à l'enregistrement (garde 60 s — arbitrage §9.2) */
+  durationMs: number;
+  width?: number;
+  height?: number;
+  /** vignette JPEG (captureVideoThumbnail) — uploadée comme image B2 si fournie */
+  thumb?: { bytes: Uint8Array; width: number; height: number } | null;
+  me: string;
+  sign: (payload: string) => Promise<string>;
+  onProgress?: (stage: UploadStage, info?: { fraction?: number; message?: string }) => void;
+}
+
+/** Garde d'envoi 61 s / 100 Mo / conteneur vidéo — REFUS AVANT tout octet. */
+export function assertVideoSendable(bytes: Uint8Array, durationMs: number): SniffedVideoContainer {
+  const v = validateVideoForSend({ bytes, durationMs });
+  if (!v.ok) throw new MediaClientError("bad-type", v.reason);
+  return v.container;
+}
+
+/**
+ * Upload vidéo COMPLET (directive B4 : « Pipeline B2 réutilisé ») :
+ * validation → chiffrement → upload-url (conteneur réel) → PUT présigné →
+ * finalize → (thumbnail : chemin image B2 COMPLET avec strip canvas).
+ * Pas de compression V1 — on envoie tel quel (60 s @ 480p ≈ 5–15 Mo).
+ */
+export async function uploadVideoNote(opts: UploadVideoOptions): Promise<UploadedVideo> {
+  const { bytes, durationMs, width = 0, height = 0, thumb = null, me, sign, onProgress } = opts;
+
+  // 0. garde d'entrée (61 s → refus ICI, jamais un upload de 110 Mo)
+  const container = assertVideoSendable(bytes, durationMs);
+
+  // 1. chiffrement client (CEK + IV uniques — enveloppe v1 identique B1/B2/B3)
+  onProgress?.("encrypt", { message: "Chiffrement de bout en bout…" });
+  const enc = await encryptBytes(bytes);
+  if (enc.sizeBytes > VIDEO_MAX_BYTES) {
+    throw new MediaClientError("too-large", `enveloppe ${enc.sizeBytes} o > ${VIDEO_MAX_BYTES}`);
+  }
+
+  // 2. upload-url (conteneur réel — preuve couvre type + taille)
+  onProgress?.("presign", { message: "Demande d'URL d'upload…" });
+  const ts = Date.now();
+  const signature = await sign(`${me}|media-upload|${container}|${enc.sizeBytes}|${ts}`);
+  const presign = await mediaApi<{
+    mediaId: string;
+    objectKey: string;
+    uploadUrl: string;
+    expiresAt: string;
+  }>("/api/media/upload-url", {
+    method: "POST",
+    body: JSON.stringify({ me, mediaType: container, sizeBytes: enc.sizeBytes, sha256: enc.sha256, ts, signature }),
+  });
+
+  // 3. PUT présigné (même origine — proxy) ; Content-Length automatique
+  onProgress?.("put", { fraction: 0, message: "Envoi de la vidéo…" });
+  const putRes = await fetch(toFetchUrl(presign.uploadUrl), {
+    method: "PUT",
+    body: enc.envelope,
+  });
+  if (!putRes.ok) {
+    throw new MediaClientError("put-failed", `Bucket a refusé le PUT (HTTP ${putRes.status})`);
+  }
+  onProgress?.("put", { fraction: 1 });
+
+  // 4. finalize (existence + taille + enveloppe vérifiés côté serveur)
+  onProgress?.("finalize", { message: "Finalisation…" });
+  const fts = Date.now();
+  const fsig = await sign(`${me}|media-finalize|${presign.mediaId}|${fts}`);
+  const finalized = await mediaApi<{ mediaId: string; objectKey: string; downloadUrl: string }>(
+    "/api/media/finalize",
+    {
+      method: "POST",
+      body: JSON.stringify({ me, mediaId: presign.mediaId, plainBytes: bytes.length, ts: fts, signature: fsig }),
+    }
+  );
+
+  // 5. CEK vidéo gardé en mémoire de session (relire ses propres vidéos)
+  sessionCeks.set(finalized.mediaId, { cekB64: enc.cekB64, mediaType: container });
+
+  // 6. thumbnail — chemin image B2 COMPLET (strip canvas régénéré localement
+  //    sans métadonnée + chiffrement + presign + finalize). Sa perte n'empêche
+  //    PAS l'envoi de la vidéo (la bulle retombe sur le player natif).
+  let uploadedThumb: UploadedVideoThumb | null = null;
+  if (thumb && thumb.bytes.length > 0) {
+    try {
+      onProgress?.("strip", { message: "Vignette…" });
+      const stripThumb =
+        defaultStrip ??
+        (typeof document !== "undefined"
+          ? async (b: Uint8Array) => (await stripExifClient(b)).bytes
+          : undefined);
+      // hors navigateur ET sans strip injecté : la vignette régénérée par
+      // canvas ne porte de toute façon aucune métadonnée — envoi direct.
+      const cleanThumb = stripThumb ? await stripThumb(thumb.bytes) : thumb.bytes;
+      const tEnc = await encryptBytes(cleanThumb);
+      const tts = Date.now();
+      const tsig = await sign(`${me}|media-upload|image/jpeg|${tEnc.sizeBytes}|${tts}`);
+      const tPresign = await mediaApi<{
+        mediaId: string;
+        objectKey: string;
+        uploadUrl: string;
+      }>("/api/media/upload-url", {
+        method: "POST",
+        body: JSON.stringify({ me, mediaType: "image/jpeg", sizeBytes: tEnc.sizeBytes, sha256: tEnc.sha256, ts: tts, signature: tsig }),
+      });
+      const tPut = await fetch(toFetchUrl(tPresign.uploadUrl), { method: "PUT", body: tEnc.envelope });
+      if (!tPut.ok) throw new Error(`PUT vignette HTTP ${tPut.status}`);
+      const tfts = Date.now();
+      const tfsig = await sign(`${me}|media-finalize|${tPresign.mediaId}|${tfts}`);
+      const tFinal = await mediaApi<{ mediaId: string; objectKey: string }>(
+        "/api/media/finalize",
+        {
+          method: "POST",
+          body: JSON.stringify({ me, mediaId: tPresign.mediaId, plainBytes: cleanThumb.length, ts: tfts, signature: tfsig }),
+        }
+      );
+      sessionCeks.set(tFinal.mediaId, { cekB64: tEnc.cekB64, mediaType: "image/jpeg" });
+      uploadedThumb = {
+        mediaId: tFinal.mediaId,
+        cekB64: tEnc.cekB64,
+        mediaType: "image/jpeg",
+        bytes: cleanThumb.length,
+        objectKey: tFinal.objectKey,
+      };
+    } catch {
+      uploadedThumb = null; // la vidéo reste envoyable sans vignette
+    }
+  }
+
+  onProgress?.("done");
+  return {
+    mediaId: finalized.mediaId,
+    objectKey: finalized.objectKey,
+    cekB64: enc.cekB64,
+    mediaType: container,
+    plainBytes: bytes.length,
+    sizeBytes: enc.sizeBytes,
+    sha256: enc.sha256,
+    durationMs,
+    container, // déjà validé en tête — réflexe barrière
+    width,
+    height,
+    thumb: uploadedThumb,
+  };
+}
+
+export interface DownloadedVideo {
+  blob: Blob;
+  /** conteneur sniffré (video/webm | video/mp4) — type réel du Blob */
+  container: SniffedVideoContainer;
+  bytes: number;
+}
+
+/**
+ * Download vidéo : download-url (TTL 1 h pour video/*) → GET → decrypt →
+ * SNIFF conteneur VIDÉO (barrière de rendu — un webm AUDIO / un MP3 déguisé
+ * est REFUSÉ) → Blob typé.
+ */
+export async function downloadVideoNote(opts: {
+  mediaId: string;
+  cekB64: string;
+  declaredType?: string;
+  me: string;
+  sign: (payload: string) => Promise<string>;
+}): Promise<DownloadedVideo> {
+  const { mediaId, cekB64, declaredType, me, sign } = opts;
+  const ts = Date.now();
+  const signature = await sign(`${me}|media-dl|${mediaId}|${ts}`);
+  const res = await fetch(
+    `${apiBase()}/api/media/download-url?${new URLSearchParams({ me, mediaId, ts: String(ts), signature })}`
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new MediaClientError("download-failed", body.error ?? `HTTP ${res.status}`);
+  }
+  const info = (await res.json()) as { downloadUrl: string; mediaType: string };
+
+  const dl = await fetch(toFetchUrl(info.downloadUrl));
+  if (!dl.ok) {
+    throw new MediaClientError("download-failed", `Bucket a refusé la lecture (HTTP ${dl.status})`);
+  }
+  const envelope = await dl.text();
+  const plain = await decryptBytes(envelope, cekB64);
+  const container = assertPlayableVideo(plain, declaredType ?? info.mediaType);
+  return {
+    blob: new Blob([plain as unknown as BlobPart], { type: container }),
+    container,
+    bytes: plain.length,
   };
 }

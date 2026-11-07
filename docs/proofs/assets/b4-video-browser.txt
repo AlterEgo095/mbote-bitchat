@@ -1,0 +1,9 @@
+{
+  "identity": "Alice-Video-B4",
+  "peer": "B-video-63457",
+  "recording": "started",
+  "preview": "shown",
+  "send": "2xx",
+  "bubble": "rendered",
+  "play": "native-controls"
+}

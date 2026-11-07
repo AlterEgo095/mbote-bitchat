@@ -15,6 +15,7 @@ import {
   Lock,
   MessageSquarePlus,
   Mic,
+  Film,
   Paperclip,
   Send,
   ShieldAlert,
@@ -49,6 +50,7 @@ import { openMessage, sealMessage, shortKey, signPayload } from "@/lib/mbote/cry
 import { dm2ProofMessage, dmReadProofMessage, trustVerifyProofMessage } from "@/lib/mbote/proof";
 import { newDmMsgId, nextDmSeq } from "@/lib/mbote/dm-sequence";
 import { VoiceNote } from "@/components/VoiceNote";
+import { VideoBubble, type VideoThumbRef } from "@/components/VideoBubble";
 import {
   attachUploadQueueFlusher,
   downloadImage,
@@ -57,9 +59,11 @@ import {
   MediaClientError,
   sessionCekFor,
   uploadImage,
+  uploadVideoNote,
   uploadVoiceNote,
   type UploadStage,
   type UploadedMedia,
+  type UploadedVideo,
   type UploadedVoice,
 } from "@/lib/mbote/media-client";
 import {
@@ -69,6 +73,13 @@ import {
   VoiceRecorder,
   type VoiceRecording,
 } from "@/lib/mbote/media/opus";
+import {
+  VIDEO_MAX_DURATION_S,
+  VIDEO_UNSUPPORTED_MESSAGE,
+  isVideoRecordingSupported,
+  VideoRecorder,
+  type VideoRecording,
+} from "@/lib/mbote/media/video";
 import {
   confirmLocalTrust,
   evaluateLocalTrust,
@@ -101,6 +112,10 @@ interface MediaDmPayload {
   /** B3 — voix : durée (ms) + waveform (100 peaks) voyagent dans le dm2 E2EE */
   durationMs?: number;
   peaks?: number[];
+  /** B4 — vidéo : vignette image B2 (voyage dans le dm2 E2EE, serveur aveugle) */
+  thumb?: VideoThumbRef;
+  width?: number;
+  height?: number;
 }
 
 function parseDmBody(body: string): MediaDmPayload | null {
@@ -123,6 +138,18 @@ function parseDmBody(body: string): MediaDmPayload | null {
         objectKey: p.objectKey ?? "",
         durationMs: typeof p.durationMs === "number" ? p.durationMs : undefined,
         peaks: Array.isArray(p.peaks) ? (p.peaks as number[]) : undefined,
+        thumb:
+          p.thumb && typeof p.thumb.mediaId === "string" && typeof p.thumb.cek === "string"
+            ? {
+                mediaId: p.thumb.mediaId,
+                cek: p.thumb.cek,
+                mediaType: typeof p.thumb.mediaType === "string" ? p.thumb.mediaType : "image/jpeg",
+                bytes: typeof p.thumb.bytes === "number" ? p.thumb.bytes : 0,
+                objectKey: typeof p.thumb.objectKey === "string" ? p.thumb.objectKey : "",
+              }
+            : undefined,
+        width: typeof p.width === "number" ? p.width : undefined,
+        height: typeof p.height === "number" ? p.height : undefined,
       };
     }
   } catch {
@@ -787,6 +814,146 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
     }
   };
 
+  // ── B4 : cycle vidéo (TAP-TO-START/STOP — tranché §9.6 : la vidéo exige de
+  // garder l'application ouverte en visée, le hold-to-record de la voix n'a
+  // pas de sens les yeux sur l'écran) ────────────────────────────────────────
+  const videoRecorderRef = useRef<VideoRecorder | null>(null);
+  const videoSupported = useMemo(() => isVideoRecordingSupported(), []);
+  const [videoRecording, setVideoRecording] = useState(false);
+  const [videoElapsedMs, setVideoElapsedMs] = useState(0);
+  const [pendingVideo, setPendingVideo] = useState<VideoRecording | null>(null);
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+
+  const cancelPendingVideo = () => {
+    if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    setVideoPreviewUrl(null);
+    setPendingVideo(null);
+  };
+
+  const startVideoRecording = async () => {
+    if (!peer?.ecdhPub || peer.isBot) return;
+    const rec = new VideoRecorder({
+      onTick: (ms) => setVideoElapsedMs(ms),
+      onAutoStop: () =>
+        toast.info(`Durée maximale atteinte (${VIDEO_MAX_DURATION_S} s) — prévisualisation`),
+    });
+    videoRecorderRef.current = rec;
+    setVideoElapsedMs(0);
+    try {
+      await rec.start();
+      setVideoRecording(true);
+    } catch (e) {
+      videoRecorderRef.current = null;
+      toast.error("Caméra indisponible", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    }
+  };
+
+  const stopVideoRecording = async (discard: boolean) => {
+    const rec = videoRecorderRef.current;
+    videoRecorderRef.current = null;
+    setVideoRecording(false);
+    if (!rec) return;
+    try {
+      if (discard) {
+        await rec.cancel();
+        return;
+      }
+      const result = await rec.stop();
+      setPendingVideo(result);
+      setVideoPreviewUrl(URL.createObjectURL(new Blob([result.bytes as unknown as BlobPart], { type: result.container })));
+    } catch (e) {
+      toast.error("Enregistrement perdu", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    }
+  };
+
+  /** B4 : preview → envoi (uploadVideoNote → dm2). Invariant §1.8 : la
+   *  preview est RESTAURÉE en cas d'échec (leçon Clarification 4 — la
+   *  vidéo ne disparaît pas avant le 2xx). */
+  const sendPendingVideo = async () => {
+    const video = pendingVideo;
+    if (!video || !peer?.pubkey) return;
+    const peerPub = peer.pubkey;
+    const target = peer;
+    if (!target.ecdhPub) {
+      toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
+      return;
+    }
+    setPendingVideo(null);
+    setVideoUploading(true);
+    try {
+      const uploaded: UploadedVideo = await uploadVideoNote({
+        bytes: video.bytes,
+        durationMs: video.durationMs,
+        width: video.width,
+        height: video.height,
+        thumb: video.thumb ? { bytes: video.thumb.bytes, width: video.thumb.width, height: video.thumb.height } : null,
+        me: myPub,
+        sign: (p) => signPayload(identity.signPriv, p),
+        onProgress: (stage, info) => setUploadState({ stage, fraction: info?.fraction, message: info?.message }),
+      });
+      // dm2 vidéo : thumb (image B2) + durée dans le payload — serveur aveugle
+      const payloadVideo: MediaDmPayload = {
+        kind: "media",
+        text: "",
+        mediaId: uploaded.mediaId,
+        cek: uploaded.cekB64,
+        mediaType: uploaded.mediaType,
+        bytes: uploaded.plainBytes,
+        objectKey: uploaded.objectKey,
+        durationMs: uploaded.durationMs,
+        width: uploaded.width,
+        height: uploaded.height,
+        thumb: uploaded.thumb
+          ? {
+              mediaId: uploaded.thumb.mediaId,
+              cek: uploaded.thumb.cekB64,
+              mediaType: uploaded.thumb.mediaType,
+              bytes: uploaded.thumb.bytes,
+              objectKey: uploaded.thumb.objectKey,
+            }
+          : undefined,
+      };
+      const sealed = await sealMessage(identity.ecdhPriv, target.ecdhPub, JSON.stringify(payloadVideo));
+      const msgId = newDmMsgId();
+      const seq = nextDmSeq(myPub, peerPub);
+      const ts = Date.now();
+      const signature = await signPayload(
+        identity.signPriv,
+        dm2ProofMessage(myPub, peerPub, msgId, seq, sealed.iv, sealed.ciphertext, ts)
+      );
+      await apiSendDm({
+        senderKey: myPub,
+        recipientKey: peerPub,
+        iv: sealed.iv,
+        ciphertext: sealed.ciphertext,
+        msgId,
+        seq,
+        ts,
+        signature,
+      });
+      await qc.invalidateQueries({ queryKey: ["dms", myPub, peerPub] });
+      await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
+      toast.success("Vidéo envoyée", {
+        description: `${uploaded.mediaType === "video/mp4" ? "MP4" : "WebM"} ${(uploaded.durationMs / 1000).toFixed(1)} s · ${humanBytes(uploaded.plainBytes)} · chiffrée (AES-256-GCM)`,
+      });
+      if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+      setVideoPreviewUrl(null);
+    } catch (e) {
+      setPendingVideo(video); // échec → preview restaurée (invariant §1.8)
+      toast.error("Échec d'envoi vidéo", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setVideoUploading(false);
+      setUploadState(null);
+    }
+  };
+
   // B2 : au retour du réseau, la file des uploads re-orchestre — puis le dm2
   // part automatiquement vers le destinataire d'origine.
   useEffect(() => {
@@ -1127,6 +1294,20 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                             {media ? (
                               media.mediaType === "audio/opus" ? (
                                 <VoiceBubble payload={media} mine={mine} me={myPub} signPriv={identity.signPriv} />
+                              ) : media.mediaType.startsWith("video/") ? (
+                                <VideoBubble
+                                  media={{
+                                    mediaId: media.mediaId,
+                                    cek: media.cek,
+                                    mediaType: media.mediaType,
+                                    bytes: media.bytes,
+                                  }}
+                                  thumb={media.thumb ?? null}
+                                  durationMs={media.durationMs}
+                                  mine={mine}
+                                  me={myPub}
+                                  signPriv={identity.signPriv}
+                                />
                               ) : (
                                 <MediaBubble payload={media} mine={mine} me={myPub} signPriv={identity.signPriv} />
                               )
@@ -1141,6 +1322,8 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                               {media && (
                                 media.mediaType === "audio/opus" ? (
                                   <Mic className="size-2.5" aria-hidden="true" />
+                                ) : media.mediaType.startsWith("video/") ? (
+                                  <Film className="size-2.5" aria-hidden="true" />
                                 ) : (
                                   <ImageIcon className="size-2.5" aria-hidden="true" />
                                 )
@@ -1285,6 +1468,63 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                       ● {(voiceElapsedMs / 1000).toFixed(1)} s
                     </span>
                   )}
+                  {/* B4 : vidéo — TAP-TO-START/STOP (tranché spec §9.6 : la
+                      visée exige de garder l'œil sur l'écran, pas sur le
+                      bouton — l'inverse du hold-to-record voix). */}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className={`h-11 shrink-0 ${videoRecording ? "border-red-400 bg-red-50 text-red-700" : ""}`}
+                    onClick={() => {
+                      if (videoRecording) {
+                        void stopVideoRecording(false);
+                      } else {
+                        void startVideoRecording();
+                      }
+                    }}
+                    disabled={
+                      !peer.ecdhPub ||
+                      sending ||
+                      uploadState !== null ||
+                      videoUploading ||
+                      pendingVideo !== null ||
+                      voiceRecording ||
+                      trustBlocked ||
+                      peer.isBot ||
+                      !videoSupported
+                    }
+                    aria-label={
+                      !videoSupported
+                        ? "Vidéo indisponible sur ce navigateur"
+                        : videoRecording
+                          ? "Arrêter la vidéo"
+                          : "Enregistrer une vidéo"
+                    }
+                    title={
+                      !videoSupported
+                        ? VIDEO_UNSUPPORTED_MESSAGE
+                        : videoRecording
+                          ? "Enregistrement… cliquez pour arrêter"
+                          : "Vidéo (webm 480p/720p, 60 s max, 100 Mo max)"
+                    }
+                    data-testid="video-button"
+                  >
+                    {videoRecording ? (
+                      <Square className="size-4" aria-hidden="true" />
+                    ) : (
+                      <Film className="size-4" aria-hidden="true" />
+                    )}
+                  </Button>
+                  {videoRecording && (
+                    <span
+                      className="shrink-0 text-xs font-medium tabular-nums text-red-600"
+                      role="timer"
+                      aria-live="off"
+                      data-testid="video-timer"
+                    >
+                      ● {(videoElapsedMs / 1000).toFixed(1)} s
+                    </span>
+                  )}
                   <Input
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
@@ -1372,6 +1612,61 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                     <Loader2 className="size-4 animate-spin" aria-hidden="true" />
                   ) : (
                     <Mic className="size-4" aria-hidden="true" />
+                  )}
+                  Chiffrer et envoyer
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* B4 : dialogue de PREVIEW vidéo (thumbnail, durée, taille, annulable) */}
+      <Dialog open={pendingVideo !== null} onOpenChange={(open) => !open && cancelPendingVideo()}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Film className="size-4 text-primary" aria-hidden="true" />
+              Envoyer une vidéo
+            </DialogTitle>
+            <DialogDescription>
+              {pendingVideo ? (pendingVideo.durationMs / 1000).toFixed(1) : "0"} s ·{" "}
+              {pendingVideo ? humanBytes(pendingVideo.bytes.length) : "—"} — chiffrée sur ton
+              appareil (AES-256-GCM), le serveur n&apos;en voit que le chiffré. Vise avant
+              d&apos;envoyer.
+            </DialogDescription>
+          </DialogHeader>
+          {pendingVideo && (
+            <div className="space-y-3">
+              <div className="rounded-lg border bg-muted/40 p-3">
+                {videoPreviewUrl ? (
+                  <video
+                    src={videoPreviewUrl}
+                    controls
+                    preload="metadata"
+                    className="max-h-56 w-full rounded-lg bg-black"
+                    aria-label="Aperçu de la vidéo enregistrée"
+                  />
+                ) : pendingVideo.thumb ? (
+                  <span className="text-xs text-muted-foreground">vignette seule (metadata en attente)</span>
+                ) : null}
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  {pendingVideo.width}×{pendingVideo.height} · {pendingVideo.container}
+                </span>
+                <span>{humanBytes(pendingVideo.bytes.length)}</span>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={cancelPendingVideo}>
+                  <X className="size-4" aria-hidden="true" />
+                  Annuler
+                </Button>
+                <Button className="flex-1" onClick={sendPendingVideo} disabled={videoUploading} data-testid="video-send">
+                  {videoUploading ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Film className="size-4" aria-hidden="true" />
                   )}
                   Chiffrer et envoyer
                 </Button>

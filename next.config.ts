@@ -43,8 +43,40 @@ const securityHeaders = [
   // getUserMedia({audio}) SUR LA PAGE APP (même origine). Le durcissement
   // historique `microphone=()` interdisait AU NAVIGATEUR tout accès micro,
   // même consenti — impossible de désactiver par l'UI (header niveau
-  // navigateur). camera/geolocation/payment restent refusés (aucun usage).
-  { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), payment=()" },
+  // navigateur). B4 : camera=(self) — la vidéo (recorder + thumbnail) exige
+  // getUserMedia({video}) : le fix est appliqué AVANT d'écrire le code
+  // (directive B4 — le bug microphone=() de B3 ne se reproduira pas).
+  // AUDIT EXHAUSTIF (spec MEDIA-ENVELOPE-SPEC §8.4, clarification direction
+  // B4) : une directive ABSENTE retombe sur le défaut navigateur (autorisée)
+  // — les 20 directives ci-dessous ferment les défauts permissifs
+  // (usb/sensors/display-capture/clipboard/bluetooth…) et explicient les
+  // usages V1 (camera, microphone, fullscreen). geolocation reste () : dette
+  // « recherche proximité » tracée §8.4 (réviser LE JOUR de la feature).
+  {
+    key: "Permissions-Policy",
+    value: [
+      "camera=(self)",
+      "microphone=(self)",
+      "geolocation=()",
+      "payment=()",
+      "usb=()",
+      "accelerometer=()",
+      "gyroscope=()",
+      "magnetometer=()",
+      "fullscreen=(self)",
+      "display-capture=()",
+      "autoplay=(self)",
+      "clipboard-read=()",
+      "clipboard-write=()",
+      "screen-wake-lock=()",
+      "idle-detection=()",
+      "bluetooth=()",
+      "serial=()",
+      "midi=()",
+      "nfc=()",
+      "hid=()",
+    ].join(", "),
+  },
 ];
 
 const nextConfig: NextConfig = {

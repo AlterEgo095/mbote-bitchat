@@ -1,0 +1,1 @@
+Permissions-Policy: camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), accelerometer=(), gyroscope=(), magnetometer=(), fullscreen=(self), display-capture=(), autoplay=(self), clipboard-read=(), clipboard-write=(), screen-wake-lock=(), idle-detection=(), bluetooth=(), serial=(), midi=(), nfc=(), hid=()

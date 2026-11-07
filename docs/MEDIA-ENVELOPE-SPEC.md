@@ -480,3 +480,110 @@ livrées ; le tableau vit en §8.4, appliqué à l'identique.*
 La migration Option B → Option A est purement additive (le mode d'échec
 « bouton désactivé » reste la seconde barrière — le sniff conteneur à la
 réception refusant tout non-Opus).
+
+---
+
+## 9. Vidéo B4 — upload + lecture, PAS de transcodage V1 (livré)
+
+### 9.1 Prérequis bloquant PROUVÉ (AVANT le code — directive)
+
+- **Permissions-Policy corrigée d'abord** : `camera=(self)` appliqué à
+  next.config.ts (audit exhaustif §8.4 — 20 directives, défauts permissifs
+  fermés) AVANT toute ligne de code vidéo. Le bug `microphone=()` de B3
+  (découvert APRÈS l'écriture) ne se reproduit pas : le prérequis est prouvé
+  par `scripts/b4-camera-prereq.ts` — Chromium réel (fake device) :
+  getUserMedia({video,audio}) RÉUSSIT → MediaRecorder webm/VP8+opus 10 s →
+  515 278 o → thumbnail canvas 320 px (4 179 o) → ffprobe : codec vp8,
+  durée 9,96 s. Le header SERVI est vérifié par curl dans le runner
+  (H1 du harnais : camera=(self) + microphone=(self) + geolocation=()).
+- **Enregistrement réel prouvé** : fixture `tests/fixtures/b4-prereq-10s.webm`
+  (fake device Chromium) — la chaîne de tests U1-U5 tourne sur ces octets
+  RÉELS, jamais sur des octets synthétiques.
+
+### 9.2 Arbitrages vidéo (tranchés, tracés en code + tests)
+
+1. **Pas de transcodage V1** (directive, à la lettre) : le webm produit par
+   MediaRecorder est envoyé TEL QUEL (60 s @ 480p ≈ 5–15 Mo, dans la limite
+   100 Mo). Aucun ffmpeg côté serveur — le serveur reste AVEUGLE (chiffré).
+2. **Résolution « 480p par défaut (720p si supporté) »** : contrainte
+   `getUserMedia({video:{width:{ideal:1280},height:{ideal:720}}})` — le
+   navigateur donne la meilleure résolution ≤ 720p que le device supporte
+   (webcams modestes → 480p, bonnes caméras → 720p). Bitrate : 1 Mbps fixé
+   en entrée, quantification adaptative VP8 en interne ; audio Opus 32 kbps.
+3. **Pas de strip EXIF sur la vidéo** : les conteneurs webm/mp4 n'ont pas
+   d'EXIF GPS à striper (miroir de l'arbitrage voix §8.2-3). Toute
+   métadonnée exotique reste de toute façon CHIFFRÉE et invisible au serveur.
+   La THUMBNAIL (JPEG régénéré par canvas côté expéditeur) suit elle le
+   chemin image B2 COMPLET avec strip canvas — zéro métadonnée, par
+   construction.
+4. **« Lecture progressive » TRANCHÉE = téléchargement intégral puis lecture
+   locale** : la directive disait « <video src={presignedUrl}> avec
+   preload=metadata » — OR l'objet stocké est le CIPHERTEXT E2EE : un player
+   pointed sur l'URL présignée lirait du GARBAGE. La vraie lecture progressive
+   d'un média E2EE (range requests + démuxage client + MSE) est un chantier
+   B5+, pas un réglage. V1 : clic → download-url (TTL 1 h) → GET intégral →
+   decrypt → blob → `<video controls preload="metadata">` NATIF. 60 s @ 480p
+   ≈ 5–15 Mo : charge en quelques secondes, états visibles (spinner + taille).
+   La directive « pas de HLS en V1 » est respectée a fortiori.
+5. **Whitelist vidéo : `video/mp4` + `video/webm` — le type déclaré est le
+   CONTENEUR RÉEL sniffré** (contrairement à l'opus qui déclarait un type
+   canonique unique) : la lecture <video> dépend du conteneur. Rejet
+   explicite des autres formats (avi/mov/mkv) → 400 avec message clair
+   (« convertissez d'abord ») — testé V2.
+6. **Tap-to-start/stop pour la vidéo** (l'inverse de la voix) : la visée
+   exige de garder l'œil sur l'écran, pas sur le bouton — hold-to-record
+   (voix, §8.2-5) n'a pas de sens caméra ouverte. Documenté MessagesView +
+   ce point.
+7. **Barrière de rendu vidéo** : sniff du PLAINTEXT à la réception —
+   MP4 (ftyp à l'offset 4) ou webm VIDÉO (EBML + ID de codec V_VP8/V_VP9/
+   V_AV1 en ASCII dans les 64 premiers Ko). Un webm AUDIO (voice note B3 :
+   A_OPUS sans piste V_*) et un MP3 renommé sont REFUSÉS (magic-bytes-
+   mismatch) — miroir strict de §6.7-iii, testé V6. Le type déclaré doit
+   EN OUTRE correspondre au conteneur sniffré (divergence = client cassé
+   ou altération → refus).
+8. **TTL de lecture vidéo = 1 h** (directive) : `B2_VIDEO_DOWNLOAD_TTL_S =
+   3600` appliqué par TYPE dans /api/media/download-url (video/* → 3600,
+   le reste garde 900 s). Testé V4 (vidéo > 3500 s, image ≤ 900 s).
+9. **Thumbnail optionnelle à l'envoi** : si la capture canvas échoue
+   (harness, metadata en attente), la vidéo reste ENVOYABLE — la bulle
+   retombe sur le placeholder player (Film). La perte de vignette n'est
+   jamais une erreur d'envoi.
+10. **Limite PAR TYPE : vidéo 100 Mo** (directive) — `B2_UPLOAD_LIMITS
+    ["video/mp4" | "video/webm"] = 100 Mo` ; garde client miroir
+    (validateVideoForSend, 110 Mo → REFUS avant tout octet) ; serveur 400
+    testé (V3).
+
+### 9.3 Surfaces livrées
+
+| Élément | Fichier | Rôle |
+|---|---|---|
+| Prérequis caméra | `scripts/b4-camera-prereq.ts` | getUserMedia + MediaRecorder + thumbnail + ffprobe — BLOQUANT, avant le code |
+| Lib vidéo | `src/lib/mbote/media/video.ts` | constantes (60 s, 100 Mo, 320 px), sniff MP4/webm-vidéo (rejette webm audio), validateVideoForSend (61 s), captureVideoThumbnail, VideoRecorder (auto-stop 60 s, tap-to-stop) |
+| Client média | `media-client.ts` (+uploadVideoNote/downloadVideoNote) | pipeline B2 sans strip vidéo ; thumb = chemin image B2 complet ; garde 61 s/100 Mo AVANT tout octet |
+| Serveur | `media-server.ts` + upload-url + download-url | whitelist video/mp4+webm (100 Mo, limites PAR TYPE), TTL lecture 1 h pour video/* |
+| UI | `src/components/VideoBubble.tsx` + `MessagesView` | vignette cliquable → Dialog plein écran player natif, badge durée, états de téléchargement ; bouton 📹 tap-to-start/stop + preview annulable |
+
+Payload dm2 vidéo (plaintext JSON — serveur aveugle) :
+
+```jsonc
+{ "kind": "media", "mediaId": "…", "cek": "…", "mediaType": "video/webm",
+  "bytes": 515278, "objectKey": "media/<uuid>", "durationMs": 9960,
+  "width": 640, "height": 480,
+  "thumb": { "mediaId": "…", "cek": "…", "mediaType": "image/jpeg",
+             "bytes": 4200, "objectKey": "media/<uuid>" } }
+```
+
+### 9.4 NON TESTÉ (explicite)
+
+- **Transcodage** : AUCUN en V1 (arbitrage §9.2-1) — rien à tester.
+- **HLS** : V1 = MP4/WebM direct (arbitrage §9.2-4).
+- **Vidéo > 60 s** : refusée par construction (auto-stop + garde 61 s) — le
+  comportement d'UX au-delà (message, découpage) est hors V1.
+- **Mesh BLE** : la vidéo est IMPOSSIBLE par conception sur BLE (budget octets
+  du canal mesh) — hors périmètre web, câblé pour Wi-Fi/données uniquement.
+- **Migration RN** : dette tracée §8 SCALE-ARCHITECTURE (bloc 8–12 jp).
+- **Safari iOS** : MediaRecorder vidéo MP4 (H.264) Y figure via le fallback
+  `video/mp4` — mais NON TESTÉ (pas de Safari dans le sandbox) : test manuel
+  requis avant ouverture (même jalon que la voix §8.5).
+- **Charge réelle** : bench = 10 s réel + 30/60 s par blocs (chaîne mesurée à
+  la taille cible, pas le codec — honnêteté documentée §benchmark).

@@ -23,7 +23,7 @@ import {
   READ_MAX_AGE_MS,
   READ_FUTURE_TOLERANCE_MS,
 } from "@/lib/mbote/proof";
-import { proxyPresignedPath, publicStorageConfig, publicStorageOrigin, requireStorageConfig } from "@/lib/mbote/media-server";
+import { proxyPresignedPath, publicStorageConfig, publicStorageOrigin, requireStorageConfig, B2_VIDEO_DOWNLOAD_TTL_S } from "@/lib/mbote/media-server";
 import { generatePresignedUrl, PRESIGN_TTL_DEFAULT_S } from "@/lib/mbote/media/storage";
 
 export const dynamic = "force-dynamic";
@@ -70,11 +70,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Média non finalisé (upload incomplet)" }, { status: 409 });
   }
 
-  // 3. presigned GET (15 min) — origine publique (même origine via proxy)
+  // 3. presigned GET — origine publique (même origine via proxy) · TTL PAR
+  //    TYPE : vidéo 1 h (directive B4 — lecture dans la session sans re-
+  //    signer à chaque ouverture), images/audio 15 min (défaut B1).
+  const downloadTtlS = media.mediaType.startsWith("video/")
+    ? B2_VIDEO_DOWNLOAD_TTL_S
+    : PRESIGN_TTL_DEFAULT_S;
   const download = generatePresignedUrl(
     publicStorageConfig(cfg, publicStorageOrigin(req)),
     media.objectKey,
-    { method: "GET", ttlSec: PRESIGN_TTL_DEFAULT_S }
+    { method: "GET", ttlSec: downloadTtlS }
   );
 
   return NextResponse.json({

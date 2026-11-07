@@ -110,10 +110,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 4. whitelist type (directive B2 : jpeg | png | webp ; B3 : audio/opus)
+  // 4. whitelist type (directive B2 : jpeg | png | webp ; B3 : audio/opus ;
+  //    B4 : video/mp4 + video/webm — avi/mov/mkv REJETÉS avec message clair)
   if (!isB2UploadType(mediaType)) {
     return NextResponse.json(
-      { error: `Type ${mediaType || "absent"} hors whitelist (image/jpeg, image/png, image/webp, audio/opus)` },
+      {
+        error: `Type ${mediaType || "absent"} hors whitelist (image/jpeg, image/png, image/webp, audio/opus, video/mp4, video/webm) — convertissez d'abord (avi/mov/mkv non acceptés)`,
+      },
       { status: 400 }
     );
   }

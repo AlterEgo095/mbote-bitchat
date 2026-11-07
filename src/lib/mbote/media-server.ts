@@ -21,15 +21,20 @@ import {
   type MediaStorageConfig,
 } from "./media/storage";
 
-/** Whitelist d'upload B2/B3 (directive B2 images + B3 « contentType: 'audio/opus' »).
+/** Whitelist d'upload B2/B3/B4 (directives B2 images + B3 « contentType:
+ *  'audio/opus' » + B4 « contentType: 'video/mp4' et 'video/webm' »).
  *  Le socle B1 porte aussi webm/ogg/mp4 (conteneurs bruts) — la surface API
- *  n'expose que le type CANONIQUE audio/opus (le conteneur réel — webm ou ogg —
- *  est sniffré côté destinataire, arbitrage §8.4 de la spec). */
+ *  expose les types CANONIQUES vidéo (conteneur RÉEL sniffré : la lecture
+ *  <video> dépend du conteneur, contrairement à l'opus qui déclarait un type
+ *  unique). Rejet explicite des autres formats (avi/mov/mkv → 400, message
+ *  clair — arbitrage §9.5). */
 export const B2_UPLOAD_TYPES = [
   "image/jpeg",
   "image/png",
   "image/webp",
   "audio/opus",
+  "video/mp4",
+  "video/webm",
 ] as const;
 export type B2UploadType = (typeof B2_UPLOAD_TYPES)[number];
 
@@ -38,12 +43,15 @@ export function isB2UploadType(mediaType: string): mediaType is B2UploadType {
 }
 
 /** Limite d'upload PAR TYPE (spec §2) : image 5 Mo, audio/opus 10 Mo (B3 —
- *  permet ~5 min à 12 kbps ; l'UI borne la voix à 60 s de toute façon). */
+ *  permet ~5 min à 12 kbps ; l'UI borne la voix à 60 s de toute façon),
+ *  vidéo 100 Mo (B4 — 60 s @ 480p ≈ 5–15 Mo, la marge absorbe la 720p). */
 export const B2_UPLOAD_LIMITS: Record<B2UploadType, number> = {
   "image/jpeg": 5 * 1024 * 1024,
   "image/png": 5 * 1024 * 1024,
   "image/webp": 5 * 1024 * 1024,
   "audio/opus": 10 * 1024 * 1024,
+  "video/mp4": 100 * 1024 * 1024,
+  "video/webm": 100 * 1024 * 1024,
 };
 
 /** Limite d'upload image — 5 Mo (spec §2, conservé pour compat B2). */
@@ -65,6 +73,12 @@ export const B2_RATE_WINDOW_MS = 3_600_000;
  *  que le TTL presign + marge n'est plus finalisable (l'objet n'a pas pu
  *  être écrit : URL expirée). 20 min = 15 min TTL + 5 min de marge. */
 export const B2_FINALIZE_WINDOW_MS = 20 * 60_000;
+
+/** TTL presign de LECTURE vidéo — 1 h (directive B4 : « durée plus longue —
+ *  1h au lieu de 15 min, pour permettre la lecture » — le blob déchiffré
+ *  est re-téléchargeable pendant la session sans re-signer à chaque
+ *  seek). Les images/audio gardent 15 min. */
+export const B2_VIDEO_DOWNLOAD_TTL_S = 3600;
 
 /**
  * Config storage B1 — erreur typée → la route répond 503 « média non
