@@ -1,3 +1,4 @@
+import { existsSync } from 'fs'
 import { PrismaClient } from '@prisma/client'
 
 // ── connection_limit=1 FORCÉ (Étape 10 — constat charge light, §E preuve) ───
@@ -45,12 +46,20 @@ if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
 // ligne (le nouveau mode) → $queryRawUnsafe (executeRawUnsafe rejette :
 // « Execute returned results » — constat Étape 10, 4 instances de module par
 // process ont échoué silencieusement avant le fix). Idempotent, hors tx.
-void db
-  .$queryRawUnsafe<Array<{ journal_mode: string }>>('PRAGMA journal_mode=WAL')
-  .then((r) => {
-    if (process.env.MBOTE_DB_PRAGMA_LOG === '1')
-      console.warn(`[db] journal_mode=${r[0]?.journal_mode ?? '?'} (WAL attendu)`)
-  })
-  .catch((e) => {
-    console.error('[db] PRAGMA journal_mode=WAL a échoué (contenu en DELETE — contention possible) :', e instanceof Error ? e.message : e)
-  })
+// ⚠️ GARDE existsSync : le PRAGMA OUVRE le fichier à l'import — sur un
+// harnais de test qui recrée sa DB dans beforeAll, cette ouverture précoce
+// fait parler le client à l'INODE SUPPRIMÉ (P2021 « table does not exist »,
+// constat runner Étape 10). Si le fichier n'existe pas encore : skip — le
+// premier boot du serveur (db.ts du process serveur) posera WAL, persistant.
+const dbFilePath = process.env.DATABASE_URL?.replace(/^file:/, "").split("?")[0]
+if (!dbFilePath || existsSync(dbFilePath)) {
+  void db
+    .$queryRawUnsafe<Array<{ journal_mode: string }>>('PRAGMA journal_mode=WAL')
+    .then((r) => {
+      if (process.env.MBOTE_DB_PRAGMA_LOG === '1')
+        console.warn(`[db] journal_mode=${r[0]?.journal_mode ?? '?'} (WAL attendu)`)
+    })
+    .catch((e) => {
+      console.error('[db] PRAGMA journal_mode=WAL a échoué (contenu en DELETE — contention possible) :', e instanceof Error ? e.message : e)
+    })
+}

@@ -1,0 +1,1 @@
+R1 backend down : BFF /api/dashboard (session valide)=502 · /api/health=503

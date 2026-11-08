@@ -1,0 +1,16 @@
+prisma:query PRAGMA journal_mode=WAL
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+
+═══ R2 — verrou DB exclusif 6 s (migration en cours simulée) ═══
+[r2] BEGIN EXCLUSIVE posé (6 s)…
+[r2] verrou libéré après 6 s — statuts pendant le verrou : [401]
+PASS — R2a — pendant le verrou : dégradation gracieuse (refus uniforme, pas de crash) ([401])
+PASS — R2b — après libération : récupération 200
+
+═══ R3 — session expirée (expiresAt backdaté en DB) ═══
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+PASS — R3a — BFF avec session expirée → 401 (obtenu 401)
+PASS — R3b — page SSR → 302/307 vers le login (307 → /)
+PASS — R3c — aucune donnée de dashboard dans le corps (propre)
+
+✅ RÉSILIENCE OK

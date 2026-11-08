@@ -212,6 +212,10 @@ async function waitFor(u: string, timeoutMs: number): Promise<void> {
 beforeAll(async () => {
   if (!GUARD_OK) return;
   rmSync(DB_PATH, { force: true });
+  // ⚠️ side-cars WAL : un -wal/-shm STALE contre une DB fraîche corrompt la
+  // visibilité du schéma (P2021 « table does not exist » — constat Étape 10)
+  rmSync(DB_PATH + "-wal", { force: true });
+  rmSync(DB_PATH + "-shm", { force: true });
   rmSync(MAIN_LOG, { force: true });
   execFileSync("bunx", ["prisma", "migrate", "deploy"], {
     cwd: process.cwd(),
@@ -254,6 +258,8 @@ afterAll(async () => {
   }
   await db?.$disconnect();
   rmSync(DB_PATH, { force: true });
+  rmSync(DB_PATH + "-wal", { force: true });
+  rmSync(DB_PATH + "-shm", { force: true });
 });
 
 // ── helpers de scénarios ────────────────────────────────────────────────────

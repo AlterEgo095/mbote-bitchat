@@ -1,0 +1,32 @@
+[load] seed 10 cibles distinctes…
+prisma:query PRAGMA journal_mode=WAL
+[load] création de 10 sessions admin (super-admin)…
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+[load] échauffement (1 admin × 5 actions, séquentiel)…
+[load] échauffement terminé.
+[load] L1 : 10 admins × 5 actions, tous simultanés…
+
+═══ L1 — 10 admins simultanés × 5 actions (50 requêtes) ═══
+durée totale de la vague : 397 ms
+  queue-view                       n= 10  min=   48ms  médiane=   49ms  p95=   49ms  max=   49ms
+  hide                             n= 10  min=   42ms  médiane=   96ms  p95=  143ms  max=  143ms
+  warn                             n= 10  min=   89ms  médiane=   95ms  p95=  108ms  max=  108ms
+  suspend                          n= 10  min=   71ms  médiane=   89ms  p95=   96ms  max=   96ms
+  audit-view                       n= 10  min=   19ms  médiane=   43ms  p95=   63ms  max=   63ms
+statuts : 50/50 en 2xx-4xx propre, 0 en 5xx/timeout — histogramme : {"200":50}
+
+═══ L2 — 100 requêtes /audit?since=24h en parallèle ═══
+  /audit?since=24h                 n=100  min=  428ms  médiane=  432ms  p95=  434ms  max=  434ms
+durée totale de la vague : 435 ms · statuts : {"200":100}
+✅ L2 OK — max=434ms < 2000ms, 100/200
+
+✅ CHARGE LIGHT OK — aucune action perdue, aucun 500, aucun timeout
