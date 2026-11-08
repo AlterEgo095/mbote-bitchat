@@ -36,7 +36,7 @@ system (0) < auditor (1) < support (2) < moderator (3) < super-admin (4)
 > « Rôle compliance (lecture seule stats + backup status + audit) à considérer si certification SOC 2 / ISO 27001. » — directive Étape 6, clarification 2. L'`auditor` du MVP reste strictement lecture seule sur `AdminAudit` uniquement (arbitrage §12.17) ; un éventuel rôle `compliance` étendrait la lecture aux métriques dashboard SANS aucune mutation — à trancher au moment d'une certification, pas avant.
 
 ### 2.4 Création / désactivation des comptes
-- **Création : CLI uniquement** (Étape 3 : `scripts/admin-create.ts` → mot de passe temporaire + secret TOTP affichés une fois). **Pas d'UI de gestion des comptes dans le MVP** (hors périmètre §11).
+- **Création : CLI uniquement** (premier compte : `bun run admin:bootstrap` ; suivants : `bun run admin:create` — Étape 3 prévue, **livré Étape 10** pour combler l'écart code↔docs constaté : mot de passe + secret TOTP affichés une fois, garde `--allow-prod`, audit `admin_created`). **Pas d'UI de gestion des comptes dans le MVP** (hors périmètre §11).
 - **Désactivation : CLI** (`--disable`) — jamais de `DELETE` (les FK `hiddenBy`/`suspendedBy`/`handledBy` et l'audit référencent l'id). Un admin désactivé → toutes ses sessions deviennent instantanément invalides (`admin-auth.ts:79`).
 
 ---

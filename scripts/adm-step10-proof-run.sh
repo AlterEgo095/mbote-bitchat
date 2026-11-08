@@ -130,9 +130,9 @@ assert "$([ "$M" = "200" ] && [ "$P" = "200" ] && echo 0 || echo 1)" "serveurs p
 say "5. charge light — 10 admins × 5 actions + 100×/audit"
 set +e
 DATABASE_URL="file:$DB" bun scripts/adm-step10-load-light.ts \
-  --main="http://127.0.0.1:$MAIN" --token="$INTERNAL_TOKEN" \
-  > "$ASSETS/adm-step10-load-light.txt" 2>/dev/null
-LOAD_RC=$?
+  --main="http://127.0.0.1:$MAIN" --token="$INTERNAL_TOKEN" 2>/dev/null \
+  | grep -vE "^prisma:query" > "$ASSETS/adm-step10-load-light.txt"
+LOAD_RC=${PIPESTATUS[0]}
 set -e
 assert "$LOAD_RC" "charge light verte (rapport → adm-step10-load-light.txt)"
 grep -E "durée totale|statuts|OK" "$ASSETS/adm-step10-load-light.txt" | head -8
@@ -201,9 +201,9 @@ assert "$([ "$D2" = "200" ] && echo 0 || echo 1)" "panneau récupéré (dashboar
 say "8. R2 verrou DB 6s + R3 session expirée"
 set +e
 DATABASE_URL="file:$DB" bun scripts/adm-step10-resilience.ts \
-  --main="http://127.0.0.1:$MAIN" --panel="http://127.0.0.1:$PANEL" --token="$INTERNAL_TOKEN" \
-  > "$ASSETS/adm-step10-resilience-r2-r3.txt" 2>/dev/null
-RES_RC=$?
+  --main="http://127.0.0.1:$MAIN" --panel="http://127.0.0.1:$PANEL" --token="$INTERNAL_TOKEN" 2>/dev/null \
+  | grep -vE "^prisma:query" > "$ASSETS/adm-step10-resilience-r2-r3.txt"
+RES_RC=${PIPESTATUS[0]}
 set -e
 cat "$ASSETS/adm-step10-resilience-r2-r3.txt"
 assert "$RES_RC" "R2+R3 verts (journal → adm-step10-resilience-r2-r3.txt)"

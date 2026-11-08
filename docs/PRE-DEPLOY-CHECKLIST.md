@@ -123,6 +123,11 @@
       docker logs mbote-mesh --since 10m 2>&1 | grep -iE "(error|fail|exception)" ; docker logs mbote-relay --since 10m 2>&1 | grep -iE "(error|fail|exception)" ; docker logs mbote-admin --since 10m 2>&1 | grep -iE "(error|fail|exception)"
       # Attendu : 0 ligne critique (les warnings [pending-action:notify] / [ADMIN-ALERT] sont NORMAUX)
       ```
+- [ ] **3.6a — WAL actif** (posé automatiquement au boot par `src/lib/db.ts` — première exécution seulement, persistant au fichier) :
+      ```bash
+      docker exec mbote-mesh bun -e "const {Database}=require('bun:sqlite'); const d=new Database('/app/db/custom.db',{readonly:true}); console.log(JSON.stringify(d.query('PRAGMA journal_mode').get()));"
+      # Attendu : {"journal_mode":"wal"} — si "delete" : redémarrer le conteneur une fois (le PRAGMA se re-positionne)
+      ```
 - [ ] **3.6 — Santé interne admin (depuis le VPS)** :
       ```bash
       curl -s http://127.0.0.1:3001/api/health

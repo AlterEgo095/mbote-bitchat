@@ -65,8 +65,11 @@ curl -sI https://admin.mbotemesh.aenews.online/api/health
 
 ### 3.1 Seed du premier AdminUser (après Étape 3)
 ```bash
-docker exec mbote-mesh bun scripts/admin-create.ts --email operateur@<domaine> --role super-admin
+docker exec -it mbote-mesh bun run admin:create -- --email=operateur@<domaine> --role=super-admin --allow-prod
 #  → mot de passe temporaire + secret TOTP (QR otpauth) affichés UNE FOIS — noter hors ligne.
+#  (Étape 10 : le CLI scripts/admin-create.ts référencé ici EXISTE désormais —
+#   écart code↔docs comblé ; gardes --allow-prod + audit admin_created.
+#   Le PREMIER compte reste admin:bootstrap — PRE-DEPLOY-CHECKLIST §5.)
 #  Premier login panneau : mot de passe temporaire → enrôlement TOTP forcé (RBAC §7.2)
 #  → 2 codes break-glass affichés UNE FOIS — les conserver hors ligne (RBAC §7.3).
 ```
