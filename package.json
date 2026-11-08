@@ -16,7 +16,8 @@
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
     "db:backfill": "bun scripts/backfill-counters.ts",
-    "admin:bootstrap": "bun scripts/admin-bootstrap.ts"
+    "admin:bootstrap": "bun scripts/admin-bootstrap.ts",
+    "admin:create": "bun scripts/admin-create.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",

@@ -12,10 +12,17 @@
  *  expérience : inchangé, la file vit dans la couche Prisma, pas dans SQLite).
  *
  *  FIX : sérialiser les ÉCRIVAINS avant d'ouvrir la transaction. Chaque
- *  transaction admin (rare — actions humaines) court en ~10-20 ms ; les
+ *  transaction admin (rare — actions humaines) court en ~10-50 ms ; les
  *  suivantes attendent en microtasks JS (aucun verrou DB tenu, aucun timeout
  *  Prisma en train de courir). Les lectures (feed public, session lookups)
- *  ne passent PAS par le mutex — WAL continue de les servir en parallèle.
+ *  ne passent PAS par le mutex — WAL les sert en parallèle (src/lib/db.ts).
+ *
+ *  ⚠️ CHAÎNE SUR globalThis (2ᵉ constat, charge light L1 10-way) : Turbopack
+ *  bundle chaque route indépendamment — un module-level `tail` donnerait UNE
+ *  chaîne PAR ROUTE (hide ≠ warn ≠ suspend), donc jusqu'à 3 écrivains
+ *  concurrents et des P1008 résiduels (2×500 observés). La chaîne vit sur
+ *  globalThis (même pattern que globalForPrisma) → UNE seule file partagée
+ *  par toutes les routes du process.
  *
  *  INVARIANT DE DÉPLOIEMENT : le mutex est EN-PROCESS. Valide car le conteneur
  *  tourne en UNE instance (docker-compose, pas de scale horizontal — SQLite
@@ -30,17 +37,17 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-/** Chaîne des écrivains : chaque transaction s'accroche à la fin. */
-let tail: Promise<unknown> = Promise.resolve();
+const globalForMutex = globalThis as unknown as {
+  __mboteWriteTail?: Promise<unknown>;
+};
 
-/**
- * Exécute `fn` en file d'attente : ne démarre que lorsque TOUTES les écritures
- * précédentes sont terminées (succès OU échec — un rejet ne bloque pas la
- * file). Retourne la promesse de `fn` (le rejet se propage à l'appelant seul).
- */
+/** Exécute `fn` en file d'attente globale : ne démarre que lorsque TOUTES les
+ *  écritures précédentes sont terminées (succès OU échec — un rejet ne bloque
+ *  pas la file). Retourne la promesse de `fn` (le rejet se propage à
+ *  l'appelant seul, jamais à la chaîne). */
 export function withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
-  const run = tail.then(fn, fn);
+  const run = (globalForMutex.__mboteWriteTail ?? Promise.resolve()).then(fn, fn);
   // la chaîne elle-même ne doit JAMAIS rejeter (sinon les suivants héritent)
-  tail = run.catch(() => undefined);
+  globalForMutex.__mboteWriteTail = run.catch(() => undefined);
   return run;
 }
