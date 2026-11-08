@@ -1,0 +1,48 @@
+# PREUVE A — grep exhaustif writeAdminAudit (Étape 10, Point 1)
+# Date : 2026-11-08T10:25:02+00:00 — worktree wt-adm @ c2c55f6
+# Commande : rg -n 'writeAdminAudit' --glob '*.ts'
+
+tests/admin-audit-stress.test.ts:3: *  HARNESS ADM — STRESS writeAdminAudit (Point 1, clarification Étape 9+C1)
+tests/admin-audit-stress.test.ts:14: *  (pending-action.ts:638 — writeAdminAudit({tx})). Ce harnais verrouille la
+src/lib/mbote/admin-auth.ts:242: * Signature directive Étape 4 : writeAdminAudit({actorId, action, targetType,
+src/lib/mbote/admin-auth.ts:266:export async function writeAdminAudit(e: AdminAuditEntry): Promise<void> {
+src/lib/mbote/user-moderation.ts:130:    const { writeAdminAudit } = await import("@/lib/mbote/admin-auth");
+src/lib/mbote/user-moderation.ts:131:    await writeAdminAudit({
+src/lib/mbote/user-moderation.ts:193:    const { writeAdminAudit } = await import("@/lib/mbote/admin-auth");
+src/lib/mbote/user-moderation.ts:194:    await writeAdminAudit({
+src/lib/mbote/user-moderation.ts:239:    const { writeAdminAudit } = await import("@/lib/mbote/admin-auth");
+src/lib/mbote/user-moderation.ts:240:    await writeAdminAudit({
+src/lib/mbote/pending-action.ts:307:  const { writeAdminAudit } = await import("@/lib/mbote/admin-auth");
+src/lib/mbote/pending-action.ts:308:  await writeAdminAudit({
+src/lib/mbote/pending-action.ts:654:  const { writeAdminAudit } = await import("@/lib/mbote/admin-auth");
+src/lib/mbote/pending-action.ts:661:    // ⚠️ tx OBLIGATOIRE : sans lui, writeAdminAudit écrit via le client global
+src/lib/mbote/pending-action.ts:664:    await writeAdminAudit({
+src/app/api/moderation/action/route.ts:6:import { isDenied, requireAdmin, roleAtLeast, writeAdminAudit, type AdminContext } from "@/lib/mbote/admin-auth";
+src/app/api/moderation/action/route.ts:175:          await writeAdminAudit({
+src/app/api/moderation/action/route.ts:252:          await writeAdminAudit({
+src/app/api/moderation/action/route.ts:292:          await writeAdminAudit({
+src/app/api/internal/admin/break-glass/route.ts:32:  writeAdminAudit,
+src/app/api/internal/admin/break-glass/route.ts:99:    await writeAdminAudit({
+src/app/api/internal/admin/break-glass/route.ts:147:  await writeAdminAudit({
+src/app/api/internal/admin/logout/route.ts:12:import { getSessionFromToken, revokeAdminSession, writeAdminAudit } from "@/lib/mbote/admin-auth";
+src/app/api/internal/admin/logout/route.ts:39:      await writeAdminAudit({
+src/app/api/internal/admin/totp-enroll/route.ts:14:import { getSessionFromToken, writeAdminAudit } from "@/lib/mbote/admin-auth";
+src/app/api/internal/admin/totp-enroll/route.ts:55:    await writeAdminAudit({
+src/app/api/internal/admin/login/route.ts:21:import { createAdminSession, getSystemActor, writeAdminAudit } from "@/lib/mbote/admin-auth";
+src/app/api/internal/admin/login/route.ts:51:      await writeAdminAudit({
+src/app/api/internal/admin/login/route.ts:66:    await writeAdminAudit({
+src/app/api/internal/admin/login/route.ts:77:      await writeAdminAudit({
+
+# ===== Contexte transactionnel de chaque site (rg -n '\$transaction' libs) =====
+src/app/api/moderation/action/route.ts:148:        const result = await withWriteLock(() => db.$transaction(async (tx) => {
+src/app/api/moderation/action/route.ts:229:        const updated = await withWriteLock(() => db.$transaction(async (tx) => {
+src/app/api/moderation/action/route.ts:276:        const updated = await withWriteLock(() => db.$transaction(async (tx) => {
+src/app/api/moderation/action/route.ts:314:        const outcome = await withWriteLock(() => db.$transaction((tx) =>
+src/lib/mbote/user-moderation.ts:85:async function openReportIds(tx: Parameters<Parameters<typeof import("@/lib/db").db.$transaction>[0]>[0], userId: string): Promise<string[]> {
+src/lib/mbote/user-moderation.ts:102:  return withWriteLock(() => db.$transaction(async (tx) => {
+src/lib/mbote/user-moderation.ts:168:  return withWriteLock(() => db.$transaction(async (tx) => {
+src/lib/mbote/user-moderation.ts:222:  return withWriteLock(() => db.$transaction(async (tx) => {
+src/lib/mbote/pending-action.ts:66:type Tx = Parameters<Parameters<typeof import("@/lib/db").db.$transaction>[0]>[0];
+src/lib/mbote/pending-action.ts:158:    db.$transaction(
+src/lib/mbote/pending-action.ts:407:  const executed = await withWriteLock(() => db.$transaction(async (tx) => {
+src/lib/mbote/pending-action.ts:655:  const outcome = await withWriteLock(() => db.$transaction(async (tx) => {

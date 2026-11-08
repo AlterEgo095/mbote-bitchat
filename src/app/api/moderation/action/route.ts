@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { trackApiRequest } from "@/lib/mbote/state-store";
+import { withWriteLock } from "@/lib/mbote/write-mutex";
 import { MODERATION_ACTIONS, purgePostWithAudit } from "@/lib/mbote/moderation";
 import { isDenied, requireAdmin, roleAtLeast, writeAdminAudit, type AdminContext } from "@/lib/mbote/admin-auth";
 import { parseJustification } from "@/lib/mbote/justification";
@@ -13,6 +14,10 @@ import {
 } from "@/lib/mbote/user-moderation";
 
 export const dynamic = "force-dynamic";
+
+/** Course de dismissal (stress S5 — Étape 10) : le report a été traité entre
+ *  le pré-check hors tx et la transaction → perdant propre 409. */
+class DismissRaceError extends Error {}
 
 /**
  * Rôles MINIMAUX PAR ACTION — matrice RBAC §4 (ADMIN-RBAC.md) câblée à
@@ -139,41 +144,62 @@ export async function POST(req: NextRequest) {
           { status: 409 }
         );
       }
-      const result = await db.$transaction(async (tx) => {
-        const row = await tx.report.update({
-          where: { id: targetId },
-          data: { status: "dismissed", handledAt, handledById: ctx.adminUserId },
-          select: { id: true, status: true, handledAt: true },
-        });
-        const trace = await tx.moderationAction.create({
-          data: {
-            adminUserId: ctx.adminUserId,
-            actorLabel: ctx.actorLabel,
+      try {
+        const result = await withWriteLock(() => db.$transaction(async (tx) => {
+          // garde anti-course DANS la transaction (stress S5 — constat Étape 10) :
+          // le pré-check ci-dessus est un read hors tx — deux dismiss
+          // simultanés le passaient tous deux et le tx.report.update
+          // inconditionnel écrivait DEUX lignes d'audit pour un seul report
+          // (handledById = dernier écrivain). `where handledById: null` rend
+          // le second dismiss un perdant PROPRE (409).
+          const guarded = await tx.report.updateMany({
+            where: { id: targetId, handledById: null },
+            data: { status: "dismissed", handledAt, handledById: ctx.adminUserId },
+          });
+          if (guarded.count === 0) throw new DismissRaceError();
+          const row = await tx.report.update({
+            where: { id: targetId },
+            data: { status: "dismissed", handledAt, handledById: ctx.adminUserId },
+            select: { id: true, status: true, handledAt: true },
+          });
+          const trace = await tx.moderationAction.create({
+            data: {
+              adminUserId: ctx.adminUserId,
+              actorLabel: ctx.actorLabel,
+              action: "dismiss",
+              targetKind: "report",
+              targetId,
+              reason: just.value.formatted,
+            },
+          });
+          await writeAdminAudit({
+            tx,
+            actorId: ctx.adminUserId,
+            actorRole: ctx.role,
             action: "dismiss",
-            targetKind: "report",
+            targetType: "report",
             targetId,
-            reason: just.value.formatted,
-          },
+            before: { status: report.status },
+            after: { status: row.status },
+            ip: ctx.ip,
+            userAgent: ctx.userAgent,
+            justification: just.value.formatted,
+          });
+          return { row, trace };
+        }));
+        return NextResponse.json({
+          action: result.trace,
+          affected: { report: { id: result.row.id, status: result.row.status } },
         });
-        await writeAdminAudit({
-          tx,
-          actorId: ctx.adminUserId,
-          actorRole: ctx.role,
-          action: "dismiss",
-          targetType: "report",
-          targetId,
-          before: { status: report.status },
-          after: { status: row.status },
-          ip: ctx.ip,
-          userAgent: ctx.userAgent,
-          justification: just.value.formatted,
-        });
-        return { row, trace };
-      });
-      return NextResponse.json({
-        action: result.trace,
-        affected: { report: { id: result.row.id, status: result.row.status } },
-      });
+      } catch (err) {
+        if (err instanceof DismissRaceError) {
+          return NextResponse.json(
+            { error: "Signalement déjà traité (course de dismissal)" },
+            { status: 409 }
+          );
+        }
+        throw err;
+      }
     }
 
     // ── actions sur un contenu public ──
@@ -200,7 +226,7 @@ export async function POST(req: NextRequest) {
           where: { targetKind: { in: ["post", "comment"] }, targetId, status: "open" },
           select: { id: true },
         });
-        const updated = await db.$transaction(async (tx) => {
+        const updated = await withWriteLock(() => db.$transaction(async (tx) => {
           const row = await tx.post.update({
             where: { id: targetId },
             data: { hiddenAt: handledAt, hiddenById: ctx.adminUserId },
@@ -236,7 +262,7 @@ export async function POST(req: NextRequest) {
             justification: just.value.formatted,
           });
           return { row, trace, closed: openReports.map((r) => r.id) };
-        });
+        }));
         return NextResponse.json({
           action: updated.trace,
           affected: {
@@ -247,7 +273,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (action === "unhide") {
-        const updated = await db.$transaction(async (tx) => {
+        const updated = await withWriteLock(() => db.$transaction(async (tx) => {
           const row = await tx.post.update({
             where: { id: targetId },
             data: { hiddenAt: null, hiddenById: null },
@@ -276,7 +302,7 @@ export async function POST(req: NextRequest) {
             justification: just.value.formatted,
           });
           return { row, trace };
-        });
+        }));
         return NextResponse.json({
           action: updated.trace,
           affected: { post: { id: targetId, hiddenAt: updated.row.hiddenAt } },
@@ -285,13 +311,13 @@ export async function POST(req: NextRequest) {
 
       // purge — traces d'audit OBLIGATOIRES (post supprimé, traces conservées)
       try {
-        const outcome = await db.$transaction((tx) =>
+        const outcome = await withWriteLock(() => db.$transaction((tx) =>
           purgePostWithAudit(tx, {
             postId: targetId,
             actor,
             reason: just.value.formatted,
           })
-        );
+        ));
         return NextResponse.json({
           action: {
             action: "purge",

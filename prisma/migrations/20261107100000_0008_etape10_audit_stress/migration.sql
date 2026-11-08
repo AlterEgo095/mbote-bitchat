@@ -1,0 +1,22 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+--  0008_etape10_audit_stress — index unique PARTIEL : une seule intention
+--  OUVERTE par (actionType, cible) — Étape 10 (Point 1, clarification É9+C1)
+-- ─────────────────────────────────────────────────────────────────────────────
+--  CONSTAT (stress test S4, tests/admin-audit-stress.test.ts) : le garde
+--  anti-doublon de requestPendingAction (pending-action.ts:250-260) est un
+--  findFirst puis un create SÉPARÉS — deux super-admins créant la même
+--  intention SIMULTANÉMENT passent tous deux le findFirst (TOCTOU) et créent
+--  deux intentions pending pour la même cible.
+--
+--  FIX : index unique partiel (SQLite ≥ 3.8.0) — ne couvre que les lignes
+--  pending ; executed/cancelled/expired sortent de l'index (une NOUVELLE
+--  intention redevient possible après résolution — sémantique §15.4
+--  inchangée). Le create concurrent perdant lève une violation UNIQUE →
+--  interceptée en 409 (catch P2002 dans requestPendingAction).
+--
+--  PRÉCÉDENT : les triggers append-only AdminAudit (migration 0004) suivent
+--  le même pattern — contrainte moteur en SQL brut, invisible du schéma
+--  Prisma, jamais contournable par le code applicatif.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE UNIQUE INDEX "pending_action_unique_open" ON "PendingAction"("actionType", "targetId") WHERE "status" = 'pending';

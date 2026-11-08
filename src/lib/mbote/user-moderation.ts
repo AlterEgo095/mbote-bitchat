@@ -39,6 +39,7 @@
 
 import type { AdminContext, } from "@/lib/mbote/admin-auth";
 import type { Justification } from "@/lib/mbote/justification";
+import { withWriteLock } from "@/lib/mbote/write-mutex";
 
 /** Durées de suspension — Étape 6 (+ 30d Étape 7). "indefinite" → null. */
 export const SUSPEND_DURATIONS_MS: Record<string, number | null> = {
@@ -98,7 +99,7 @@ async function openReportIds(tx: Parameters<Parameters<typeof import("@/lib/db")
 export async function applyUserWarning({ user, ctx, just }: ApplyArgs): Promise<UserModerationOutcome> {
   const { db } = await import("@/lib/db");
   const handledAt = new Date();
-  return db.$transaction(async (tx) => {
+  return withWriteLock(() => db.$transaction(async (tx) => {
     const reportIds = await openReportIds(tx, user.id);
     if (reportIds.length > 0) {
       await tx.report.updateMany({
@@ -145,7 +146,7 @@ export async function applyUserWarning({ user, ctx, just }: ApplyArgs): Promise<
       reportsClosed: reportIds.length,
       trace: { action: "warn", targetKind: "user", targetId: user.pubkey },
     };
-  });
+  }));
 }
 
 /**
@@ -164,7 +165,7 @@ export async function applyUserSuspension(
   const { db } = await import("@/lib/db");
   const handledAt = new Date();
   const suspendedUntil = suspensionDeadline(handledAt, duration);
-  return db.$transaction(async (tx) => {
+  return withWriteLock(() => db.$transaction(async (tx) => {
     const reportIds = await openReportIds(tx, user.id);
     if (reportIds.length > 0) {
       await tx.report.updateMany({
@@ -208,7 +209,7 @@ export async function applyUserSuspension(
       reportsClosed: reportIds.length,
       trace: { action: "suspend", targetKind: "user", targetId: user.pubkey },
     };
-  });
+  }));
 }
 
 /**
@@ -218,7 +219,7 @@ export async function applyUserSuspension(
  */
 export async function applyUserUnsuspension({ user, ctx, just }: ApplyArgs): Promise<UserModerationOutcome> {
   const { db } = await import("@/lib/db");
-  return db.$transaction(async (tx) => {
+  return withWriteLock(() => db.$transaction(async (tx) => {
     const row = await tx.user.update({
       where: { id: user.id },
       data: { suspendedAt: null, suspendedById: null, suspendedUntil: null },
@@ -254,7 +255,7 @@ export async function applyUserUnsuspension({ user, ctx, just }: ApplyArgs): Pro
       reportsClosed: 0,
       trace: { action: "unsuspend", targetKind: "user", targetId: user.pubkey },
     };
-  });
+  }));
 }
 
 /** Charge une cible par PUBKEY (l'identifiant opératoire des traces admin). */

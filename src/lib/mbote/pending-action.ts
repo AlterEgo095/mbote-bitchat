@@ -42,6 +42,7 @@
 import type { AdminContext } from "@/lib/mbote/admin-auth";
 import type { Justification } from "@/lib/mbote/justification";
 import type { PurgeActor } from "@/lib/mbote/moderation";
+import { withWriteLock } from "@/lib/mbote/write-mutex";
 
 export const PENDING_ACTION_TYPES = ["ban_user", "purge_post"] as const;
 export type PendingActionType = (typeof PENDING_ACTION_TYPES)[number];
@@ -153,7 +154,9 @@ export async function expireIfDue(id: number): Promise<boolean> {
   if (!row || row.status !== "pending" || row.expiresAt.getTime() > now.getTime()) {
     return false;
   }
-  return db.$transaction(async (tx) => {
+  return withWriteLock(() =>
+    db.$transaction(
+    async (tx) => {
     const updated = await tx.pendingAction.updateMany({
       where: { id, status: "pending" }, // course : un seul gagne
       data: { status: "expired" },
@@ -176,7 +179,7 @@ export async function expireIfDue(id: number): Promise<boolean> {
       },
     });
     return true;
-  });
+  }));
 }
 
 /** Balayage du GET liste : toutes les pendings échues deviennent `expired`. */
@@ -261,20 +264,43 @@ export async function requestPendingAction({
 
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + PENDING_ACTION_TTL_MS);
-  const row = await db.pendingAction.create({
-    data: {
-      actionType,
-      targetType: actionType === "ban_user" ? "user" : "post",
-      targetId,
-      payloadJson: JSON.stringify(payload),
-      justification: just.formatted,
-      status: "pending",
-      createdById: ctx.adminUserId,
-      createdBySessionId: ctx.sessionId,
-      createdAt,
-      expiresAt,
-    },
-  });
+  let row: Awaited<ReturnType<typeof db.pendingAction.create>>;
+  try {
+    row = await db.pendingAction.create({
+      data: {
+        actionType,
+        targetType: actionType === "ban_user" ? "user" : "post",
+        targetId,
+        payloadJson: JSON.stringify(payload),
+        justification: just.formatted,
+        status: "pending",
+        createdById: ctx.adminUserId,
+        createdBySessionId: ctx.sessionId,
+        createdAt,
+        expiresAt,
+      },
+    });
+  } catch (e) {
+    // course de création (stress S4 — constat Étape 10) : deux super-admins
+    // passent TOUS DEUX le findFirst ci-dessus (TOCTOU), l'index unique partiel
+    // `pending_action_unique_open` (migration 0008) refuse le 2ᵉ create →
+    // 409 propre avec l'intention gagnante, jamais deux pendings.
+    const isUniqueRace =
+      (typeof e === "object" && e !== null && "code" in e && (e as { code: string }).code === "P2002") ||
+      (e instanceof Error && /pending_action_unique_open|UNIQUE constraint failed/.test(e.message));
+    if (isUniqueRace) {
+      const winner = await db.pendingAction.findFirst({
+        where: { actionType, targetId, status: "pending" },
+        select: { id: true },
+      });
+      return {
+        ok: false,
+        status: 409,
+        error: `Une intention ${actionType} est déjà en attente pour cette cible (#${winner?.id ?? "?"})`,
+      };
+    }
+    throw e;
+  }
 
   // ligne 1 du cycle : request (audité dans la même portée logique —
   // la pending elle-même est réversible, l'audit reste hors tx d'effet)
@@ -378,7 +404,7 @@ export async function approvePendingAction({
   const db = await txClient();
   const { purgePostWithAudit } = await import("@/lib/mbote/moderation");
 
-  const executed = await db.$transaction(async (tx) => {
+  const executed = await withWriteLock(() => db.$transaction(async (tx) => {
     // re-prise TX (course : deux approuveurs simultanés — un seul gagne)
     const fresh = await tx.pendingAction.findUnique({ where: { id: action.id } });
     if (!fresh || fresh.status !== "pending") {
@@ -431,7 +457,7 @@ export async function approvePendingAction({
   }).catch((e) => {
     if (e instanceof PendingActionRaceError) return null;
     throw e;
-  });
+  }));
 
   if (executed === null) {
     return { ok: false, status: 409, error: "Intention déjà traitée (course d'approbation)" };
@@ -626,7 +652,7 @@ export async function cancelPendingAction({
 
   const db = await txClient();
   const { writeAdminAudit } = await import("@/lib/mbote/admin-auth");
-  const outcome = await db.$transaction(async (tx) => {
+  const outcome = await withWriteLock(() => db.$transaction(async (tx) => {
     const updated = await tx.pendingAction.updateMany({
       where: { id: action.id, status: "pending" },
       data: { status: "cancelled" },
@@ -649,7 +675,7 @@ export async function cancelPendingAction({
   }).catch((e) => {
     if (e instanceof PendingActionRaceError) return null;
     throw e;
-  });
+  }));
   if (outcome === null) {
     return { ok: false as const, status: 409 as const, error: "Intention déjà traitée (course d'annulation)" };
   }
