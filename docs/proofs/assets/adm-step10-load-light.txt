@@ -5,17 +5,17 @@
 [load] L1 : 10 admins × 5 actions, tous simultanés…
 
 ═══ L1 — 10 admins simultanés × 5 actions (50 requêtes) ═══
-durée totale de la vague : 397 ms
-  queue-view                       n= 10  min=   48ms  médiane=   49ms  p95=   49ms  max=   49ms
-  hide                             n= 10  min=   42ms  médiane=   96ms  p95=  143ms  max=  143ms
-  warn                             n= 10  min=   89ms  médiane=   95ms  p95=  108ms  max=  108ms
-  suspend                          n= 10  min=   71ms  médiane=   89ms  p95=   96ms  max=   96ms
-  audit-view                       n= 10  min=   19ms  médiane=   43ms  p95=   63ms  max=   63ms
+durée totale de la vague : 385 ms
+  queue-view                       n= 10  min=   42ms  médiane=   44ms  p95=   77ms  max=   77ms
+  hide                             n= 10  min=   51ms  médiane=   80ms  p95=  133ms  max=  133ms
+  warn                             n= 10  min=   73ms  médiane=   94ms  p95=  101ms  max=  101ms
+  suspend                          n= 10  min=   76ms  médiane=   87ms  p95=   90ms  max=   90ms
+  audit-view                       n= 10  min=   34ms  médiane=   43ms  p95=   57ms  max=   57ms
 statuts : 50/50 en 2xx-4xx propre, 0 en 5xx/timeout — histogramme : {"200":50}
 
 ═══ L2 — 100 requêtes /audit?since=24h en parallèle ═══
-  /audit?since=24h                 n=100  min=  428ms  médiane=  432ms  p95=  434ms  max=  434ms
-durée totale de la vague : 435 ms · statuts : {"200":100}
-✅ L2 OK — max=434ms < 2000ms, 100/200
+  /audit?since=24h                 n=100  min=  416ms  médiane=  422ms  p95=  425ms  max=  426ms
+durée totale de la vague : 427 ms · statuts : {"200":100}
+✅ L2 OK — max=426ms < 2000ms, 100/200
 
 ✅ CHARGE LIGHT OK — aucune action perdue, aucun 500, aucun timeout
