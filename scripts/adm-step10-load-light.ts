@@ -74,7 +74,7 @@ async function timedFetch(
     const res = await fetch(`${MAIN}${path}`, { ...restInit, headers, signal: AbortSignal.timeout(15_000) });
     status = res.status;
     await res.arrayBuffer(); // consommer le corps (connexion libérée)
-  } catch (e) {
+  } catch {
     status = -1; // timeout / réseau
   }
   return { admin, action, status, ms: Date.now() - start };

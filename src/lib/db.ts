@@ -49,7 +49,7 @@ void db
   .$queryRawUnsafe<Array<{ journal_mode: string }>>('PRAGMA journal_mode=WAL')
   .then((r) => {
     if (process.env.MBOTE_DB_PRAGMA_LOG === '1')
-      console.log(`[db] journal_mode=${r[0]?.journal_mode ?? '?'} (WAL attendu)`)
+      console.warn(`[db] journal_mode=${r[0]?.journal_mode ?? '?'} (WAL attendu)`)
   })
   .catch((e) => {
     console.error('[db] PRAGMA journal_mode=WAL a échoué (contenu en DELETE — contention possible) :', e instanceof Error ? e.message : e)
