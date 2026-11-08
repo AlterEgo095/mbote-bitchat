@@ -118,6 +118,19 @@ bash scripts/c1-push-proof-run.sh → EXIT 0
   sur un Chrome/Edge réel (PWA installée, device réel — même jalon que la
   directive « PWA installée »). La CHAÎNE SERVEUR est intégralement prouvée
   par le harnais (mini push service HTTPS réel local).
+  **Limitation de test, pas de code (précision opérateur, Étape 10+C1,
+  2026-11-08)** : FCM subscribe est testé UNIQUEMENT avec le mini push
+  service local (payload confirmé sur le fil). **Test manuel device réel
+  OBLIGATOIRE au premier déploiement** — procédure (rejouable, 10 min) :
+  (1) installer la PWA sur un Android réel (Chrome → « Installer l'app ») ;
+  (2) ouvrir les paramètres → Notifications → accepter la permission
+  (l'état affiché = SUBSCRIPTION, pas la permission seule) ; (3) depuis un
+  second compte (autre device ou navigateur), envoyer un DM à ce compte ;
+  (4) vérifier la notification reçue SANS contenu du message (knock
+  `fromLabel` seul — E2EE oblige) ; (5) toucher la notification → l'app
+  s'ouvre sur les messages ; (6) en mode avion sur le récepteur puis DM,
+  vérifier la notification à la reconnexion. Toute étape en échec =
+  bloquant d'ouverture publique (consigner dans PRE-DEPLOY-CHECKLIST.md).
 - **FCM Android** : pas de compte Firebase — reporté (vague dédiée).
 - **Notification device réelle** (clic → focus + navigate SPA) : le
   notificationclick handler est codé (postMessage NAVIGATE → location.assign,
