@@ -211,6 +211,38 @@ silencieux.
 
 ---
 
+## 4b. DB au boot : toute opération de configuration doit valider son résultat (Clarification 1, vague D1+C2)
+
+> **Toute opération de configuration DB au boot doit valider son résultat.
+> `$executeRawUnsafe` ne retourne pas de ligne — utiliser `$queryRawUnsafe`
+> pour PRAGMA.**
+
+Classe de bug fondatrice (constat Étape 10) :
+`$executeRawUnsafe('PRAGMA journal_mode=WAL')` rejetait
+« Execute returned results » **sans lever d'erreur côté appelant** — 4
+instances de module par process posaient le WAL en silence raté (contenu en
+DELETE → convois de verrous). La règle est désormais appliquée dans
+`src/lib/db.ts` :
+
+1. le PRAGMA utilise `$queryRawUnsafe` (il retourne une ligne) ;
+2. le retour est **inspecté** par `assertBootPragmaResult()` — un mode
+   inattendu lève ;
+3. tout échec de transport (SQLITE_BUSY, fichier illisible) est **propagé** —
+   jamais absorbé par un `console.error` ;
+4. au boot, un échec = **fail-fast** (crash loud + restart container) plutôt
+   que continuation silencieuse sur une DB mal configurée.
+
+Harnais de non-régression : `tests/db-boot-pragma.test.ts` (S1 validation
+pure, S2 happy path WAL persistant, S3 SQLITE_BUSY par process tiers → rejet,
+S4 fichier illisible → rejet). Constat de probe : les verrous POSIX advisory
+sont **par-process** — bun:sqlite et Prisma dans le même process ne se
+disputent JAMAIS un verrou ; le S3 doit verrouiller depuis un process enfant.
+
+Toute future PRAGMA/DDL au boot (ex. PRAGMA synchronous, warmup FTS) doit
+suivre les 4 points ci-dessus et étendre `verifyBootPragmas()`.
+
+---
+
 ## 5. `mobile/` : le miroir est synchronisé au VPS — ne pas ré-exclure (incident I-1)
 
 Le rsync du déploiement (`deploy-vps.yml`) synchronise `mobile/` vers le VPS.

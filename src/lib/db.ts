@@ -51,15 +51,58 @@ if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
 // fait parler le client à l'INODE SUPPRIMÉ (P2021 « table does not exist »,
 // constat runner Étape 10). Si le fichier n'existe pas encore : skip — le
 // premier boot du serveur (db.ts du process serveur) posera WAL, persistant.
+//
+// ── Clarification 1 (D1+C2) — AUCUNE opération de config DB silencieuse ─────
+// Le bug $executeRawUnsafe (PRAGMA rejeté SANS lever) est une CLASSE de bug :
+// une PRAGMA/DDL au boot qui échoue en silence ruine la prod sans trace.
+// Règle désormais appliquée ici (documentée dans DEV-SETUP §db) :
+//   1. toute opération de config DB au boot VALIDE son résultat — le retour
+//      de $queryRawUnsafe est inspecté, un mode inattendu = throw ;
+//   2. un échec de transport (SQLITE_BUSY, fichier illisible) = rejet
+//      propagé — JAMAIS absorbé par un simple console.error.
+// Tradeoff assumé : fail-fast (unhandled rejection → crash loud du process,
+// redémarrage container + log visible) plutôt que continuation silencieuse
+// sur une DB mal configurée (contenu en DELETE → convois de verrous, cf.
+// constat Étape 10). Le PRAGMA étant idempotent et persistant, un boot qui
+// réussit une fois ne retombe jamais en arrière.
 const dbFilePath = process.env.DATABASE_URL?.replace(/^file:/, "").split("?")[0]
+
+/**
+ * Valide le retour d'un PRAGMA journal_mode — pure et testable.
+ * Clarification 1 : un résultat inattendu DOIT lever, jamais passer en silence.
+ */
+export function assertBootPragmaResult(
+  rows: Array<{ journal_mode: string } | Record<string, unknown>>
+): void {
+  const mode = (rows as Array<{ journal_mode?: string }>)[0]?.journal_mode
+  if (typeof mode !== "string" || mode.toLowerCase() !== "wal") {
+    throw new Error(
+      `[db] PRAGMA journal_mode a retourné « ${mode ?? "aucune ligne"} » au lieu de « wal » — opération de config DB ratée au boot (refus de continuer en silence, cf. DEV-SETUP §db)`
+    )
+  }
+}
+
+/**
+ * Pose et VÉRIFIE le journal_mode=WAL au boot. Toute anomalie (transport OU
+ * résultat inattendu) rejette — l'appelant boot applique le fail-fast.
+ * Testable avec un client dédié (tests/db-boot-pragma.test.ts).
+ */
+export async function verifyBootPragmas(client: PrismaClient = db): Promise<void> {
+  const rows = await client.$queryRawUnsafe<Array<{ journal_mode: string }>>(
+    "PRAGMA journal_mode=WAL"
+  )
+  assertBootPragmaResult(rows)
+}
+
 if (!dbFilePath || existsSync(dbFilePath)) {
-  void db
-    .$queryRawUnsafe<Array<{ journal_mode: string }>>('PRAGMA journal_mode=WAL')
-    .then((r) => {
-      if (process.env.MBOTE_DB_PRAGMA_LOG === '1')
-        console.warn(`[db] journal_mode=${r[0]?.journal_mode ?? '?'} (WAL attendu)`)
-    })
-    .catch((e) => {
-      console.error('[db] PRAGMA journal_mode=WAL a échoué (contenu en DELETE — contention possible) :', e instanceof Error ? e.message : e)
-    })
+  verifyBootPragmas().catch((e) => {
+    console.error(
+      "[db] Échec de la validation PRAGMA au boot — ARRÊT (fail-fast, une DB mal configurée ne doit jamais servir du trafic en silence) :",
+      e instanceof Error ? e.message : e
+    )
+    // rethrow → rejet non géré = crash loud du process (container restart +
+    // journal visible). Ne JAMAIS remplacer par un swallow : c'est exactement
+    // la classe de bug qu'Étape 10 a attrapée (4 instances/module en silence).
+    throw e
+  })
 }

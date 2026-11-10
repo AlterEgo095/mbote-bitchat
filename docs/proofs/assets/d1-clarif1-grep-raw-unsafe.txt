@@ -1,0 +1,29 @@
+# Clarification 1 — audit des opérations DB silencieuses (grep rejouable)
+# Date: 2026-11-10 06:35 UTC · branche: feat/adm-mvp
+# Question: $executeRawUnsafe / $queryRawUnsafe ignorent-ils un échec en silence ?
+
+$ rg -n "\$executeRawUnsafe|\$queryRawUnsafe" --glob "!node_modules" --glob "!.next" (hors docs/ et scripts/ one-off)
+
+== runtime src/ — $executeRawUnsafe ==
+src/lib/db.ts:56:// Le bug $executeRawUnsafe (PRAGMA rejeté SANS lever) est une CLASSE de bug :
+
+== runtime src/ — $queryRawUnsafe (tous consomment leur résultat, sauf db.ts avant fix) ==
+src/app/api/internal/admin/queue/route.ts:123:      const anchor = await db.$queryRawUnsafe<Array<{ n: bigint }>>(
+src/app/api/internal/admin/queue/route.ts:139:    // requête), keyset ensuite. $queryRawUnsafe : SQL dynamique + params
+src/app/api/internal/admin/queue/route.ts:150:    const rows = await db.$queryRawUnsafe<Array<{
+src/app/api/internal/admin/users/[id]/route.ts:67:    const openTotalRow = await db.$queryRawUnsafe<Array<{ n: bigint }>>(
+src/app/api/internal/admin/users/[id]/route.ts:73:    const openReportsRows = await db.$queryRawUnsafe<Array<{
+src/app/api/internal/admin/users/route.ts:135:      const rows = await db.$queryRawUnsafe<Array<{
+src/app/api/internal/admin/users/route.ts:187:      const anchor = await db.$queryRawUnsafe<Array<{ n: bigint }>>(
+src/app/api/internal/admin/users/route.ts:224:    const rows = await db.$queryRawUnsafe<Array<{
+src/lib/mbote/user-moderation.ts:86:  const rows = (await tx.$queryRawUnsafe<Array<{ id: string }>>(
+src/lib/mbote/pending-action.ts:525:  const reportRows = (await tx.$queryRawUnsafe<Array<{ id: string }>>(
+src/lib/db.ts:46:// ligne (le nouveau mode) → $queryRawUnsafe (executeRawUnsafe rejette :
+src/lib/db.ts:60://      de $queryRawUnsafe est inspecté, un mode inattendu = throw ;
+src/lib/db.ts:91:  const rows = await client.$queryRawUnsafe<Array<{ journal_mode: string }>>(
+
+== verdict ==
+- src/ : $executeRawUnsafe — 0 code actif (1 match = COMMENTAIRE db.ts:56 qui documente la classe de bug) ; les 11 × $queryRawUnsafe sont des SELECT keyset/PRAGMA dont le résultat est awaité et consommé (3 matches = commentaires).
+- scripts/backfill-counters.ts : $executeRawUnsafe sur UPDATE (bonne API, exit 1 via main().catch).
+- prisma/migrations : PRAGMA defer_foreign_keys/foreign_keys gérés par prisma migrate (échec = échec loud).
+- SEUL point de risque : src/lib/db.ts (PRAGMA journal_mode au boot) — FIXÉ : verifyBootPragmas() valide le résultat (assertBootPragmaResult → throw) et propage tout échec (fail-fast). Test : tests/db-boot-pragma.test.ts 4/4.

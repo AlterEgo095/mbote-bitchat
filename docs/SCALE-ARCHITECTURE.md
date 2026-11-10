@@ -195,6 +195,23 @@ silencieusement.
 |---|---|---|---|
 | **FNV-64 mobile → SHA-256-128** (crypto spec OD-6, lacune L-5) | Empreinte SHA-256-128 (`dedupFingerprint`) livrée côté web + miroirs mobiles + parité verrouillée (A1) ; les appelants **synchrones** de `mobile/src/transport/MeshTransport.ts` (contrainte Hermes : WebCrypto asynchrone) utilisent encore FNV-1a 64 pour la dédup mémoire | **Bloc 2-F « UI médias » au plus tard — et dans tous les cas AVANT toute ouverture publique** | la dédup mémoire porte les chunks des médias E2EE ; le verrou médias (R4) ne doit pas reposer sur une empreinte forgeable. Si la vague mobile glisse, le jalon glisse AVEC elle mais reste antérieur à l'ouverture publique |
 
+### §8.1 — Check de merge propre par branche à chaque fin de vague (Clarification 2, vague D1+C2)
+
+Depuis 16 phases, `feat/adm-mvp` et `feat/b1-media-foundation` vivent
+séparément ; le déploiement testera TOUTES les branches d'un coup. Si des
+conflits de merge s'accumulent entre vagues, ils seront découverts au pire
+moment (au déploiement). Règle :
+
+> **Check de merge propre `feat/adm-mvp` ← `feat/b1-media-foundation` à chaque
+> fin de vague. Si conflits > 3 fichiers, résoudre maintenant, pas au
+> déploiement.**
+
+Exécution rejouable : `bash scripts/check-merge-clean.sh` — fait un
+`git merge --no-commit --no-ff feat/b1-media-foundation` depuis `feat/adm-mvp`,
+liste les conflits éventuels, puis `git merge --abort` (aucun état modifié).
+Le résultat est consigné dans le rapport de preuve de chaque vague (D1, C2,
+C3, C4) avec la liste des fichiers en conflit récurrents.
+
 ---
 
 *Mbote Mesh — la scalabilité par la géométrie : la proximité est servie par la
