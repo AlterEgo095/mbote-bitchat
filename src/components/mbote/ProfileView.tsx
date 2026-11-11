@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   BadgeCheck,
+  Bell,
   Check,
   Copy,
   Flame,
@@ -40,6 +41,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiFetchFeed, apiGetUser, apiUpsertIdentity } from "@/lib/mbote/api";
 import { shortKey, signPayload } from "@/lib/mbote/crypto";
 import { identityProofMessage } from "@/lib/mbote/proof";
+import {
+  isPushSupported,
+  notificationPermission,
+  subscribePush,
+  unsubscribePush,
+} from "@/lib/mbote/push-client";
 import type { StoredIdentity } from "@/lib/mbote/identity";
 import { MboteAvatar } from "./Avatar";
 import { PostCard } from "./PostCard";
@@ -103,6 +110,101 @@ export function ProfileView({
   const [bio, setBio] = useState(identity.bio ?? "");
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // ── C1 : notifications push (knock sans contenu) ──
+  const pushSupported = isPushSupported();
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | "unsupported">(
+    notificationPermission()
+  );
+  // l'ÉTAT OPÉRATOIRE est la SUBSCRIPTION (pas la permission seule : un
+  // navigateur peut avoir GRANTÉ la permission sans abonnement actif —
+  // re-install PWA, purge serveur — le bouton doit alors proposer Activer)
+  const [pushSubscribed, setPushSubscribed] = useState<boolean | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushNotice, setPushNotice] = useState<string | null>(null);
+  const [vapidKey, setVapidKey] = useState<string | null>(null);
+  const [vapidState, setVapidState] = useState<"loading" | "ok" | "unavailable">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    setPushPermission(notificationPermission());
+    (async () => {
+      try {
+        const reg = await navigator.serviceWorker?.getRegistration("/");
+        const sub = await reg?.pushManager.getSubscription();
+        if (!cancelled) setPushSubscribed(!!sub);
+      } catch {
+        if (!cancelled) setPushSubscribed(false);
+      }
+    })();
+    fetch("/api/push/config")
+      .then(async (r) => {
+        if (r.status === 503) {
+          if (!cancelled) setVapidState("unavailable");
+          return null;
+        }
+        if (!r.ok) {
+          if (!cancelled) setVapidState("unavailable");
+          return null;
+        }
+        const body = (await r.json()) as { publicKey?: string };
+        if (!cancelled) {
+          setVapidKey(body.publicKey ?? null);
+          setVapidState(body.publicKey ? "ok" : "unavailable");
+        }
+        return null;
+      })
+      .catch(() => {
+        if (!cancelled) setVapidState("unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** ACTIVER — invariant §1.8 : le bouton attend le 2xx du serveur (et le
+   *  subscribe navigateur) avant d'afficher « activées ». Rien d'optimiste. */
+  const activerPush = async () => {
+    if (!vapidKey || pushBusy) return;
+    setPushBusy(true);
+    setPushNotice(null);
+    try {
+      const res = await subscribePush({
+        me: myPub,
+        sign: (payload) => signPayload(identity.signPriv, payload),
+        vapidPublicKey: vapidKey,
+        userAgent: navigator.userAgent,
+      });
+      if (res.ok) {
+        setPushPermission(notificationPermission());
+        setPushSubscribed(true);
+        setPushNotice("Notifications activées — tu seras prévenu(e) d'un nouveau message (sans contenu).");
+      } else {
+        // l'état suit le RÉEL : ni permission ni registration — refetch serveur
+        setPushPermission(notificationPermission());
+        setPushNotice(res.reason);
+      }
+    } catch (e) {
+      setPushNotice(e instanceof Error ? e.message : "Échec de l'activation (réseau)");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  /** DÉSACTIVER — même invariant. */
+  const desactiverPush = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    setPushNotice(null);
+    try {
+      await unsubscribePush({ me: myPub, sign: (payload) => signPayload(identity.signPriv, payload) });
+      setPushPermission(notificationPermission());
+      setPushSubscribed(false);
+      setPushNotice("Notifications désactivées sur cet appareil.");
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   const user = me.data?.user;
 
@@ -296,6 +398,73 @@ export function ProfileView({
           </div>
         )}
       </div>
+
+      {/* ── C1 : Notifications push (knock sans contenu) ── */}
+      <Card>
+        <CardContent className="flex flex-col items-start gap-3 p-4 sm:flex-row sm:items-center">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+            <Bell className="size-5 text-primary" aria-hidden="true" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">Notifications push</p>
+            <p className="text-xs text-muted-foreground">
+              Prévenu(e) d&apos;un nouveau message même app fermée — sans AUCUN
+              contenu : la notification dit « Nouveau message de X », rien de
+              plus (le serveur ne peut pas lire tes messages).
+            </p>
+            {pushNotice && (
+              <p
+                className="mt-1 text-xs font-medium text-foreground"
+                role="status"
+                data-testid="push-notice"
+              >
+                {pushNotice}
+              </p>
+            )}
+            {!pushSupported && (
+              <p className="mt-1 text-xs" data-testid="push-unsupported">
+                Ce navigateur ne supporte pas les notifications push (HTTP non
+                sécurisé ou navigateur ancien).
+              </p>
+            )}
+            {pushSupported && vapidState === "unavailable" && (
+              <p className="mt-1 text-xs" data-testid="push-unavailable">
+                Push indisponible côté serveur (clés VAPID non configurées).
+              </p>
+            )}
+            {pushSupported && pushPermission === "denied" && (
+              <p className="mt-1 text-xs text-destructive" data-testid="push-denied">
+                Notifications bloquées par le navigateur — réautorise-les dans
+                les réglages du site (icône cadenas).
+              </p>
+            )}
+          </div>
+          {pushSupported && vapidState === "ok" && pushSubscribed !== null && (
+            pushSubscribed ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 shrink-0"
+                onClick={() => void desactiverPush()}
+                disabled={pushBusy}
+                data-testid="btn-push-disable"
+              >
+                {pushBusy ? "En attente…" : "Désactiver"}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                className="h-9 shrink-0"
+                onClick={() => void activerPush()}
+                disabled={pushBusy}
+                data-testid="btn-push-enable"
+              >
+                {pushBusy ? "En attente du serveur…" : "Activer les notifications"}
+              </Button>
+            )
+          )}
+        </CardContent>
+      </Card>
 
       {/* Zone de danger */}
       <Card className="border-destructive/40">

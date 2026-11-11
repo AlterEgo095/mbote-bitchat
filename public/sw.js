@@ -23,8 +23,14 @@
  * d'abord l'app shell « / » en cache (pré-cachée à l'install), puis
  * offline.html en dernier recours. L'app s'OUVRE donc même sans réseau après
  * une première visite : le mode courrier (outbox IndexedDB) prend le relais.
+ *
+ * v6 (C1 — push notifications) : handlers `push` + `notificationclick`.
+ * KNOCK SANS CONTENU : le payload serveur est { type, fromLabel } UNIQUEMENT
+ * (E2EE oblige — le serveur notifie ce qu'il ne peut pas lire). Affichage :
+ * « Mbote — Nouveau message de <fromLabel> », clic → focus + navigation
+ * vers la vue messages (SPA ?view=messages). Badge compteur si supporté.
  */
-const VERSION = "mbote-v5";
+const VERSION = "mbote-v6";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
@@ -87,6 +93,82 @@ self.addEventListener("install", (event) => {
 // F-26 : activation sur consentement explicite du client (toast + bouton)
 self.addEventListener("message", (event) => {
   if (event.data === "SKIP_WAITING") self.skipWaiting();
+  // C1 (DEBUG/preuve) : rendu de notification via le MÊME code que le handler
+  // `push` — permet la preuve navigateur sans push service réel (l'app sandbox
+  // ne peut pas joindre fcm.googleapis.com). Same-origin only (les
+  // postMessage vers un SW ne peuvent venir que de l'origine du SW).
+  if (event.data && event.data.type === "PUSH_TEST" && event.data.knock) {
+    event.waitUntil(afficherKnock(event.data.knock));
+  }
+});
+
+// ───────────────────────── C1 : PUSH (knock sans contenu) ─────────────────────────
+
+/** Badge cosmétique si supporté (pas de compteur serveur en V1). */
+async function badgeCompteur() {
+  try {
+    if (navigator.setAppBadge) await navigator.setAppBadge();
+  } catch {
+    /* cosmétique — jamais bloquant */
+  }
+}
+
+/**
+ * Affiche la notification du knock. KNOCK-ONLY : on AFFICHE exactement ce
+ * que le serveur a envoyé ({ type, fromLabel }) — aucun contenu n'existe
+ * dans le payload, donc rien de sensible ne peut fuiter via le lock screen.
+ */
+async function afficherKnock(knock) {
+  const fromLabel =
+    knock && typeof knock.fromLabel === "string" && knock.fromLabel.length > 0
+      ? knock.fromLabel.slice(0, 60)
+      : "un contact";
+  await self.registration.showNotification("Mbote", {
+    body: `Nouveau message de ${fromLabel}`,
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    tag: "mbote-dm", // une seule notification empilée (rate limit outbound côté serveur)
+    renotify: false,
+    data: { url: "/?view=messages" },
+  });
+  await badgeCompteur();
+}
+
+self.addEventListener("push", (event) => {
+  let knock = null;
+  try {
+    knock = event.data ? event.data.json() : null;
+  } catch {
+    knock = null; // payload illisible → knock générique (jamais de crash SW)
+  }
+  event.waitUntil(afficherKnock(knock));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/?view=messages";
+  event.waitUntil(
+    (async () => {
+      const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      // une fenêtre Mbote déjà ouverte → focus + navigation SPA (pas de reload)
+      for (const client of clientList) {
+        if (new URL(client.url).origin === self.location.origin) {
+          await client.focus();
+          client.postMessage({ type: "NAVIGATE", url: target });
+          return;
+        }
+      }
+      // sinon : ouvrir l'app sur la vue messages
+      await self.clients.openWindow(target);
+    })()
+  );
+});
+
+self.addEventListener("notificationclose", () => {
+  // badge retiré si la dernière notification est ignorée (cosmétique)
+  if (navigator.clearAppBadge) {
+    navigator.clearAppBadge().catch(() => undefined);
+  }
 });
 
 self.addEventListener("activate", (event) => {

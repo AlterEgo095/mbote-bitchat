@@ -1,0 +1,5 @@
+bitrate  tailleKo  chiffre  presign  put  finalize  download  decrypt  TOTAL (ms)
+ 6 kbps        22         3        12     8         12         14         3      51
+ 8 kbps        25         1         5     9          7         15         1      39
+12 kbps        46         2         9     7         22         13         6      59
+TOTAL — bench voix terminé (chaîne complète par bitrate)

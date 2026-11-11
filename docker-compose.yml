@@ -29,6 +29,12 @@ services:
       # DB ni en réponse HTTP — ne ressuscite pas ADMIN_API_KEY (RBAC §8).
       # Inutilisé avant l'Étape 4 ; déclaré dès maintenant pour figer le contrat.
       - ADMIN_INTERNAL_TOKEN=${ADMIN_INTERNAL_TOKEN:-}
+      # C1 — push notifications (Web Push VAPID) : sans elles le push est
+      # DÉSACTIVÉ fail-closed (GET /api/push/config → 503, UI masquée).
+      # Générer : bunx web-push generate-vapid-keys
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@mbotemesh.aenews.online}
     volumes:
       - mbote-data:/app/db
     restart: unless-stopped

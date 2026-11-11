@@ -1,0 +1,19 @@
+{
+  "noticeDenied": "Notifications bloquées — réautorisez-les dans les réglages du navigateur pour ce site",
+  "serviceWorker": {
+    "active": true,
+    "scope": "http://127.0.0.1:3103/"
+  },
+  "notice": "Subscription refusée par le navigateur : Registration failed - permission denied",
+  "subscribeOutcome": "refused (push service interne du Chromium OSS sans Google API keys — NON TESTÉ, see proofs)",
+  "endpointPrefix": "(aucun — push service interne indisponible en sandbox)",
+  "renderedNotification": [
+    {
+      "title": "Mbote",
+      "body": "Nouveau message de Bob (preuve navigateur)",
+      "data": {
+        "url": "/?view=messages"
+      }
+    }
+  ]
+}

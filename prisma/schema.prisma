@@ -418,3 +418,46 @@ model DirectMessage {
   @@index([senderKey, recipientKey])
   @@index([recipientKey, createdAt])
 }
+
+// B2 — médias chiffrés E2EE (socle B1 activé). Le serveur stocke le
+// CIPHERTEXT du client dans un bucket S3-compatible (clés sans identité,
+// spec MEDIA-ENVELOPE-SPEC §4.2) et ne tient ici que la correspondance
+// mediaId ↔ objectKey + le décompte de quota. Aucun plaintext ne transite.
+// cycle de vie : pending (upload-url) → finalized (finalize) | orphan (jamais finalisé).
+model Media {
+  id          String    @id @default(cuid())
+  objectKey   String    @unique // media/<uuid v4> — assertObjectKey (whitelist stricte)
+  ownerPubkey String // clé ECDSA du propriétaire (preuve de possession exigée)
+  mediaType   String // image/jpeg | image/png | image/webp (whitelist §2)
+  sizeBytes   Int // taille du CIPHERTEXT stocké (= Content-Length signé du PUT)
+  plainBytes  Int // taille plaintext déclarée par le client (contrôle destinataire)
+  sha256      String? // empreinte du ciphertext (contrôle/dédup, déclarée par le client)
+  status      String    @default("pending") // pending | finalized
+  createdAt   DateTime  @default(now())
+  finalizedAt DateTime?
+
+  @@index([ownerPubkey, createdAt]) // quota SUM(sizeBytes) finalized par owner
+  @@index([status, createdAt]) // purge des pending orphelins
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C1 — PUSH NOTIFICATIONS (Web Push VAPID pour la PWA — knock SANS contenu)
+// ─────────────────────────────────────────────────────────────────────────────
+// Le payload push est un KNOCK : { type, fromLabel } — AUCUN contenu de
+// message (E2EE oblige : le serveur ne peut pas lire ce qu'il notifie).
+// Upsert idempotent par ENDPOINT (unique) ; disabledAt = purge douce (410
+// Gone du push service ou unsubscribe signé) — la ligne reste pour l'audit.
+model PushSubscription {
+  id          String   @id @default(cuid())
+  userId      String // FK logique User.pubkey (identité à clés locales)
+  endpoint    String   @unique // URL du push service — évite les doublons
+  keysP256dh  String // clé ECDH du navigateur (RFC 8291)
+  keysAuth    String // secret d'auth du navigateur (RFC 8291)
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now()) // maj à chaque re-subscribe (upsert)
+  disabledAt  DateTime?
+
+  @@index([userId, disabledAt]) // les destinataires actifs d'un knock
+  @@index([disabledAt]) // purge des abonnements morts (410)
+}

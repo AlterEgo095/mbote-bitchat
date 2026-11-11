@@ -1,0 +1,18 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/media-b3-voice.test.ts:
+(pass) B3 · lib opus pure (sniff, validation, waveform) > S1 — sniff conteneurs : ogg/opus + webm/opus OK · MP3 → null · spoof REFUSÉ [1.11ms]
+(pass) B3 · lib opus pure (sniff, validation, waveform) > S2 — validateVoiceForSend : 61 s REFUS · 60 s OK · vide REFUS · MP3 REFUS [0.58ms]
+(pass) B3 · lib opus pure (sniff, validation, waveform) > S3 — waveform : 100 peaks, bornés, zone forte > silence (algorithme partagé) [2.09ms]
+(pass) B3 · lib opus pure (sniff, validation, waveform) > S4 — isOpusRecordingSupported() === false sous bun (harness) [0.07ms]
+(pass) B3 · lib opus pure (sniff, validation, waveform) > V5 — garde client 61 s : uploadVoiceNote lève AVANT TOUT fetch [0.70ms]
+(pass) B3 · lib opus pure (sniff, validation, waveform) > S5 — round-trip crypto : encryptBytes(A) → decryptBytes(B) SHA-256 identique [4.84ms]
+(pass) B3 · E2E voix (pipeline B2, audio/opus) > V1 — chaîne complète : uploadVoiceNote → presign → PUT → finalize → downloadVoiceNote → SHA-256 identique [302.23ms]
+(pass) B3 · E2E voix (pipeline B2, audio/opus) > V2 — contentType audio/mpeg → 400 (whitelist) [9.69ms]
+(pass) B3 · E2E voix (pipeline B2, audio/opus) > V3 — 11 Mo audio/opus → 400 (limite PAR TYPE, image reste 5 Mo) [18.05ms]
+(pass) B3 · E2E voix (pipeline B2, audio/opus) > V4 — DEUX appareils : A enregistre → dm2 E2EE (durée+peaks chiffrés) → B reçoit → SHA-256 identique [111.98ms]
+
+ 10 pass
+ 0 fail
+ 249 expect() calls
+Ran 10 tests across 1 file. [530.00ms]

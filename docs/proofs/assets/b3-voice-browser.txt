@@ -1,0 +1,10 @@
+{
+  "identity": "Alice-Voice-B3",
+  "peer": "B-voice-12680",
+  "recording": "started",
+  "preview": "shown",
+  "send": "2xx",
+  "bubble": "rendered",
+  "play": "started",
+  "tapToggle": "ok"
+}

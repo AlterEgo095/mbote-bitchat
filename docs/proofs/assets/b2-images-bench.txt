@@ -1,0 +1,9 @@
+
+[b2-bench] Latence du flux B2 complet (moyennes d'un run — sandbox) :
+| taille | strip | chiffr. | presign | PUT | finalize | lecture | decrypt | TOTAL |
+|---|---|---|---|---|---|---|---|---|
+| 100 Ko (réel : 164 Ko) | 0 ms | 8 ms | 6 ms | 12 ms | 10 ms | 14 ms | 19 ms | 71 ms |
+| 1 Mo (réel : 1778 Ko) | 0 ms | 56 ms | 69 ms | 10 ms | 51 ms | 33 ms | 114 ms | 347 ms |
+| 5 Mo (réel : 5042 Ko) | 0 ms | 116 ms | 138 ms | 9 ms | 112 ms | 59 ms | 221 ms | 676 ms |
+
+[b2-bench] OK

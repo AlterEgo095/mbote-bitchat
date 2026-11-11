@@ -1,0 +1,20 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/media-b4-video.test.ts:
+(pass) B4 · lib vidéo pure (sniff, validation, guards) > U1 — sniff : webm vidéo OK · webm AUDIO (B3) → null · MP3 → null · MP4 ftyp OK · barrière REFUSE l'audio [19.54ms]
+(pass) B4 · lib vidéo pure (sniff, validation, guards) > U2 — validateVideoForSend : 61 s REFUS · 60 s OK · vide REFUS · audio REFUS · 110 Mo REFUS [8.17ms]
+(pass) B4 · lib vidéo pure (sniff, validation, guards) > U3 — captureVideoThumbnail hors navigateur → erreur propre [0.78ms]
+(pass) B4 · lib vidéo pure (sniff, validation, guards) > U4 — isVideoRecordingSupported() === false sous bun (harness) [0.04ms]
+(pass) B4 · lib vidéo pure (sniff, validation, guards) > U5 — garde client : uploadVideoNote 61 s lève AVANT tout fetch [1.60ms]
+(pass) B4 · E2E header + pipeline vidéo réel > H1 — Permissions-Policy servi : camera=(self) + microphone=(self) [8.79ms]
+(pass) B4 · E2E header + pipeline vidéo réel > V1 — chaîne complète : webm réel + thumb → finalize → download → SHA-256 identique [389.85ms]
+(pass) B4 · E2E header + pipeline vidéo réel > V2 — contentType video/avi → 400 (message clair, convertissez d'abord) [9.64ms]
+(pass) B4 · E2E header + pipeline vidéo réel > V3 — 110 Mo → 400 (limite PAR TYPE vidéo 100 Mo) [4.08ms]
+(pass) B4 · E2E header + pipeline vidéo réel > V4 — TTL download : vidéo ≈ 1 h · image ≈ 15 min [40.18ms]
+(pass) B4 · E2E header + pipeline vidéo réel > V5 — round-trip DEUX appareils : dm2 E2EE (vidéo + thumb) → SHA-256 identiques [170.31ms]
+(pass) B4 · E2E header + pipeline vidéo réel > V6 — barrière de rendu : dm2 video/webm portant des OCTETS AUDIO → REFUS [47.56ms]
+
+ 12 pass
+ 0 fail
+ 53 expect() calls
+Ran 12 tests across 1 file. [759.00ms]

@@ -1,0 +1,147 @@
+▲ Next.js 16.1.3 (Turbopack)
+- Local:         http://localhost:3203
+- Network:       http://21.0.13.23:3203
+
+✓ Starting...
+✓ Ready in 642ms
+ GET /api/stats 200 in 164ms (compile: 132ms, render: 32ms)
+prisma:query SELECT `main`.`Post`.`geohash` FROM `main`.`Post` WHERE `main`.`Post`.`geohash` IS NOT NULL GROUP BY `main`.`Post`.`geohash` LIMIT ? OFFSET ?
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`GatewayNode`.`id` FROM `main`.`GatewayNode` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`User`.`id` FROM `main`.`User` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`MeshIngest`.`hash` FROM `main`.`MeshIngest` WHERE `main`.`MeshIngest`.`createdAt` >= ? LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Post`.`id` FROM `main`.`Post` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`DirectMessage`.`id` FROM `main`.`DirectMessage` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Like`.`id` FROM `main`.`Like` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+ GET /api/push/config 200 in 47ms (compile: 42ms, render: 5ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 40ms (compile: 26ms, render: 14ms)
+ POST /api/push/subscribe 401 in 6ms (compile: 1642µs, render: 4ms)
+ POST /api/push/subscribe 400 in 6ms (compile: 1426µs, render: 4ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 30ms (compile: 22ms, render: 8ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 10ms (compile: 1856µs, render: 8ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+ POST /api/push/subscribe 404 in 10ms (compile: 1564µs, render: 8ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 9ms (compile: 1884µs, render: 7ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 9ms (compile: 1595µs, render: 7ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 8ms (compile: 1565µs, render: 6ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 7ms (compile: 1256µs, render: 5ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 6ms (compile: 1105µs, render: 5ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 6ms (compile: 1296µs, render: 5ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 6ms (compile: 1176µs, render: 5ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 6ms (compile: 1334µs, render: 5ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 6ms (compile: 1242µs, render: 5ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 7ms (compile: 1456µs, render: 5ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+ POST /api/push/subscribe 429 in 6ms (compile: 1128µs, render: 5ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 16ms (compile: 11ms, render: 6ms)
+prisma:query BEGIN IMMEDIATE
+prisma:query UPDATE `main`.`PushSubscription` SET `disabledAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND `main`.`PushSubscription`.`userId` = ? AND `main`.`PushSubscription`.`disabledAt` IS NULL)
+prisma:query COMMIT
+ POST /api/push/unsubscribe 200 in 30ms (compile: 23ms, render: 7ms)
+prisma:query BEGIN IMMEDIATE
+prisma:query UPDATE `main`.`PushSubscription` SET `disabledAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND `main`.`PushSubscription`.`userId` = ? AND `main`.`PushSubscription`.`disabledAt` IS NULL)
+prisma:query COMMIT
+prisma:query SELECT `main`.`PushSubscription`.`id`, `main`.`PushSubscription`.`userId`, `main`.`PushSubscription`.`disabledAt` FROM `main`.`PushSubscription` WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) LIMIT ? OFFSET ?
+ POST /api/push/unsubscribe 200 in 8ms (compile: 1551µs, render: 6ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 6ms (compile: 1062µs, render: 5ms)
+prisma:query BEGIN IMMEDIATE
+prisma:query UPDATE `main`.`PushSubscription` SET `disabledAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND `main`.`PushSubscription`.`userId` = ? AND `main`.`PushSubscription`.`disabledAt` IS NULL)
+prisma:query COMMIT
+prisma:query SELECT `main`.`PushSubscription`.`id`, `main`.`PushSubscription`.`userId`, `main`.`PushSubscription`.`disabledAt` FROM `main`.`PushSubscription` WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) LIMIT ? OFFSET ?
+ POST /api/push/unsubscribe 404 in 6ms (compile: 1215µs, render: 5ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 8ms (compile: 1095µs, render: 6ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey`, `main`.`User`.`nickname`, `main`.`User`.`bio`, `main`.`User`.`ecdhPub`, `main`.`User`.`isBot`, `main`.`User`.`botPriv`, `main`.`User`.`suspendedAt`, `main`.`User`.`suspendedById`, `main`.`User`.`createdAt`, `main`.`User`.`updatedAt` FROM `main`.`User` WHERE `main`.`User`.`pubkey` IN (?,?) LIMIT ? OFFSET ?
+prisma:query BEGIN IMMEDIATE
+prisma:query INSERT INTO `main`.`ReplayGuard` (`id`, `kind`, `createdAt`, `expiresAt`) VALUES (?,?,?,?) RETURNING `id` AS `id`, `kind` AS `kind`, `createdAt` AS `createdAt`, `expiresAt` AS `expiresAt`
+prisma:query INSERT INTO `main`.`ReplayCounter` (`key`, `senderKey`, `recipientKey`, `epoch`, `lastSeq`, `updatedAt`) VALUES (?,?,?,?,?,?) RETURNING `key` AS `key`, `senderKey` AS `senderKey`, `recipientKey` AS `recipientKey`, `epoch` AS `epoch`, `lastSeq` AS `lastSeq`, `updatedAt` AS `updatedAt`
+prisma:query INSERT INTO `main`.`DirectMessage` (`id`, `senderKey`, `recipientKey`, `iv`, `ciphertext`, `msgId`, `seq`, `createdAt`) VALUES (?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `senderKey` AS `senderKey`, `recipientKey` AS `recipientKey`, `iv` AS `iv`, `ciphertext` AS `ciphertext`, `msgId` AS `msgId`, `seq` AS `seq`, `createdAt` AS `createdAt`, `readAt` AS `readAt`
+prisma:query COMMIT
+ POST /api/dms 200 in 55ms (compile: 28ms, render: 27ms)
+prisma:query SELECT `main`.`PushSubscription`.`id`, `main`.`PushSubscription`.`endpoint`, `main`.`PushSubscription`.`keysP256dh`, `main`.`PushSubscription`.`keysAuth` FROM `main`.`PushSubscription` WHERE (`main`.`PushSubscription`.`userId` = ? AND `main`.`PushSubscription`.`disabledAt` IS NULL) LIMIT ? OFFSET ?
+[push:sender] payload knock → {"type":"new_message","fromLabel":"Alice-Push"}
+[push:sender] payload knock → {"type":"new_message","fromLabel":"Alice-Push"}
+[push:sender] payload knock → {"type":"new_message","fromLabel":"Alice-Push"}
+[push:sender] payload knock → {"type":"new_message","fromLabel":"Alice-Push"}
+(node:20090) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+(Use `node --trace-warnings ...` to show where the warning was created)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 11ms (compile: 1746µs, render: 9ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey`, `main`.`User`.`nickname`, `main`.`User`.`bio`, `main`.`User`.`ecdhPub`, `main`.`User`.`isBot`, `main`.`User`.`botPriv`, `main`.`User`.`suspendedAt`, `main`.`User`.`suspendedById`, `main`.`User`.`createdAt`, `main`.`User`.`updatedAt` FROM `main`.`User` WHERE `main`.`User`.`pubkey` IN (?,?) LIMIT ? OFFSET ?
+prisma:query BEGIN IMMEDIATE
+prisma:query INSERT INTO `main`.`ReplayGuard` (`id`, `kind`, `createdAt`, `expiresAt`) VALUES (?,?,?,?) RETURNING `id` AS `id`, `kind` AS `kind`, `createdAt` AS `createdAt`, `expiresAt` AS `expiresAt`
+prisma:query INSERT INTO `main`.`ReplayCounter` (`key`, `senderKey`, `recipientKey`, `epoch`, `lastSeq`, `updatedAt`) VALUES (?,?,?,?,?,?) RETURNING `key` AS `key`, `senderKey` AS `senderKey`, `recipientKey` AS `recipientKey`, `epoch` AS `epoch`, `lastSeq` AS `lastSeq`, `updatedAt` AS `updatedAt`
+prisma:query INSERT INTO `main`.`DirectMessage` (`id`, `senderKey`, `recipientKey`, `iv`, `ciphertext`, `msgId`, `seq`, `createdAt`) VALUES (?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `senderKey` AS `senderKey`, `recipientKey` AS `recipientKey`, `iv` AS `iv`, `ciphertext` AS `ciphertext`, `msgId` AS `msgId`, `seq` AS `seq`, `createdAt` AS `createdAt`, `readAt` AS `readAt`
+prisma:query COMMIT
+ POST /api/dms 200 in 16ms (compile: 6ms, render: 10ms)
+prisma:query SELECT `main`.`PushSubscription`.`id`, `main`.`PushSubscription`.`endpoint`, `main`.`PushSubscription`.`keysP256dh`, `main`.`PushSubscription`.`keysAuth` FROM `main`.`PushSubscription` WHERE (`main`.`PushSubscription`.`userId` = ? AND `main`.`PushSubscription`.`disabledAt` IS NULL) LIMIT ? OFFSET ?
+[push:sender] payload knock → {"type":"new_message","fromLabel":"Alice-Push"}
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey`, `main`.`User`.`nickname`, `main`.`User`.`bio`, `main`.`User`.`ecdhPub`, `main`.`User`.`isBot`, `main`.`User`.`botPriv`, `main`.`User`.`suspendedAt`, `main`.`User`.`suspendedById`, `main`.`User`.`createdAt`, `main`.`User`.`updatedAt` FROM `main`.`User` WHERE `main`.`User`.`pubkey` IN (?,?) LIMIT ? OFFSET ?
+prisma:query BEGIN IMMEDIATE
+prisma:query INSERT INTO `main`.`ReplayGuard` (`id`, `kind`, `createdAt`, `expiresAt`) VALUES (?,?,?,?) RETURNING `id` AS `id`, `kind` AS `kind`, `createdAt` AS `createdAt`, `expiresAt` AS `expiresAt`
+prisma:query INSERT INTO `main`.`ReplayCounter` (`key`, `senderKey`, `recipientKey`, `epoch`, `lastSeq`, `updatedAt`) VALUES (?,?,?,?,?,?) RETURNING `key` AS `key`, `senderKey` AS `senderKey`, `recipientKey` AS `recipientKey`, `epoch` AS `epoch`, `lastSeq` AS `lastSeq`, `updatedAt` AS `updatedAt`
+prisma:query UPDATE `main`.`ReplayCounter` SET `lastSeq` = ?, `updatedAt` = ? WHERE (`main`.`ReplayCounter`.`key` = ? AND `main`.`ReplayCounter`.`lastSeq` < ?)
+prisma:query INSERT INTO `main`.`DirectMessage` (`id`, `senderKey`, `recipientKey`, `iv`, `ciphertext`, `msgId`, `seq`, `createdAt`) VALUES (?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `senderKey` AS `senderKey`, `recipientKey` AS `recipientKey`, `iv` AS `iv`, `ciphertext` AS `ciphertext`, `msgId` AS `msgId`, `seq` AS `seq`, `createdAt` AS `createdAt`, `readAt` AS `readAt`
+prisma:query COMMIT
+[push:sender] rate limit outbound pour BP4BfBEVgeI2… — knock ignoré (retry 30 s)
+ POST /api/dms 200 in 16ms (compile: 1938µs, render: 14ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 9ms (compile: 1823µs, render: 7ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey`, `main`.`User`.`nickname`, `main`.`User`.`bio`, `main`.`User`.`ecdhPub`, `main`.`User`.`isBot`, `main`.`User`.`botPriv`, `main`.`User`.`suspendedAt`, `main`.`User`.`suspendedById`, `main`.`User`.`createdAt`, `main`.`User`.`updatedAt` FROM `main`.`User` WHERE `main`.`User`.`pubkey` IN (?,?) LIMIT ? OFFSET ?
+prisma:query BEGIN IMMEDIATE
+prisma:query INSERT INTO `main`.`ReplayGuard` (`id`, `kind`, `createdAt`, `expiresAt`) VALUES (?,?,?,?) RETURNING `id` AS `id`, `kind` AS `kind`, `createdAt` AS `createdAt`, `expiresAt` AS `expiresAt`
+prisma:query INSERT INTO `main`.`ReplayCounter` (`key`, `senderKey`, `recipientKey`, `epoch`, `lastSeq`, `updatedAt`) VALUES (?,?,?,?,?,?) RETURNING `key` AS `key`, `senderKey` AS `senderKey`, `recipientKey` AS `recipientKey`, `epoch` AS `epoch`, `lastSeq` AS `lastSeq`, `updatedAt` AS `updatedAt`
+prisma:query INSERT INTO `main`.`DirectMessage` (`id`, `senderKey`, `recipientKey`, `iv`, `ciphertext`, `msgId`, `seq`, `createdAt`) VALUES (?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `senderKey` AS `senderKey`, `recipientKey` AS `recipientKey`, `iv` AS `iv`, `ciphertext` AS `ciphertext`, `msgId` AS `msgId`, `seq` AS `seq`, `createdAt` AS `createdAt`, `readAt` AS `readAt`
+prisma:query COMMIT
+ POST /api/dms 200 in 12ms (compile: 2ms, render: 10ms)
+prisma:query SELECT `main`.`PushSubscription`.`id`, `main`.`PushSubscription`.`endpoint`, `main`.`PushSubscription`.`keysP256dh`, `main`.`PushSubscription`.`keysAuth` FROM `main`.`PushSubscription` WHERE (`main`.`PushSubscription`.`userId` = ? AND `main`.`PushSubscription`.`disabledAt` IS NULL) LIMIT ? OFFSET ?
+[push:sender] payload knock → {"type":"new_message","fromLabel":"Alice-Push"}
+prisma:query BEGIN IMMEDIATE
+prisma:query UPDATE `main`.`PushSubscription` SET `disabledAt` = ? WHERE (`main`.`PushSubscription`.`id` = ? AND `main`.`PushSubscription`.`disabledAt` IS NULL)
+prisma:query COMMIT
+[push:sender] 410 Gone → subscription cmw699zu… désactivée
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`PushSubscription` (`id`, `userId`, `endpoint`, `keysP256dh`, `keysAuth`, `userAgent`, `createdAt`, `lastSeenAt`) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT  (`endpoint`) DO UPDATE SET `userId` = ?, `keysP256dh` = ?, `keysAuth` = ?, `userAgent` = ?, `disabledAt` = ?, `lastSeenAt` = ? WHERE (`main`.`PushSubscription`.`endpoint` = ? AND 1=1) RETURNING `id` AS `id`, `endpoint` AS `endpoint`, `disabledAt` AS `disabledAt`
+ POST /api/push/subscribe 200 in 9ms (compile: 2ms, render: 7ms)
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey`, `main`.`User`.`nickname`, `main`.`User`.`bio`, `main`.`User`.`ecdhPub`, `main`.`User`.`isBot`, `main`.`User`.`botPriv`, `main`.`User`.`suspendedAt`, `main`.`User`.`suspendedById`, `main`.`User`.`createdAt`, `main`.`User`.`updatedAt` FROM `main`.`User` WHERE `main`.`User`.`pubkey` IN (?,?) LIMIT ? OFFSET ?
+prisma:query BEGIN IMMEDIATE
+prisma:query INSERT INTO `main`.`ReplayGuard` (`id`, `kind`, `createdAt`, `expiresAt`) VALUES (?,?,?,?) RETURNING `id` AS `id`, `kind` AS `kind`, `createdAt` AS `createdAt`, `expiresAt` AS `expiresAt`
+prisma:query INSERT INTO `main`.`ReplayCounter` (`key`, `senderKey`, `recipientKey`, `epoch`, `lastSeq`, `updatedAt`) VALUES (?,?,?,?,?,?) RETURNING `key` AS `key`, `senderKey` AS `senderKey`, `recipientKey` AS `recipientKey`, `epoch` AS `epoch`, `lastSeq` AS `lastSeq`, `updatedAt` AS `updatedAt`
+prisma:query INSERT INTO `main`.`DirectMessage` (`id`, `senderKey`, `recipientKey`, `iv`, `ciphertext`, `msgId`, `seq`, `createdAt`) VALUES (?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `senderKey` AS `senderKey`, `recipientKey` AS `recipientKey`, `iv` AS `iv`, `ciphertext` AS `ciphertext`, `msgId` AS `msgId`, `seq` AS `seq`, `createdAt` AS `createdAt`, `readAt` AS `readAt`
+prisma:query COMMIT
+ POST /api/dms 200 in 12ms (compile: 2ms, render: 10ms)
+prisma:query SELECT `main`.`PushSubscription`.`id`, `main`.`PushSubscription`.`endpoint`, `main`.`PushSubscription`.`keysP256dh`, `main`.`PushSubscription`.`keysAuth` FROM `main`.`PushSubscription` WHERE (`main`.`PushSubscription`.`userId` = ? AND `main`.`PushSubscription`.`disabledAt` IS NULL) LIMIT ? OFFSET ?
+[push:sender] payload knock → {"type":"new_message","fromLabel":"Alice-Push"}
+[push:sender] erreur inconnue : read ECONNRESET

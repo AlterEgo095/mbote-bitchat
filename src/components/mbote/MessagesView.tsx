@@ -8,14 +8,21 @@ import {
   AlertTriangle,
   Bot,
   Clock,
+  ImageOff,
+  Image as ImageIcon,
   KeyRound,
-  Lock,
   Loader2,
+  Lock,
   MessageSquarePlus,
+  Mic,
+  Film,
+  Paperclip,
   Send,
   ShieldAlert,
   ShieldCheck,
   ShieldQuestion,
+  Square,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 // D1 : index local de recherche DM — 100 % IndexedDB, ZÉRO requête réseau
@@ -50,6 +57,37 @@ import {
 import { openMessage, sealMessage, shortKey, signPayload } from "@/lib/mbote/crypto";
 import { dm2ProofMessage, dmReadProofMessage, trustVerifyProofMessage } from "@/lib/mbote/proof";
 import { newDmMsgId, nextDmSeq } from "@/lib/mbote/dm-sequence";
+import { VoiceNote } from "@/components/VoiceNote";
+import { VideoBubble, type VideoThumbRef } from "@/components/VideoBubble";
+import {
+  attachUploadQueueFlusher,
+  downloadImage,
+  downloadVoiceNote,
+  enqueueOfflineUpload,
+  MediaClientError,
+  sessionCekFor,
+  uploadImage,
+  uploadVideoNote,
+  uploadVoiceNote,
+  type UploadStage,
+  type UploadedMedia,
+  type UploadedVideo,
+  type UploadedVoice,
+} from "@/lib/mbote/media-client";
+import {
+  VOICE_MAX_DURATION_S,
+  VOICE_UNSUPPORTED_MESSAGE,
+  isOpusRecordingSupported,
+  VoiceRecorder,
+  type VoiceRecording,
+} from "@/lib/mbote/media/opus";
+import {
+  VIDEO_MAX_DURATION_S,
+  VIDEO_UNSUPPORTED_MESSAGE,
+  isVideoRecordingSupported,
+  VideoRecorder,
+  type VideoRecording,
+} from "@/lib/mbote/media/video";
 import {
   confirmLocalTrust,
   evaluateLocalTrust,
@@ -68,6 +106,72 @@ interface QueuedDm {
   queuedAt: number;
 }
 
+// ── B2 — payload média d'un dm2 (spec MEDIA-ENVELOPE-SPEC §7.3) ──────────────
+// Le plaintext dm2 pour un média est un JSON : le CEK voyage DANS le dm2 E2EE —
+// le serveur reste aveugle. Tout plaintext non-JSON (historique) = texte brut.
+interface MediaDmPayload {
+  kind: "media";
+  text: string;
+  mediaId: string;
+  cek: string;
+  mediaType: string;
+  bytes: number;
+  objectKey: string;
+  /** B3 — voix : durée (ms) + waveform (100 peaks) voyagent dans le dm2 E2EE */
+  durationMs?: number;
+  peaks?: number[];
+  /** B4 — vidéo : vignette image B2 (voyage dans le dm2 E2EE, serveur aveugle) */
+  thumb?: VideoThumbRef;
+  width?: number;
+  height?: number;
+}
+
+function parseDmBody(body: string): MediaDmPayload | null {
+  if (!body.startsWith("{")) return null;
+  try {
+    const p = JSON.parse(body) as Partial<MediaDmPayload>;
+    if (
+      p?.kind === "media" &&
+      typeof p.mediaId === "string" &&
+      typeof p.cek === "string" &&
+      typeof p.mediaType === "string"
+    ) {
+      return {
+        kind: "media",
+        text: p.text ?? "",
+        mediaId: p.mediaId,
+        cek: p.cek,
+        mediaType: p.mediaType,
+        bytes: p.bytes ?? 0,
+        objectKey: p.objectKey ?? "",
+        durationMs: typeof p.durationMs === "number" ? p.durationMs : undefined,
+        peaks: Array.isArray(p.peaks) ? (p.peaks as number[]) : undefined,
+        thumb:
+          p.thumb && typeof p.thumb.mediaId === "string" && typeof p.thumb.cek === "string"
+            ? {
+                mediaId: p.thumb.mediaId,
+                cek: p.thumb.cek,
+                mediaType: typeof p.thumb.mediaType === "string" ? p.thumb.mediaType : "image/jpeg",
+                bytes: typeof p.thumb.bytes === "number" ? p.thumb.bytes : 0,
+                objectKey: typeof p.thumb.objectKey === "string" ? p.thumb.objectKey : "",
+              }
+            : undefined,
+        width: typeof p.width === "number" ? p.width : undefined,
+        height: typeof p.height === "number" ? p.height : undefined,
+      };
+    }
+  } catch {
+    /* plaintext historique — texte brut */
+  }
+  return null;
+}
+
+function humanBytes(n: number): string {
+  if (n < 1024) return `${n} o`;
+  if (n < 1048576) return `${(n / 1024).toFixed(0)} Ko`;
+  return `${(n / 1048576).toFixed(1)} Mo`;
+}
+
 interface MessagesViewProps {
   identity: StoredIdentity;
   isOnline: boolean;
@@ -78,6 +182,164 @@ interface MessagesViewProps {
   focusMessage?: { peer: string; messageId: string } | null;
   /** D1 : consommé quand le message ciblé a été scrollé/flashé. */
   onFocusConsumed?: () => void;
+}
+
+// ── B2 — bulle média : vignette lazy (download → decrypt → magic bytes) ──────
+
+interface MediaBubbleProps {
+  payload: MediaDmPayload;
+  mine: boolean;
+  me: string;
+  signPriv: CryptoKey;
+}
+
+function MediaBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+  const [errCode, setErrCode] = useState<string | null>(null);
+  const [fullOpen, setFullOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // À MOI : le CEK de session est le fallback si le dm2 n'a pas encore
+      // été refetché — même clé que celle utilisée à l'upload.
+      const session = sessionCekFor(payload.mediaId);
+      try {
+        const img = await downloadImage({
+          mediaId: payload.mediaId,
+          cekB64: payload.cek || session?.cekB64 || "",
+          declaredType: payload.mediaType,
+          me,
+          sign: (p) => signPayload(signPriv, p),
+        });
+        if (!cancelled) {
+          setUrl(URL.createObjectURL(img.blob));
+          setStatus("ok");
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setStatus("error");
+          setErrCode(e instanceof MediaClientError ? e.code : "unknown");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [payload.mediaId, payload.cek, payload.mediaType, me, signPriv]);
+
+  if (status === "error") {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-black/10 p-2.5 text-xs" role="alert">
+        <ImageOff className="size-4 shrink-0 opacity-70" aria-hidden="true" />
+        <span>
+          {errCode === "magic-bytes-mismatch"
+            ? "Média refusé — le contenu ne correspond pas au type annoncé (protection MIME spoofing)."
+            : errCode === "decrypt-failed"
+              ? "Média indéchiffrable (CEK absent ou objet altéré)."
+              : "Média indisponible."}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => status === "ok" && setFullOpen(true)}
+        className="block overflow-hidden rounded-lg"
+        aria-label={`Image reçue — ${humanBytes(payload.bytes)} (${payload.mediaType})`}
+      >
+        {status === "ok" && url ? (
+          // eslint-disable-next-line @next/next/no-img-element -- blob local déchiffré client, pas d'optimisation possible
+          <img
+            src={url}
+            alt={`Image partagée (${humanBytes(payload.bytes)})`}
+            className="max-h-44 w-auto max-w-[280px] rounded-lg object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <span
+            className={`flex h-32 w-44 items-center justify-center gap-2 rounded-lg text-xs ${mine ? "bg-primary-foreground/15" : "bg-background/60"}`}
+          >
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            décryptage…
+          </span>
+        )}
+      </button>
+      <Dialog open={fullOpen} onOpenChange={setFullOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm">
+              <ImageIcon className="size-4 text-primary" aria-hidden="true" />
+              Image chiffrée · {humanBytes(payload.bytes)} · {payload.mediaType}
+            </DialogTitle>
+            <DialogDescription>
+              Déchiffrée localement (AES-256-GCM) — magic bytes vérifiés avant rendu.
+            </DialogDescription>
+          </DialogHeader>
+          {url && (
+            // eslint-disable-next-line @next/next/no-img-element -- blob local déchiffré client
+            <img src={url} alt="Image partagée en plein écran" className="max-h-[70vh] w-auto rounded-lg object-contain" />
+          )}
+          {payload.text && <p className="text-sm text-muted-foreground">{payload.text}</p>}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ── B3 — bulle voix : download → decrypt → sniff opus → VoiceNote ────────────
+
+function VoiceBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
+  const [blob, setBlob] = useState<Blob | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [measuredPeaks, setMeasuredPeaks] = useState<number[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const session = sessionCekFor(payload.mediaId);
+      try {
+        const voice = await downloadVoiceNote({
+          mediaId: payload.mediaId,
+          cekB64: payload.cek || session?.cekB64 || "",
+          declaredType: payload.mediaType,
+          me,
+          sign: (p) => signPayload(signPriv, p),
+          wantMeasure: !payload.peaks, // fallback : le dm2 n'a pas porté les peaks
+        });
+        if (!cancelled) {
+          setBlob(voice.blob);
+          setMeasuredPeaks(voice.peaks);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setErr(
+            e instanceof MediaClientError && e.code === "magic-bytes-mismatch"
+              ? "Note refusée — le contenu n'est pas de l'opus annoncé."
+              : "Note vocale indisponible (CEK absent ou objet altéré)."
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [payload.mediaId, payload.cek, payload.mediaType, payload.peaks, me, signPriv]);
+
+  return (
+    <VoiceNote
+      blob={blob}
+      error={err}
+      durationMs={payload.durationMs ?? 0}
+      peaks={payload.peaks ?? measuredPeaks}
+      mine={mine}
+      bytes={payload.bytes}
+    />
+  );
 }
 
 export function MessagesView({
@@ -117,12 +379,119 @@ export function MessagesView({
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // ── B2 : upload média (picker → preview → orchestré → dm2) ──
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingFile, setPendingFile] = useState<{
+    name: string;
+    bytes: Uint8Array;
+    mediaType: string;
+    previewUrl: string;
+  } | null>(null);
+  const [uploadState, setUploadState] = useState<{
+    stage: UploadStage;
+    fraction?: number;
+    message?: string;
+  } | null>(null);
+  // file hors-ligne : ref de queue → destinataire (dm2 auto au retour réseau)
+  const queuePeerRef = useRef<Map<string, string>>(new Map());
+
+  // ── B3 : note vocale (hold-to-record — arbitrage spec §8.5) ──
+  // TRANCHEMENT : hold-to-record (WhatsApp, référence RDC) — pointerdown =
+  // début, pointerup = stop → preview. Un relâchement < 400 ms bascule en
+  // mode tap-to-toggle (accessibilité clavier : Enter/Space sur le bouton).
+  const voiceRecorderRef = useRef<VoiceRecorder | null>(null);
+  const voiceTapModeRef = useRef(false);
+  const voiceTapArmedAtRef = useRef(0); // anti-rebond : le click du MÊME tap est avalé
+  const voiceSupported = useMemo(() => isOpusRecordingSupported(), []);
+  const [voiceRecording, setVoiceRecording] = useState(false);
+  const [voiceElapsedMs, setVoiceElapsedMs] = useState(0);
+  const [pendingVoice, setPendingVoice] = useState<VoiceRecording | null>(null);
+  const [voiceUploading, setVoiceUploading] = useState(false);
+
+  const cancelPendingVoice = () => setPendingVoice(null);
+
   const peer: UserPublic | undefined = useMemo(() => {
     const fromConv = conversations.data?.conversations.find((c) => c.peer.pubkey === selectedPub)
       ?.peer;
     if (fromConv) return fromConv;
     return users.data?.users.find((u) => u.pubkey === selectedPub);
   }, [conversations.data, users.data, selectedPub]);
+
+  // ── B3 : cycle d'enregistrement (hold-to-record + fallback tap-toggle) ──
+  const startVoiceRecording = async () => {
+    if (!peer?.ecdhPub || peer.isBot) return;
+    const rec = new VoiceRecorder({
+      bitrateKey: "default",
+      onTick: (ms) => setVoiceElapsedMs(ms),
+      onAutoStop: () =>
+        toast.info(`Durée maximale atteinte (${VOICE_MAX_DURATION_S} s) — relâchez pour prévisualiser`),
+    });
+    voiceRecorderRef.current = rec;
+    setVoiceElapsedMs(0);
+    try {
+      await rec.start();
+      setVoiceRecording(true);
+    } catch (e) {
+      voiceRecorderRef.current = null;
+      toast.error("Micro indisponible", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    }
+  };
+
+  const stopVoiceRecording = async (discard: boolean) => {
+    const rec = voiceRecorderRef.current;
+    voiceRecorderRef.current = null;
+    setVoiceRecording(false);
+    if (!rec) return;
+    try {
+      if (discard) {
+        await rec.cancel();
+        return;
+      }
+      const result = await rec.stop();
+      if (result.durationMs < 400) {
+        toast.info("Trop court — maintenez le bouton (ou tapez pour démarrer/arrêter).");
+        return;
+      }
+      setPendingVoice(result);
+    } catch (e) {
+      toast.error("Enregistrement perdu", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    }
+  };
+
+  /** Hold-to-record : presser = démarrer, relâcher = stop → preview.
+   *  Relâchement < 400 ms → mode tap-toggle : le click du MÊME tap est AVALÉ
+   *  (anti-rebond 250 ms — sinon la course d'état stoppe l'enregistrement
+   *  à peine démarré, bug attrapé par la preuve navigateur) ; le tap SUIVANT
+   *  arrête. */
+  function onMicPointerDown() {
+    if (voiceRecording) return;
+    voiceTapModeRef.current = false;
+    void startVoiceRecording();
+  }
+  function onMicPointerUp() {
+    if (!voiceRecording) return;
+    if (voiceElapsedMs < 400) {
+      // tap-to-toggle : l'enregistrement CONTINUE, le prochain tap arrête
+      voiceTapModeRef.current = true;
+      voiceTapArmedAtRef.current = Date.now() + 250;
+      return;
+    }
+    void stopVoiceRecording(false);
+  }
+  function onMicClick() {
+    if (
+      voiceTapModeRef.current &&
+      voiceRecording &&
+      Date.now() >= voiceTapArmedAtRef.current
+    ) {
+      voiceTapModeRef.current = false;
+      void stopVoiceRecording(false);
+    }
+  }
 
   const messages = useQuery({
     queryKey: ["dms", myPub, selectedPub],
@@ -201,7 +570,7 @@ export function MessagesView({
       // renvoie la fenêtre complète (200 messages), on la miroite telle quelle
       // dans IndexedDB (textes déjà déchiffrés pour l'affichage — aucune donnée
       // nouvelle, aucun appel réseau de plus). Les enveloppes indéchiffrables
-      // ne sont PAS indexées (texte placeholder exclu par replaceDmConversation).
+      // ne sont PAS indexées (placeholder UNDECRYPTABLE exclu).
       if (!cancelled && selectedPub) {
         try {
           await replaceDmConversation(
@@ -403,13 +772,358 @@ export function MessagesView({
     }
   };
 
-  // ── FIX (découvert preuve D1) : le Dialogue « Choisir un contact » doit
-  // être rendu dans les DEUX branches de retour — l'état vide (« Aucune
-  // conversation ») fait un early-return SANS le dialog : le bouton « Nouvelle
-  // conversation » posait le state newConvOpen mais RIEN ne s'ouvrait — le
-  // premier contact était impossible depuis l'état vide. Hoisté en variable :
-  // un portal Radix, sa position dans l'arbre est indifférente.
-  const contactPickerDialog = (
+  // ── B2 : envoi du dm2 MÉDIA (payload JSON — CEK dans le canal E2EE, §7.3) ──
+  const sendMediaDm = async (media: UploadedMedia, peerPub: string, text: string) => {
+    const target = peerPub === selectedPub ? peer : users.data?.users.find((u) => u.pubkey === peerPub);
+    if (!target?.ecdhPub) {
+      toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
+      return;
+    }
+    const payloadMedia: MediaDmPayload = {
+      kind: "media",
+      text,
+      mediaId: media.mediaId,
+      cek: media.cekB64,
+      mediaType: media.mediaType,
+      bytes: media.plainBytes,
+      objectKey: media.objectKey,
+    };
+    const sealed = await sealMessage(identity.ecdhPriv, target.ecdhPub, JSON.stringify(payloadMedia));
+    const msgId = newDmMsgId();
+    const seq = nextDmSeq(myPub, peerPub);
+    const ts = Date.now();
+    const signature = await signPayload(
+      identity.signPriv,
+      dm2ProofMessage(myPub, peerPub, msgId, seq, sealed.iv, sealed.ciphertext, ts)
+    );
+    await apiSendDm({
+      senderKey: myPub,
+      recipientKey: peerPub,
+      iv: sealed.iv,
+      ciphertext: sealed.ciphertext,
+      msgId,
+      seq,
+      ts,
+      signature,
+    });
+    await qc.invalidateQueries({ queryKey: ["dms", myPub, peerPub] });
+    await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
+  };
+
+  // ── B3 : envoi du dm2 VOIX (même canal E2EE — durée + peaks dans le payload) ─
+  const sendVoiceDm = async (voice: UploadedVoice, peerPub: string) => {
+    const target = peerPub === selectedPub ? peer : users.data?.users.find((u) => u.pubkey === peerPub);
+    if (!target?.ecdhPub) {
+      toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
+      return;
+    }
+    const payloadVoice: MediaDmPayload = {
+      kind: "media",
+      text: "",
+      mediaId: voice.mediaId,
+      cek: voice.cekB64,
+      mediaType: voice.mediaType,
+      bytes: voice.plainBytes,
+      objectKey: voice.objectKey,
+      durationMs: voice.durationMs,
+      peaks: voice.peaks,
+    };
+    const sealed = await sealMessage(identity.ecdhPriv, target.ecdhPub, JSON.stringify(payloadVoice));
+    const msgId = newDmMsgId();
+    const seq = nextDmSeq(myPub, peerPub);
+    const ts = Date.now();
+    const signature = await signPayload(
+      identity.signPriv,
+      dm2ProofMessage(myPub, peerPub, msgId, seq, sealed.iv, sealed.ciphertext, ts)
+    );
+    await apiSendDm({
+      senderKey: myPub,
+      recipientKey: peerPub,
+      iv: sealed.iv,
+      ciphertext: sealed.ciphertext,
+      msgId,
+      seq,
+      ts,
+      signature,
+    });
+    await qc.invalidateQueries({ queryKey: ["dms", myPub, peerPub] });
+    await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
+  };
+
+  /** B3 : preview → envoi (uploadVoiceNote → dm2). Invariant B2 : l'upload
+   *  EST l'orchestration observable — aucun état « envoyé » avant le 2xx.
+   *  Clarification 4 B4 (invariant §1.8 ADMIN-RBAC) : la preview n'est PAS
+   *  jetée avant confirmation — en cas d'échec elle est RESTAURÉE (l'état UI
+   *  reflète le résultat réel : rien envoyé, enregistrement toujours
+   *  envoyable). Avant ce fix, `setPendingVoice(null)` précoce perdait
+   *  l'enregistrement en cas d'erreur réseau sans aucun retour serveur. */
+  const sendPendingVoice = async () => {
+    const voice = pendingVoice;
+    if (!voice || !peer?.pubkey) return;
+    const peerPub = peer.pubkey;
+    setPendingVoice(null);
+    setVoiceUploading(true);
+    try {
+      const uploaded = await uploadVoiceNote({
+        bytes: voice.bytes,
+        durationMs: voice.durationMs,
+        peaks: voice.peaks,
+        me: myPub,
+        sign: (p) => signPayload(identity.signPriv, p),
+        onProgress: (stage, info) => setUploadState({ stage, fraction: info?.fraction, message: info?.message }),
+      });
+      await sendVoiceDm(uploaded, peerPub);
+      toast.success("Note vocale envoyée", {
+        description: `Opus ${(uploaded.durationMs / 1000).toFixed(1)} s · ${humanBytes(uploaded.plainBytes)} · chiffrée (AES-256-GCM)`,
+      });
+    } catch (e) {
+      setPendingVoice(voice); // échec → preview restaurée (invariant §1.8)
+      toast.error("Échec d'envoi vocal", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setVoiceUploading(false);
+      setUploadState(null);
+    }
+  };
+
+  // ── B4 : cycle vidéo (TAP-TO-START/STOP — tranché §9.6 : la vidéo exige de
+  // garder l'application ouverte en visée, le hold-to-record de la voix n'a
+  // pas de sens les yeux sur l'écran) ────────────────────────────────────────
+  const videoRecorderRef = useRef<VideoRecorder | null>(null);
+  const videoSupported = useMemo(() => isVideoRecordingSupported(), []);
+  const [videoRecording, setVideoRecording] = useState(false);
+  const [videoElapsedMs, setVideoElapsedMs] = useState(0);
+  const [pendingVideo, setPendingVideo] = useState<VideoRecording | null>(null);
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+
+  const cancelPendingVideo = () => {
+    if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    setVideoPreviewUrl(null);
+    setPendingVideo(null);
+  };
+
+  const startVideoRecording = async () => {
+    if (!peer?.ecdhPub || peer.isBot) return;
+    const rec = new VideoRecorder({
+      onTick: (ms) => setVideoElapsedMs(ms),
+      onAutoStop: () =>
+        toast.info(`Durée maximale atteinte (${VIDEO_MAX_DURATION_S} s) — prévisualisation`),
+    });
+    videoRecorderRef.current = rec;
+    setVideoElapsedMs(0);
+    try {
+      await rec.start();
+      setVideoRecording(true);
+    } catch (e) {
+      videoRecorderRef.current = null;
+      toast.error("Caméra indisponible", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    }
+  };
+
+  const stopVideoRecording = async (discard: boolean) => {
+    const rec = videoRecorderRef.current;
+    videoRecorderRef.current = null;
+    setVideoRecording(false);
+    if (!rec) return;
+    try {
+      if (discard) {
+        await rec.cancel();
+        return;
+      }
+      const result = await rec.stop();
+      setPendingVideo(result);
+      setVideoPreviewUrl(URL.createObjectURL(new Blob([result.bytes as unknown as BlobPart], { type: result.container })));
+    } catch (e) {
+      toast.error("Enregistrement perdu", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    }
+  };
+
+  /** B4 : preview → envoi (uploadVideoNote → dm2). Invariant §1.8 : la
+   *  preview est RESTAURÉE en cas d'échec (leçon Clarification 4 — la
+   *  vidéo ne disparaît pas avant le 2xx). */
+  const sendPendingVideo = async () => {
+    const video = pendingVideo;
+    if (!video || !peer?.pubkey) return;
+    const peerPub = peer.pubkey;
+    const target = peer;
+    if (!target.ecdhPub) {
+      toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
+      return;
+    }
+    setPendingVideo(null);
+    setVideoUploading(true);
+    try {
+      const uploaded: UploadedVideo = await uploadVideoNote({
+        bytes: video.bytes,
+        durationMs: video.durationMs,
+        width: video.width,
+        height: video.height,
+        thumb: video.thumb ? { bytes: video.thumb.bytes, width: video.thumb.width, height: video.thumb.height } : null,
+        me: myPub,
+        sign: (p) => signPayload(identity.signPriv, p),
+        onProgress: (stage, info) => setUploadState({ stage, fraction: info?.fraction, message: info?.message }),
+      });
+      // dm2 vidéo : thumb (image B2) + durée dans le payload — serveur aveugle
+      const payloadVideo: MediaDmPayload = {
+        kind: "media",
+        text: "",
+        mediaId: uploaded.mediaId,
+        cek: uploaded.cekB64,
+        mediaType: uploaded.mediaType,
+        bytes: uploaded.plainBytes,
+        objectKey: uploaded.objectKey,
+        durationMs: uploaded.durationMs,
+        width: uploaded.width,
+        height: uploaded.height,
+        thumb: uploaded.thumb
+          ? {
+              mediaId: uploaded.thumb.mediaId,
+              cek: uploaded.thumb.cekB64,
+              mediaType: uploaded.thumb.mediaType,
+              bytes: uploaded.thumb.bytes,
+              objectKey: uploaded.thumb.objectKey,
+            }
+          : undefined,
+      };
+      const sealed = await sealMessage(identity.ecdhPriv, target.ecdhPub, JSON.stringify(payloadVideo));
+      const msgId = newDmMsgId();
+      const seq = nextDmSeq(myPub, peerPub);
+      const ts = Date.now();
+      const signature = await signPayload(
+        identity.signPriv,
+        dm2ProofMessage(myPub, peerPub, msgId, seq, sealed.iv, sealed.ciphertext, ts)
+      );
+      await apiSendDm({
+        senderKey: myPub,
+        recipientKey: peerPub,
+        iv: sealed.iv,
+        ciphertext: sealed.ciphertext,
+        msgId,
+        seq,
+        ts,
+        signature,
+      });
+      await qc.invalidateQueries({ queryKey: ["dms", myPub, peerPub] });
+      await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
+      toast.success("Vidéo envoyée", {
+        description: `${uploaded.mediaType === "video/mp4" ? "MP4" : "WebM"} ${(uploaded.durationMs / 1000).toFixed(1)} s · ${humanBytes(uploaded.plainBytes)} · chiffrée (AES-256-GCM)`,
+      });
+      if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+      setVideoPreviewUrl(null);
+    } catch (e) {
+      setPendingVideo(video); // échec → preview restaurée (invariant §1.8)
+      toast.error("Échec d'envoi vidéo", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setVideoUploading(false);
+      setUploadState(null);
+    }
+  };
+
+  // B2 : au retour du réseau, la file des uploads re-orchestre — puis le dm2
+  // part automatiquement vers le destinataire d'origine.
+  useEffect(() => {
+    const detach = attachUploadQueueFlusher(identity.pubkey, (p) => signPayload(identity.signPriv, p),
+      (item, media) => {
+        const peerPub = queuePeerRef.current.get(item.ref);
+        queuePeerRef.current.delete(item.ref);
+        if (peerPub && peerPub !== "") {
+          void sendMediaDm(media, peerPub, "").then(() =>
+            toast.success("Image envoyée après reprise réseau")
+          ).catch((e) =>
+            toast.error("Image uploadée mais envoi échoué", {
+              description: e instanceof Error ? e.message : undefined,
+            })
+          );
+        }
+      });
+    return detach;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-branche sur changement d'identité
+  }, [identity.pubkey, identity.signPriv]);
+
+  // B2 : picker → preview (nom + taille) — validation d'entrée AVANT tout
+  const pickFile = async (file: File) => {
+    if (peer?.isBot) {
+      toast.info("Le bot ne reçoit pas d'images — choisissez un contact humain.");
+      return;
+    }
+    if (!peer?.ecdhPub) {
+      toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
+      return;
+    }
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      toast.error(`Type ${file.type || "inconnu"} refusé — images jpeg, png ou webp uniquement`);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error(`Fichier de ${(file.size / 1048576).toFixed(1)} Mo — la limite est 5 Mo`);
+      return;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    setPendingFile({
+      name: file.name,
+      bytes,
+      mediaType: file.type,
+      previewUrl: URL.createObjectURL(file),
+    });
+  };
+
+  // B2 : upload orchestré (strip → chiffrement → PUT → finalize) → dm2
+  const attachAndSend = async () => {
+    const file = pendingFile;
+    if (!file || !peer?.pubkey) return;
+    const peerPub = peer.pubkey;
+    setPendingFile(null);
+    setUploadState({ stage: "strip" });
+    try {
+      const media = await uploadImage({
+        bytes: file.bytes,
+        mediaType: file.mediaType,
+        me: myPub,
+        sign: (p) => signPayload(identity.signPriv, p),
+        onProgress: (stage, info) => setUploadState({ stage, fraction: info?.fraction, message: info?.message }),
+      });
+      await sendMediaDm(media, peerPub, "");
+      toast.success("Image envoyée", {
+        description: `Chiffrée (AES-256-GCM) · ${humanBytes(media.plainBytes)} · EXIF nettoyé`,
+      });
+    } catch (e) {
+      if (e instanceof MediaClientError && (e.code === "put-failed" || e.code === "presign-failed")) {
+        // réseau tombé en cours d'upload → FILE (reprise au retour du réseau)
+        const item = enqueueOfflineUpload(file.name, file.bytes, file.mediaType);
+        queuePeerRef.current.set(item.ref, peerPub);
+        toast.info("Upload interrompu — conservé sur l'appareil", {
+          description: "L'image partira automatiquement au retour du réseau.",
+        });
+      } else {
+        // Clarification 4 É9+C1 (invariant §1.8, symétrie voix/vidéo) : échec
+        // sans retour serveur 2xx → preview RESTAURÉE, rien perdu. (Avant ce
+        // fix, l'image était jetée en cas d'échec non-réseau — même classe que
+        // le bug setPendingVoice(null) précoce B3.)
+        setPendingFile(file);
+        toast.error("Échec d'upload", {
+          description: e instanceof Error ? e.message : undefined,
+        });
+      }
+    } finally {
+      setUploadState(null);
+    }
+  };
+
+  // B2-fix (bug préexistant découvert par la preuve navigateur) : le Dialogue
+  // « nouvelle conversation » est partagé par les DEUX returns — avant ce fix,
+  // le clic « Nouvelle conversation » depuis l'état VIDE montait le state sans
+  // jamais rendre le Dialog (early return sans JSX) : impossible de démarrer
+  // une conversation depuis l'état vide.
+  const newConvDialog = (
     <Dialog open={newConvOpen} onOpenChange={setNewConvOpen}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
@@ -472,7 +1186,7 @@ export function MessagesView({
             </Button>
           </CardContent>
         </Card>
-        {contactPickerDialog}
+        {newConvDialog}
       </div>
     );
   }
@@ -642,6 +1356,7 @@ export function MessagesView({
                       const body = peer.ecdhPub
                         ? (plain[m.id] ?? "…déchiffrement")
                         : "🔒 ciphertext (clés de démo indisponibles)";
+                      const media = parseDmBody(body);
                       return (
                         <div
                           key={m.id}
@@ -655,12 +1370,43 @@ export function MessagesView({
                                 : "rounded-bl-md bg-muted text-foreground"
                             }`}
                           >
-                            <p className="whitespace-pre-wrap break-words">{body}</p>
+                            {media ? (
+                              media.mediaType === "audio/opus" ? (
+                                <VoiceBubble payload={media} mine={mine} me={myPub} signPriv={identity.signPriv} />
+                              ) : media.mediaType.startsWith("video/") ? (
+                                <VideoBubble
+                                  media={{
+                                    mediaId: media.mediaId,
+                                    cek: media.cek,
+                                    mediaType: media.mediaType,
+                                    bytes: media.bytes,
+                                  }}
+                                  thumb={media.thumb ?? null}
+                                  durationMs={media.durationMs}
+                                  mine={mine}
+                                  me={myPub}
+                                  signPriv={identity.signPriv}
+                                />
+                              ) : (
+                                <MediaBubble payload={media} mine={mine} me={myPub} signPriv={identity.signPriv} />
+                              )
+                            ) : (
+                              <p className="whitespace-pre-wrap break-words">{body}</p>
+                            )}
                             <p
                               className={`mt-1 flex items-center gap-1 text-[10px] ${
                                 mine ? "text-primary-foreground/70" : "text-muted-foreground"
                               }`}
                             >
+                              {media && (
+                                media.mediaType === "audio/opus" ? (
+                                  <Mic className="size-2.5" aria-hidden="true" />
+                                ) : media.mediaType.startsWith("video/") ? (
+                                  <Film className="size-2.5" aria-hidden="true" />
+                                ) : (
+                                  <ImageIcon className="size-2.5" aria-hidden="true" />
+                                )
+                              )}
                               <Lock className="size-2.5" aria-hidden="true" />
                               {formatDistanceToNow(new Date(m.createdAt), {
                                 addSuffix: true,
@@ -697,7 +1443,167 @@ export function MessagesView({
               </ScrollArea>
 
               <div className="border-t p-3">
+                {/* B2 : bandeau d'upload en cours (états observables) */}
+                {uploadState && (
+                  <div
+                    className="mb-2 flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <Loader2 className="size-3.5 animate-spin text-primary" aria-hidden="true" />
+                    <span className="flex-1">
+                      {uploadState.stage === "strip"
+                        ? "Nettoyage EXIF (GPS, dates, appareil)…"
+                        : uploadState.stage === "encrypt"
+                          ? "Chiffrement de bout en bout…"
+                          : uploadState.stage === "presign"
+                            ? "Demande d'URL d'upload…"
+                            : uploadState.stage === "put"
+                              ? `Envoi chiffré au bucket… ${Math.round((uploadState.fraction ?? 0) * 100)} %`
+                              : uploadState.stage === "finalize"
+                                ? "Finalisation (vérification serveur)…"
+                                : "Terminé"}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
+                  {/* B2 : pièce jointe image — picker natif, preview avant envoi */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = ""; // permet re-sélection du même fichier
+                      if (f) void pickFile(f);
+                    }}
+                    aria-label="Choisir une image à envoyer"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-11 shrink-0"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!peer.ecdhPub || sending || uploadState !== null || trustBlocked || peer.isBot}
+                    aria-label="Joindre une image"
+                    title="Joindre une image (jpeg, png, webp — 5 Mo max)"
+                  >
+                    <Paperclip className="size-4" aria-hidden="true" />
+                  </Button>
+                  {/* B3 : note vocale — HOLD-TO-RECORD (arbitrage spec §8.5 :
+                      WhatsApp est la référence d'usage en RDC). Relâchement
+                      < 400 ms → mode tap-to-toggle (a11y + clavier :
+                      Enter/Space déclenchent click après pointerdown/up). */}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className={`h-11 shrink-0 ${voiceRecording ? "border-red-400 bg-red-50 text-red-700" : ""}`}
+                    onPointerDown={onMicPointerDown}
+                    onPointerUp={onMicPointerUp}
+                    onPointerLeave={() => {
+                      if (voiceRecording && !voiceTapModeRef.current) void stopVoiceRecording(false);
+                    }}
+                    onClick={onMicClick}
+                    disabled={
+                      !peer.ecdhPub ||
+                      sending ||
+                      uploadState !== null ||
+                      voiceUploading ||
+                      pendingVoice !== null ||
+                      trustBlocked ||
+                      peer.isBot ||
+                      !voiceSupported
+                    }
+                    aria-label={
+                      !voiceSupported
+                        ? "Notes vocales indisponibles (Opus requis)"
+                        : voiceRecording
+                          ? "Arrêter l'enregistrement"
+                          : "Note vocale — maintenir pour enregistrer"
+                    }
+                    title={
+                      !voiceSupported
+                        ? VOICE_UNSUPPORTED_MESSAGE
+                        : voiceRecording
+                          ? "Enregistrement… relâchez pour prévisualiser"
+                          : "Maintenir pour enregistrer (Opus 8 kbps, 60 s max)"
+                    }
+                    data-testid="mic-button"
+                  >
+                    {voiceRecording ? (
+                      <Square className="size-4" aria-hidden="true" />
+                    ) : (
+                      <Mic className="size-4" aria-hidden="true" />
+                    )}
+                  </Button>
+                  {voiceRecording && (
+                    <span
+                      className="shrink-0 text-xs font-medium tabular-nums text-red-600"
+                      role="timer"
+                      aria-live="off"
+                      data-testid="voice-timer"
+                    >
+                      ● {(voiceElapsedMs / 1000).toFixed(1)} s
+                    </span>
+                  )}
+                  {/* B4 : vidéo — TAP-TO-START/STOP (tranché spec §9.6 : la
+                      visée exige de garder l'œil sur l'écran, pas sur le
+                      bouton — l'inverse du hold-to-record voix). */}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className={`h-11 shrink-0 ${videoRecording ? "border-red-400 bg-red-50 text-red-700" : ""}`}
+                    onClick={() => {
+                      if (videoRecording) {
+                        void stopVideoRecording(false);
+                      } else {
+                        void startVideoRecording();
+                      }
+                    }}
+                    disabled={
+                      !peer.ecdhPub ||
+                      sending ||
+                      uploadState !== null ||
+                      videoUploading ||
+                      pendingVideo !== null ||
+                      voiceRecording ||
+                      trustBlocked ||
+                      peer.isBot ||
+                      !videoSupported
+                    }
+                    aria-label={
+                      !videoSupported
+                        ? "Vidéo indisponible sur ce navigateur"
+                        : videoRecording
+                          ? "Arrêter la vidéo"
+                          : "Enregistrer une vidéo"
+                    }
+                    title={
+                      !videoSupported
+                        ? VIDEO_UNSUPPORTED_MESSAGE
+                        : videoRecording
+                          ? "Enregistrement… cliquez pour arrêter"
+                          : "Vidéo (webm 480p/720p, 60 s max, 100 Mo max)"
+                    }
+                    data-testid="video-button"
+                  >
+                    {videoRecording ? (
+                      <Square className="size-4" aria-hidden="true" />
+                    ) : (
+                      <Film className="size-4" aria-hidden="true" />
+                    )}
+                  </Button>
+                  {videoRecording && (
+                    <span
+                      className="shrink-0 text-xs font-medium tabular-nums text-red-600"
+                      role="timer"
+                      aria-live="off"
+                      data-testid="video-timer"
+                    >
+                      ● {(videoElapsedMs / 1000).toFixed(1)} s
+                    </span>
+                  )}
                   <Input
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
@@ -747,6 +1653,148 @@ export function MessagesView({
         </div>
       </div>
 
+      {/* B3 : dialogue de PREVIEW voix (lecture, durée, annulable) */}
+      <Dialog open={pendingVoice !== null} onOpenChange={(open) => !open && cancelPendingVoice()}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mic className="size-4 text-primary" aria-hidden="true" />
+              Envoyer une note vocale
+            </DialogTitle>
+            <DialogDescription>
+              Opus {pendingVoice ? (pendingVoice.durationMs / 1000).toFixed(1) : "0"} s —
+              chiffrée sur ton appareil, le serveur n&apos;entend rien. Écoute-toi avant
+              d&apos;envoyer.
+            </DialogDescription>
+          </DialogHeader>
+          {pendingVoice && (
+            <div className="space-y-3">
+              <div className="rounded-lg border bg-muted/40 p-3">
+                <VoiceNote
+                  blob={new Blob([pendingVoice.bytes as unknown as BlobPart], {
+                    type: pendingVoice.container,
+                  })}
+                  durationMs={pendingVoice.durationMs}
+                  peaks={pendingVoice.peaks}
+                  mine={false}
+                  bytes={pendingVoice.bytes.length}
+                  downloadable
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={cancelPendingVoice}>
+                  <X className="size-4" aria-hidden="true" />
+                  Annuler
+                </Button>
+                <Button className="flex-1" onClick={sendPendingVoice} disabled={voiceUploading}>
+                  {voiceUploading ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Mic className="size-4" aria-hidden="true" />
+                  )}
+                  Chiffrer et envoyer
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* B4 : dialogue de PREVIEW vidéo (thumbnail, durée, taille, annulable) */}
+      <Dialog open={pendingVideo !== null} onOpenChange={(open) => !open && cancelPendingVideo()}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Film className="size-4 text-primary" aria-hidden="true" />
+              Envoyer une vidéo
+            </DialogTitle>
+            <DialogDescription>
+              {pendingVideo ? (pendingVideo.durationMs / 1000).toFixed(1) : "0"} s ·{" "}
+              {pendingVideo ? humanBytes(pendingVideo.bytes.length) : "—"} — chiffrée sur ton
+              appareil (AES-256-GCM), le serveur n&apos;en voit que le chiffré. Vise avant
+              d&apos;envoyer.
+            </DialogDescription>
+          </DialogHeader>
+          {pendingVideo && (
+            <div className="space-y-3">
+              <div className="rounded-lg border bg-muted/40 p-3">
+                {videoPreviewUrl ? (
+                  <video
+                    src={videoPreviewUrl}
+                    controls
+                    preload="metadata"
+                    className="max-h-56 w-full rounded-lg bg-black"
+                    aria-label="Aperçu de la vidéo enregistrée"
+                  />
+                ) : pendingVideo.thumb ? (
+                  <span className="text-xs text-muted-foreground">vignette seule (metadata en attente)</span>
+                ) : null}
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  {pendingVideo.width}×{pendingVideo.height} · {pendingVideo.container}
+                </span>
+                <span>{humanBytes(pendingVideo.bytes.length)}</span>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={cancelPendingVideo}>
+                  <X className="size-4" aria-hidden="true" />
+                  Annuler
+                </Button>
+                <Button className="flex-1" onClick={sendPendingVideo} disabled={videoUploading} data-testid="video-send">
+                  {videoUploading ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Film className="size-4" aria-hidden="true" />
+                  )}
+                  Chiffrer et envoyer
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* B2 : dialogue de PREVIEW avant upload (nom, taille, annulable) */}
+      <Dialog open={pendingFile !== null} onOpenChange={(open) => !open && setPendingFile(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ImageIcon className="size-4 text-primary" aria-hidden="true" />
+              Envoyer une image
+            </DialogTitle>
+            <DialogDescription>
+              EXIF/GPS supprimés, chiffrement sur ton appareil, puis envoi au bucket —
+              le serveur ne verra que du chiffré.
+            </DialogDescription>
+          </DialogHeader>
+          {pendingFile && (
+            <div className="space-y-3">
+              {/* eslint-disable-next-line @next/next/no-img-element -- blob local de preview */}
+              <img
+                src={pendingFile.previewUrl}
+                alt={`Aperçu de ${pendingFile.name}`}
+                className="max-h-56 w-full rounded-lg object-contain"
+              />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="truncate">{pendingFile.name}</span>
+                <span>{humanBytes(pendingFile.bytes.length)}</span>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setPendingFile(null)}>
+                  <X className="size-4" aria-hidden="true" />
+                  Annuler
+                </Button>
+                <Button className="flex-1" onClick={attachAndSend}>
+                  <ImageIcon className="size-4" aria-hidden="true" />
+                  Chiffrer et envoyer
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* A2 : dialogue du numéro de sécurité (vérification hors-bande) */}
       <Dialog open={trustDialogOpen} onOpenChange={setTrustDialogOpen}>
         <DialogContent className="max-w-md">
@@ -789,8 +1837,8 @@ export function MessagesView({
         </DialogContent>
       </Dialog>
 
-      {/* Dialogue nouvelle conversation (hoisté — rendu dans les 2 branches) */}
-      {contactPickerDialog}
+      {/* Dialogue nouvelle conversation (variable partagée — B2-fix) */}
+      {newConvDialog}
     </div>
   );
 }

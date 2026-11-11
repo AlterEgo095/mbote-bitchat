@@ -1,0 +1,22 @@
+{
+  "total": 18,
+  "active": 16,
+  "disabled": 2,
+  "sample": [
+    {
+      "userId": "BDbOtGuh7A…",
+      "endpoint": "http://127.0.0.1:3204/push/201/pv1sxwt86l…",
+      "disabledAt": null
+    },
+    {
+      "userId": "BDbOtGuh7A…",
+      "endpoint": "http://127.0.0.1:3204/push/201/p27nua6pnho…",
+      "disabledAt": null
+    },
+    {
+      "userId": "BCyUAwx1JT…",
+      "endpoint": "http://127.0.0.1:3204/push/201/ydpd8jxun9a…",
+      "disabledAt": null
+    }
+  ]
+}

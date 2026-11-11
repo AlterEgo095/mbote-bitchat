@@ -12,11 +12,26 @@ import { toast } from "sonner";
  * est en attente d'activation, un toast propose « Mettre à jour » ; le
  * rechargement n'a lieu qu'après consentement (plus jamais de skipWaiting
  * en pleine rédaction).
+ *
+ * C1 (push) : le clic sur une notification peut poster { type: "NAVIGATE",
+ * url } au client (fenêtre déjà ouverte) — navigation SPA-safe via
+ * location.assign (l'app relit ?view=… au boot, F-14) ; l'outbox persistée
+ * n'est jamais perdue (IndexedDB).
  */
 export function PwaRegister() {
   useEffect(() => {
     if (process.env.NODE_ENV !== "production") return;
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+
+    // C1 : clic sur notification → naviguer vers la cible (vue messages)
+    const onSwMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; url?: string } | null;
+      if (data?.type === "NAVIGATE" && typeof data.url === "string") {
+        // same-origin garanti par le SW (postMessage same-origin only)
+        window.location.assign(data.url);
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onSwMessage);
 
     let updateToastShown = false;
 
@@ -66,7 +81,10 @@ export function PwaRegister() {
 
     if (document.readyState === "complete") register();
     else window.addEventListener("load", register, { once: true });
-    return () => window.removeEventListener("load", register);
+    return () => {
+      window.removeEventListener("load", register);
+      navigator.serviceWorker.removeEventListener("message", onSwMessage);
+    };
   }, []);
 
   return null;

@@ -1,0 +1,68 @@
+{
+  "date": "2026-11-06T07:00:12.299Z",
+  "bench": [
+    {
+      "taille": "1 Mo",
+      "octets": 1048576,
+      "runs": 30,
+      "encrypt": {
+        "medianMs": 1.05,
+        "p95Ms": 2.77,
+        "minMs": 0.98,
+        "maxMs": 2.79,
+        "runs": 30,
+        "debitMoS": 952.4
+      },
+      "decrypt": {
+        "medianMs": 4.35,
+        "p95Ms": 6.22,
+        "minMs": 3.63,
+        "maxMs": 6.56,
+        "runs": 30,
+        "debitMoS": 229.9
+      }
+    },
+    {
+      "taille": "10 Mo",
+      "octets": 10485760,
+      "runs": 15,
+      "encrypt": {
+        "medianMs": 10.28,
+        "p95Ms": 17.34,
+        "minMs": 5.3,
+        "maxMs": 17.34,
+        "runs": 15,
+        "debitMoS": 972.8
+      },
+      "decrypt": {
+        "medianMs": 46.19,
+        "p95Ms": 62.12,
+        "minMs": 38.61,
+        "maxMs": 62.12,
+        "runs": 15,
+        "debitMoS": 216.5
+      }
+    },
+    {
+      "taille": "100 Mo",
+      "octets": 104857600,
+      "runs": 5,
+      "encrypt": {
+        "medianMs": 118.58,
+        "p95Ms": 178.35,
+        "minMs": 76.65,
+        "maxMs": 178.35,
+        "runs": 5,
+        "debitMoS": 843.3
+      },
+      "decrypt": {
+        "medianMs": 571.55,
+        "p95Ms": 629.9,
+        "minMs": 567.18,
+        "maxMs": 629.9,
+        "runs": 5,
+        "debitMoS": 175
+      }
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"supported":true,"bytes":3600,"type":"audio/webm","duration":4.9799773242630385,"sampleRate":44100,"peaksLen":100}
