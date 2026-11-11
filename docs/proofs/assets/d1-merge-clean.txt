@@ -1,0 +1,3 @@
+── check-merge-clean ──────────────────────────────────────────────
+branche courante : feat/adm-mvp
+ERREUR : arbre de travail sale — commitez ou stash avant le check.

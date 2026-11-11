@@ -18,6 +18,14 @@ import {
   ShieldQuestion,
 } from "lucide-react";
 import { toast } from "sonner";
+// D1 : index local de recherche DM — 100 % IndexedDB, ZÉRO requête réseau
+import {
+  pruneDmConversations,
+  replaceDmConversation,
+} from "@/lib/mbote/dm-search-index";
+
+/** D1 : placeholder d'échec de déchiffrement — JAMAIS indexé (bruit de recherche). */
+const UNDECRYPTABLE = "🔒 Enveloppe indéchiffrable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -66,9 +74,20 @@ interface MessagesViewProps {
   forceOffline: boolean;
   /** F-15 : délègue la mise en file à MboteApp (propriétaire de l'outbox). */
   onQueueDm?: (payload: Record<string, unknown>, clientRef: string) => void;
+  /** D1 : navigation depuis la recherche locale DM (conversation + message). */
+  focusMessage?: { peer: string; messageId: string } | null;
+  /** D1 : consommé quand le message ciblé a été scrollé/flashé. */
+  onFocusConsumed?: () => void;
 }
 
-export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: MessagesViewProps) {
+export function MessagesView({
+  identity,
+  isOnline,
+  forceOffline,
+  onQueueDm,
+  focusMessage,
+  onFocusConsumed,
+}: MessagesViewProps) {
   const qc = useQueryClient();
   const myPub = identity.pubkey;
   const canUseNetwork = isOnline && !forceOffline;
@@ -149,6 +168,15 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
     }
   }, [users.data, selectedPub]);
 
+  // D1 : boot/rebuild — les conversations disparues sortent de l'index local
+  useEffect(() => {
+    const convs = conversations.data?.conversations;
+    if (!convs) return;
+    void pruneDmConversations(convs.map((c) => c.peer.pubkey)).catch(() => {
+      /* index indisponible : la recherche locale restera vide, non bloquant */
+    });
+  }, [conversations.data]);
+
   // déchiffrement local des enveloppes
   const [plain, setPlain] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -164,16 +192,61 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
               ciphertext: m.ciphertext,
             });
           } catch {
-            next[m.id] = "🔒 Enveloppe indéchiffrable";
+            next[m.id] = UNDECRYPTABLE;
           }
         }
       }
       if (!cancelled) setPlain(next);
+      // D1 : REBUILD de l'index local de cette conversation — le fetch serveur
+      // renvoie la fenêtre complète (200 messages), on la miroite telle quelle
+      // dans IndexedDB (textes déjà déchiffrés pour l'affichage — aucune donnée
+      // nouvelle, aucun appel réseau de plus). Les enveloppes indéchiffrables
+      // ne sont PAS indexées (texte placeholder exclu par replaceDmConversation).
+      if (!cancelled && selectedPub) {
+        try {
+          await replaceDmConversation(
+            selectedPub,
+            list.map((m) => ({
+              messageId: m.id,
+              text: next[m.id] === UNDECRYPTABLE ? "" : next[m.id] ?? "",
+              createdAt: m.createdAt,
+            }))
+          );
+        } catch {
+          /* index local indisponible (quota, navigation privée) : la recherche
+             DM rendra moins de résultats — jamais d'erreur bloquante ici. */
+        }
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [messages.data, identity, peer?.ecdhPub]);
+  }, [messages.data, identity, peer?.ecdhPub, selectedPub]);
+
+  // D1 : navigation depuis la recherche — sélection de la conversation cible
+  useEffect(() => {
+    if (focusMessage?.peer) setSelectedPub(focusMessage.peer);
+  }, [focusMessage]);
+
+  // D1 : scroll + flash du message ciblé une fois chargé et déchiffré
+  useEffect(() => {
+    if (!focusMessage || focusMessage.peer !== selectedPub) return;
+    if (messages.isLoading) return;
+    const target = plain[focusMessage.messageId];
+    if (target === undefined) return; // pas encore déchiffré → prochain cycle
+    const el = document.querySelector(
+      `[data-message-id="${CSS.escape(focusMessage.messageId)}"]`
+    );
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-primary", "ring-offset-2");
+    const t = setTimeout(
+      () => el.classList.remove("ring-2", "ring-primary", "ring-offset-2"),
+      2500
+    );
+    onFocusConsumed?.();
+    return () => clearTimeout(t);
+  }, [focusMessage, selectedPub, messages.isLoading, plain, onFocusConsumed]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -330,6 +403,56 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
     }
   };
 
+  // ── FIX (découvert preuve D1) : le Dialogue « Choisir un contact » doit
+  // être rendu dans les DEUX branches de retour — l'état vide (« Aucune
+  // conversation ») fait un early-return SANS le dialog : le bouton « Nouvelle
+  // conversation » posait le state newConvOpen mais RIEN ne s'ouvrait — le
+  // premier contact était impossible depuis l'état vide. Hoisté en variable :
+  // un portal Radix, sa position dans l'arbre est indifférente.
+  const contactPickerDialog = (
+    <Dialog open={newConvOpen} onOpenChange={setNewConvOpen}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="size-4 text-primary" aria-hidden="true" />
+            Choisir un contact
+          </DialogTitle>
+          <DialogDescription>
+            Seules les identités publiées sur le réseau apparaissent — toujours.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-80 space-y-1 overflow-y-auto scrollbar-thin">
+          {(users.data?.users ?? [])
+            .filter((u) => u.pubkey !== myPub)
+            .map((u) => (
+              <button
+                key={u.pubkey}
+                onClick={() => {
+                  setSelectedPub(u.pubkey);
+                  setNewConvOpen(false);
+                }}
+                className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left hover:bg-accent"
+              >
+                <MboteAvatar pubkey={u.pubkey} nickname={u.nickname} size={34} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">
+                    {u.nickname}
+                    {u.isBot && <span className="ml-1 text-[10px] text-primary">bot</span>}
+                  </p>
+                  <p className="truncate font-mono text-[10px] text-muted-foreground">
+                    {shortKey(u.pubkey, 8)}
+                  </p>
+                </div>
+                {u.ecdhPub && (
+                  <Lock className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+                )}
+              </button>
+            ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (!peer && !conversations.isLoading) {
     return (
       <div className="space-y-4">
@@ -349,6 +472,7 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
             </Button>
           </CardContent>
         </Card>
+        {contactPickerDialog}
       </div>
     );
   }
@@ -521,6 +645,7 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
                       return (
                         <div
                           key={m.id}
+                          data-message-id={m.id}
                           className={`flex ${mine ? "justify-end" : "justify-start"}`}
                         >
                           <div
@@ -664,48 +789,8 @@ export function MessagesView({ identity, isOnline, forceOffline, onQueueDm }: Me
         </DialogContent>
       </Dialog>
 
-      {/* Dialogue nouvelle conversation */}
-      <Dialog open={newConvOpen} onOpenChange={setNewConvOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <KeyRound className="size-4 text-primary" aria-hidden="true" />
-              Choisir un contact
-            </DialogTitle>
-            <DialogDescription>
-              Seules les identités publiées sur le réseau apparaissent — toujours.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="max-h-80 space-y-1 overflow-y-auto scrollbar-thin">
-            {(users.data?.users ?? [])
-              .filter((u) => u.pubkey !== myPub)
-              .map((u) => (
-                <button
-                  key={u.pubkey}
-                  onClick={() => {
-                    setSelectedPub(u.pubkey);
-                    setNewConvOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left hover:bg-accent"
-                >
-                  <MboteAvatar pubkey={u.pubkey} nickname={u.nickname} size={34} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">
-                      {u.nickname}
-                      {u.isBot && <span className="ml-1 text-[10px] text-primary">bot</span>}
-                    </p>
-                    <p className="truncate font-mono text-[10px] text-muted-foreground">
-                      {shortKey(u.pubkey, 8)}
-                    </p>
-                  </div>
-                  {u.ecdhPub && (
-                    <Lock className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
-                  )}
-                </button>
-              ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Dialogue nouvelle conversation (hoisté — rendu dans les 2 branches) */}
+      {contactPickerDialog}
     </div>
   );
 }

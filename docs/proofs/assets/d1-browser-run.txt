@@ -1,0 +1,13 @@
+[d1-browser] B1 — onboarding
+[d1-browser] B2 — recherche « kinshasa » (fil public)
+[d1-browser] capture d1-search-public.png
+[d1-browser] B3 — clic résultat public → feed + carte
+[d1-browser] capture d1-search-open-post.png
+[d1-browser] B4 — DM E2EE vers Bob
+[d1-browser] capture d1-dm-sent.png
+[d1-browser] B5 — recherche locale « secrete » → navigation + flash
+[d1-browser] capture d1-search-dm.png
+[d1-browser] capture d1-search-dm-focus.png
+[d1-browser] B6 — frontière OK : 2 requêtes /api/search, toutes type=posts (0 type=dms)
+[d1-browser] capture d1-search-empty.png
+[d1-browser] OK — preuves écrites (d1-browser.json)

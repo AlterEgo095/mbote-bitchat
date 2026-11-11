@@ -1,0 +1,722 @@
+▲ Next.js 16.1.3
+- Local:         http://127.0.0.1:3163
+- Network:       http://127.0.0.1:3163
+
+✓ Starting...
+✓ Ready in 106ms
+prisma:query PRAGMA journal_mode=WAL
+prisma:query PRAGMA journal_mode=WAL
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`User`.`id` FROM `main`.`User` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Post`.`id` FROM `main`.`Post` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT `main`.`Post`.`geohash` FROM `main`.`Post` WHERE `main`.`Post`.`geohash` IS NOT NULL GROUP BY `main`.`Post`.`geohash` LIMIT ? OFFSET ?
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`GatewayNode`.`id` FROM `main`.`GatewayNode` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`MeshIngest`.`hash` FROM `main`.`MeshIngest` WHERE `main`.`MeshIngest`.`createdAt` >= ? LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`DirectMessage`.`id` FROM `main`.`DirectMessage` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Like`.`id` FROM `main`.`Like` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+▲ Next.js 16.1.3
+- Local:         http://127.0.0.1:3163
+- Network:       http://127.0.0.1:3163
+
+✓ Starting...
+✓ Ready in 101ms
+prisma:query PRAGMA journal_mode=WAL
+prisma:query PRAGMA journal_mode=WAL
+prisma:query SELECT `main`.`Post`.`geohash` FROM `main`.`Post` WHERE `main`.`Post`.`geohash` IS NOT NULL GROUP BY `main`.`Post`.`geohash` LIMIT ? OFFSET ?
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`User`.`id` FROM `main`.`User` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Post`.`id` FROM `main`.`Post` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`DirectMessage`.`id` FROM `main`.`DirectMessage` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Like`.`id` FROM `main`.`Like` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`GatewayNode`.`id` FROM `main`.`GatewayNode` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`MeshIngest`.`hash` FROM `main`.`MeshIngest` WHERE `main`.`MeshIngest`.`createdAt` >= ? LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT `main`.`Post`.`id`, `main`.`Post`.`authorId`, `main`.`Post`.`content`, `main`.`Post`.`geohash`, `main`.`Post`.`precision`, `main`.`Post`.`parentId`, `main`.`Post`.`signature`, `main`.`Post`.`origin`, `main`.`Post`.`meshHops`, `main`.`Post`.`likeCount`, `main`.`Post`.`replyCount`, `main`.`Post`.`hiddenAt`, `main`.`Post`.`hiddenById`, `main`.`Post`.`createdAt` FROM `main`.`Post` LEFT JOIN `main`.`User` AS `j0` ON (`j0`.`id`) = (`main`.`Post`.`authorId`) WHERE (`main`.`Post`.`parentId` IS NULL AND `main`.`Post`.`hiddenAt` IS NULL AND ((`j0`.`suspendedAt` IS NULL OR `j0`.`suspendedUntil` < ?) AND `j0`.`bannedAt` IS NULL AND (`j0`.`id` IS NOT NULL))) ORDER BY `main`.`Post`.`createdAt` DESC, `main`.`Post`.`id` DESC LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey`, `main`.`User`.`nickname`, `main`.`User`.`bio`, `main`.`User`.`ecdhPub`, `main`.`User`.`isBot`, `main`.`User`.`botPriv`, `main`.`User`.`suspendedAt`, `main`.`User`.`suspendedUntil`, `main`.`User`.`suspendedById`, `main`.`User`.`bannedAt`, `main`.`User`.`bannedById`, `main`.`User`.`createdAt`, `main`.`User`.`updatedAt`, COALESCE(`aggr_selection_0_Post`.`_aggr_count_posts`, 0) AS `_aggr_count_posts`, COALESCE(`aggr_selection_1_Follow`.`_aggr_count_followers`, 0) AS `_aggr_count_followers`, COALESCE(`aggr_selection_2_Follow`.`_aggr_count_following`, 0) AS `_aggr_count_following` FROM `main`.`User` LEFT JOIN (SELECT `main`.`Post`.`authorId`, COUNT(*) AS `_aggr_count_posts` FROM `main`.`Post` WHERE 1=1 GROUP BY `main`.`Post`.`authorId`) AS `aggr_selection_0_Post` ON (`main`.`User`.`id` = `aggr_selection_0_Post`.`authorId`) LEFT JOIN (SELECT `main`.`Follow`.`followingId`, COUNT(*) AS `_aggr_count_followers` FROM `main`.`Follow` WHERE 1=1 GROUP BY `main`.`Follow`.`followingId`) AS `aggr_selection_1_Follow` ON (`main`.`User`.`id` = `aggr_selection_1_Follow`.`followingId`) LEFT JOIN (SELECT `main`.`Follow`.`followerId`, COUNT(*) AS `_aggr_count_following` FROM `main`.`Follow` WHERE 1=1 GROUP BY `main`.`Follow`.`followerId`) AS `aggr_selection_2_Follow` ON (`main`.`User`.`id` = `aggr_selection_2_Follow`.`followerId`) WHERE `main`.`User`.`id` IN (?) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`Post`.`geohash` FROM `main`.`Post` WHERE `main`.`Post`.`geohash` IS NOT NULL GROUP BY `main`.`Post`.`geohash` LIMIT ? OFFSET ?
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`User`.`id` FROM `main`.`User` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Post`.`id` FROM `main`.`Post` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`DirectMessage`.`id` FROM `main`.`DirectMessage` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Like`.`id` FROM `main`.`Like` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`GatewayNode`.`id` FROM `main`.`GatewayNode` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`MeshIngest`.`hash` FROM `main`.`MeshIngest` WHERE `main`.`MeshIngest`.`createdAt` >= ? LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all`, MAX(`main`.`Post`.`createdAt`) AS `_max$createdAt`, `main`.`Post`.`geohash`, `main`.`Post`.`precision` FROM `main`.`Post` WHERE `main`.`Post`.`geohash` IS NOT NULL GROUP BY `main`.`Post`.`geohash`, `main`.`Post`.`precision` LIMIT ? OFFSET ?
+prisma:query BEGIN IMMEDIATE
+prisma:query SELECT `main`.`User`.`id` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`User` (`id`, `pubkey`, `nickname`, `bio`, `ecdhPub`, `isBot`, `createdAt`, `updatedAt`) VALUES (?,?,?,?,?,?,?,?) RETURNING `id` AS `id`
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey`, `main`.`User`.`nickname`, `main`.`User`.`bio`, `main`.`User`.`ecdhPub`, `main`.`User`.`isBot`, `main`.`User`.`botPriv`, `main`.`User`.`suspendedAt`, `main`.`User`.`suspendedUntil`, `main`.`User`.`suspendedById`, `main`.`User`.`bannedAt`, `main`.`User`.`bannedById`, `main`.`User`.`createdAt`, `main`.`User`.`updatedAt`, COALESCE(`aggr_selection_0_Post`.`_aggr_count_posts`, 0) AS `_aggr_count_posts`, COALESCE(`aggr_selection_1_Follow`.`_aggr_count_followers`, 0) AS `_aggr_count_followers`, COALESCE(`aggr_selection_2_Follow`.`_aggr_count_following`, 0) AS `_aggr_count_following` FROM `main`.`User` LEFT JOIN (SELECT `main`.`Post`.`authorId`, COUNT(*) AS `_aggr_count_posts` FROM `main`.`Post` WHERE 1=1 GROUP BY `main`.`Post`.`authorId`) AS `aggr_selection_0_Post` ON (`main`.`User`.`id` = `aggr_selection_0_Post`.`authorId`) LEFT JOIN (SELECT `main`.`Follow`.`followingId`, COUNT(*) AS `_aggr_count_followers` FROM `main`.`Follow` WHERE 1=1 GROUP BY `main`.`Follow`.`followingId`) AS `aggr_selection_1_Follow` ON (`main`.`User`.`id` = `aggr_selection_1_Follow`.`followingId`) LEFT JOIN (SELECT `main`.`Follow`.`followerId`, COUNT(*) AS `_aggr_count_following` FROM `main`.`Follow` WHERE 1=1 GROUP BY `main`.`Follow`.`followerId`) AS `aggr_selection_2_Follow` ON (`main`.`User`.`id` = `aggr_selection_2_Follow`.`followerId`) WHERE `main`.`User`.`id` = ? LIMIT ? OFFSET ?
+prisma:query COMMIT
+prisma:query SELECT `main`.`PeerBlock`.`id`, `main`.`PeerBlock`.`blockedKey` FROM `main`.`PeerBlock` WHERE `main`.`PeerBlock`.`blockerKey` = ? LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`Post`.`id`, `main`.`Post`.`authorId`, `main`.`Post`.`content`, `main`.`Post`.`geohash`, `main`.`Post`.`precision`, `main`.`Post`.`parentId`, `main`.`Post`.`signature`, `main`.`Post`.`origin`, `main`.`Post`.`meshHops`, `main`.`Post`.`likeCount`, `main`.`Post`.`replyCount`, `main`.`Post`.`hiddenAt`, `main`.`Post`.`hiddenById`, `main`.`Post`.`createdAt` FROM `main`.`Post` LEFT JOIN `main`.`User` AS `j0` ON (`j0`.`id`) = (`main`.`Post`.`authorId`) WHERE (`main`.`Post`.`parentId` IS NULL AND `main`.`Post`.`hiddenAt` IS NULL AND ((`j0`.`suspendedAt` IS NULL OR `j0`.`suspendedUntil` < ?) AND `j0`.`bannedAt` IS NULL AND (`j0`.`id` IS NOT NULL))) ORDER BY `main`.`Post`.`createdAt` DESC, `main`.`Post`.`id` DESC LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey`, `main`.`User`.`nickname`, `main`.`User`.`bio`, `main`.`User`.`ecdhPub`, `main`.`User`.`isBot`, `main`.`User`.`botPriv`, `main`.`User`.`suspendedAt`, `main`.`User`.`suspendedUntil`, `main`.`User`.`suspendedById`, `main`.`User`.`bannedAt`, `main`.`User`.`bannedById`, `main`.`User`.`createdAt`, `main`.`User`.`updatedAt`, COALESCE(`aggr_selection_0_Post`.`_aggr_count_posts`, 0) AS `_aggr_count_posts`, COALESCE(`aggr_selection_1_Follow`.`_aggr_count_followers`, 0) AS `_aggr_count_followers`, COALESCE(`aggr_selection_2_Follow`.`_aggr_count_following`, 0) AS `_aggr_count_following` FROM `main`.`User` LEFT JOIN (SELECT `main`.`Post`.`authorId`, COUNT(*) AS `_aggr_count_posts` FROM `main`.`Post` WHERE 1=1 GROUP BY `main`.`Post`.`authorId`) AS `aggr_selection_0_Post` ON (`main`.`User`.`id` = `aggr_selection_0_Post`.`authorId`) LEFT JOIN (SELECT `main`.`Follow`.`followingId`, COUNT(*) AS `_aggr_count_followers` FROM `main`.`Follow` WHERE 1=1 GROUP BY `main`.`Follow`.`followingId`) AS `aggr_selection_1_Follow` ON (`main`.`User`.`id` = `aggr_selection_1_Follow`.`followingId`) LEFT JOIN (SELECT `main`.`Follow`.`followerId`, COUNT(*) AS `_aggr_count_following` FROM `main`.`Follow` WHERE 1=1 GROUP BY `main`.`Follow`.`followerId`) AS `aggr_selection_2_Follow` ON (`main`.`User`.`id` = `aggr_selection_2_Follow`.`followerId`) WHERE `main`.`User`.`id` IN (?) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`DirectMessage`.`id`, `main`.`DirectMessage`.`senderKey`, `main`.`DirectMessage`.`recipientKey`, `main`.`DirectMessage`.`iv`, `main`.`DirectMessage`.`ciphertext`, `main`.`DirectMessage`.`msgId`, `main`.`DirectMessage`.`seq`, `main`.`DirectMessage`.`createdAt`, `main`.`DirectMessage`.`readAt` FROM `main`.`DirectMessage` WHERE (`main`.`DirectMessage`.`senderKey` = ? OR `main`.`DirectMessage`.`recipientKey` = ?) ORDER BY `main`.`DirectMessage`.`createdAt` DESC LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`Post`.`geohash` FROM `main`.`Post` WHERE `main`.`Post`.`geohash` IS NOT NULL GROUP BY `main`.`Post`.`geohash` LIMIT ? OFFSET ?
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Like`.`id` FROM `main`.`Like` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`User`.`id` FROM `main`.`User` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`GatewayNode`.`id` FROM `main`.`GatewayNode` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Post`.`id` FROM `main`.`Post` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`MeshIngest`.`hash` FROM `main`.`MeshIngest` WHERE `main`.`MeshIngest`.`createdAt` >= ? LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`DirectMessage`.`id` FROM `main`.`DirectMessage` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all`, MAX(`main`.`Post`.`createdAt`) AS `_max$createdAt`, `main`.`Post`.`geohash`, `main`.`Post`.`precision` FROM `main`.`Post` WHERE `main`.`Post`.`geohash` IS NOT NULL GROUP BY `main`.`Post`.`geohash`, `main`.`Post`.`precision` LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`PeerBlock`.`id`, `main`.`PeerBlock`.`blockedKey` FROM `main`.`PeerBlock` WHERE `main`.`PeerBlock`.`blockerKey` = ? LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey`, `main`.`User`.`nickname`, `main`.`User`.`bio`, `main`.`User`.`ecdhPub`, `main`.`User`.`isBot`, `main`.`User`.`botPriv`, `main`.`User`.`suspendedAt`, `main`.`User`.`suspendedUntil`, `main`.`User`.`suspendedById`, `main`.`User`.`bannedAt`, `main`.`User`.`bannedById`, `main`.`User`.`createdAt`, `main`.`User`.`updatedAt` FROM `main`.`User` WHERE (`main`.`User`.`pubkey` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`Like`.`id`, `main`.`Like`.`postId`, `main`.`Like`.`userId`, `main`.`Like`.`createdAt` FROM `main`.`Like` WHERE (`main`.`Like`.`userId` = ? AND `main`.`Like`.`postId` IN (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)) LIMIT ? OFFSET ?
+prisma:query DELETE FROM `main`.`MeshIngest` WHERE `main`.`MeshIngest`.`createdAt` < ?
+prisma:query DELETE FROM `main`.`ReplayGuard` WHERE `main`.`ReplayGuard`.`expiresAt` <= ?
+prisma:query DELETE FROM `main`.`ReplayCounter` WHERE `main`.`ReplayCounter`.`epoch` < ?
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query SELECT `main`.`Post`.`id`, `main`.`Post`.`authorId`, `main`.`Post`.`content`, `main`.`Post`.`geohash`, `main`.`Post`.`precision`, `main`.`Post`.`parentId`, `main`.`Post`.`signature`, `main`.`Post`.`origin`, `main`.`Post`.`meshHops`, `main`.`Post`.`likeCount`, `main`.`Post`.`replyCount`, `main`.`Post`.`hiddenAt`, `main`.`Post`.`hiddenById`, `main`.`Post`.`createdAt` FROM `main`.`Post` LEFT JOIN `main`.`User` AS `j0` ON (`j0`.`id`) = (`main`.`Post`.`authorId`) WHERE (`main`.`Post`.`id` = ? AND `main`.`Post`.`hiddenAt` IS NULL AND ((`j0`.`suspendedAt` IS NULL OR `j0`.`suspendedUntil` < ?) AND `j0`.`bannedAt` IS NULL AND (`j0`.`id` IS NOT NULL))) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey`, `main`.`User`.`nickname`, `main`.`User`.`bio`, `main`.`User`.`ecdhPub`, `main`.`User`.`isBot`, `main`.`User`.`botPriv`, `main`.`User`.`suspendedAt`, `main`.`User`.`suspendedUntil`, `main`.`User`.`suspendedById`, `main`.`User`.`bannedAt`, `main`.`User`.`bannedById`, `main`.`User`.`createdAt`, `main`.`User`.`updatedAt`, COALESCE(`aggr_selection_0_Post`.`_aggr_count_posts`, 0) AS `_aggr_count_posts`, COALESCE(`aggr_selection_1_Follow`.`_aggr_count_followers`, 0) AS `_aggr_count_followers`, COALESCE(`aggr_selection_2_Follow`.`_aggr_count_following`, 0) AS `_aggr_count_following` FROM `main`.`User` LEFT JOIN (SELECT `main`.`Post`.`authorId`, COUNT(*) AS `_aggr_count_posts` FROM `main`.`Post` WHERE 1=1 GROUP BY `main`.`Post`.`authorId`) AS `aggr_selection_0_Post` ON (`main`.`User`.`id` = `aggr_selection_0_Post`.`authorId`) LEFT JOIN (SELECT `main`.`Follow`.`followingId`, COUNT(*) AS `_aggr_count_followers` FROM `main`.`Follow` WHERE 1=1 GROUP BY `main`.`Follow`.`followingId`) AS `aggr_selection_1_Follow` ON (`main`.`User`.`id` = `aggr_selection_1_Follow`.`followingId`) LEFT JOIN (SELECT `main`.`Follow`.`followerId`, COUNT(*) AS `_aggr_count_following` FROM `main`.`Follow` WHERE 1=1 GROUP BY `main`.`Follow`.`followerId`) AS `aggr_selection_2_Follow` ON (`main`.`User`.`id` = `aggr_selection_2_Follow`.`followerId`) WHERE `main`.`User`.`id` IN (?) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey`, `main`.`User`.`nickname`, `main`.`User`.`bio`, `main`.`User`.`ecdhPub`, `main`.`User`.`isBot`, `main`.`User`.`botPriv`, `main`.`User`.`suspendedAt`, `main`.`User`.`suspendedUntil`, `main`.`User`.`suspendedById`, `main`.`User`.`bannedAt`, `main`.`User`.`bannedById`, `main`.`User`.`createdAt`, `main`.`User`.`updatedAt`, COALESCE(`aggr_selection_0_Post`.`_aggr_count_posts`, 0) AS `_aggr_count_posts`, COALESCE(`aggr_selection_1_Follow`.`_aggr_count_followers`, 0) AS `_aggr_count_followers`, COALESCE(`aggr_selection_2_Follow`.`_aggr_count_following`, 0) AS `_aggr_count_following` FROM `main`.`User` LEFT JOIN (SELECT `main`.`Post`.`authorId`, COUNT(*) AS `_aggr_count_posts` FROM `main`.`Post` WHERE 1=1 GROUP BY `main`.`Post`.`authorId`) AS `aggr_selection_0_Post` ON (`main`.`User`.`id` = `aggr_selection_0_Post`.`authorId`) LEFT JOIN (SELECT `main`.`Follow`.`followingId`, COUNT(*) AS `_aggr_count_followers` FROM `main`.`Follow` WHERE 1=1 GROUP BY `main`.`Follow`.`followingId`) AS `aggr_selection_1_Follow` ON (`main`.`User`.`id` = `aggr_selection_1_Follow`.`followingId`) LEFT JOIN (SELECT `main`.`Follow`.`followerId`, COUNT(*) AS `_aggr_count_following` FROM `main`.`Follow` WHERE 1=1 GROUP BY `main`.`Follow`.`followerId`) AS `aggr_selection_2_Follow` ON (`main`.`User`.`id` = `aggr_selection_2_Follow`.`followerId`) WHERE 1=1 ORDER BY `main`.`User`.`isBot` DESC, `main`.`User`.`nickname` ASC LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`Post`.`geohash` FROM `main`.`Post` WHERE `main`.`Post`.`geohash` IS NOT NULL GROUP BY `main`.`Post`.`geohash` LIMIT ? OFFSET ?
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`User`.`id` FROM `main`.`User` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Post`.`id` FROM `main`.`Post` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`DirectMessage`.`id` FROM `main`.`DirectMessage` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Like`.`id` FROM `main`.`Like` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`GatewayNode`.`id` FROM `main`.`GatewayNode` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`MeshIngest`.`hash` FROM `main`.`MeshIngest` WHERE `main`.`MeshIngest`.`createdAt` >= ? LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT COUNT(*) AS `_count$_all`, MAX(`main`.`Post`.`createdAt`) AS `_max$createdAt`, `main`.`Post`.`geohash`, `main`.`Post`.`precision` FROM `main`.`Post` WHERE `main`.`Post`.`geohash` IS NOT NULL GROUP BY `main`.`Post`.`geohash`, `main`.`Post`.`precision` LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`DirectMessage`.`id`, `main`.`DirectMessage`.`senderKey`, `main`.`DirectMessage`.`recipientKey`, `main`.`DirectMessage`.`iv`, `main`.`DirectMessage`.`ciphertext`, `main`.`DirectMessage`.`msgId`, `main`.`DirectMessage`.`seq`, `main`.`DirectMessage`.`createdAt`, `main`.`DirectMessage`.`readAt` FROM `main`.`DirectMessage` WHERE (`main`.`DirectMessage`.`senderKey` = ? OR `main`.`DirectMessage`.`recipientKey` = ?) ORDER BY `main`.`DirectMessage`.`createdAt` DESC LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`PeerBlock`.`id`, `main`.`PeerBlock`.`blockedKey` FROM `main`.`PeerBlock` WHERE `main`.`PeerBlock`.`blockerKey` = ? LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`DirectMessage`.`id`, `main`.`DirectMessage`.`senderKey`, `main`.`DirectMessage`.`recipientKey`, `main`.`DirectMessage`.`iv`, `main`.`DirectMessage`.`ciphertext`, `main`.`DirectMessage`.`msgId`, `main`.`DirectMessage`.`seq`, `main`.`DirectMessage`.`createdAt`, `main`.`DirectMessage`.`readAt` FROM `main`.`DirectMessage` WHERE ((`main`.`DirectMessage`.`senderKey` = ? AND `main`.`DirectMessage`.`recipientKey` = ?) OR (`main`.`DirectMessage`.`senderKey` = ? AND `main`.`DirectMessage`.`recipientKey` = ?)) ORDER BY `main`.`DirectMessage`.`createdAt` ASC LIMIT ? OFFSET ?
+prisma:query BEGIN IMMEDIATE
+prisma:query UPDATE `main`.`DirectMessage` SET `readAt` = ? WHERE (`main`.`DirectMessage`.`senderKey` = ? AND `main`.`DirectMessage`.`recipientKey` = ? AND `main`.`DirectMessage`.`readAt` IS NULL)
+prisma:query COMMIT
+prisma:query SELECT `main`.`PeerBlock`.`id` FROM `main`.`PeerBlock` WHERE ((`main`.`PeerBlock`.`blockerKey` = ? AND `main`.`PeerBlock`.`blockedKey` = ?) AND 1=1) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey`, `main`.`User`.`nickname`, `main`.`User`.`bio`, `main`.`User`.`ecdhPub`, `main`.`User`.`isBot`, `main`.`User`.`botPriv`, `main`.`User`.`suspendedAt`, `main`.`User`.`suspendedUntil`, `main`.`User`.`suspendedById`, `main`.`User`.`bannedAt`, `main`.`User`.`bannedById`, `main`.`User`.`createdAt`, `main`.`User`.`updatedAt` FROM `main`.`User` WHERE `main`.`User`.`pubkey` IN (?,?) LIMIT ? OFFSET ?
+prisma:query BEGIN IMMEDIATE
+prisma:query INSERT INTO `main`.`ReplayGuard` (`id`, `kind`, `createdAt`, `expiresAt`) VALUES (?,?,?,?) RETURNING `id` AS `id`, `kind` AS `kind`, `createdAt` AS `createdAt`, `expiresAt` AS `expiresAt`
+prisma:query INSERT INTO `main`.`ReplayCounter` (`key`, `senderKey`, `recipientKey`, `epoch`, `lastSeq`, `updatedAt`) VALUES (?,?,?,?,?,?) RETURNING `key` AS `key`, `senderKey` AS `senderKey`, `recipientKey` AS `recipientKey`, `epoch` AS `epoch`, `lastSeq` AS `lastSeq`, `updatedAt` AS `updatedAt`
+prisma:query INSERT INTO `main`.`DirectMessage` (`id`, `senderKey`, `recipientKey`, `iv`, `ciphertext`, `msgId`, `seq`, `createdAt`) VALUES (?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `senderKey` AS `senderKey`, `recipientKey` AS `recipientKey`, `iv` AS `iv`, `ciphertext` AS `ciphertext`, `msgId` AS `msgId`, `seq` AS `seq`, `createdAt` AS `createdAt`, `readAt` AS `readAt`
+prisma:query COMMIT
+prisma:query SELECT `main`.`DirectMessage`.`id`, `main`.`DirectMessage`.`senderKey`, `main`.`DirectMessage`.`recipientKey`, `main`.`DirectMessage`.`iv`, `main`.`DirectMessage`.`ciphertext`, `main`.`DirectMessage`.`msgId`, `main`.`DirectMessage`.`seq`, `main`.`DirectMessage`.`createdAt`, `main`.`DirectMessage`.`readAt` FROM `main`.`DirectMessage` WHERE ((`main`.`DirectMessage`.`senderKey` = ? AND `main`.`DirectMessage`.`recipientKey` = ?) OR (`main`.`DirectMessage`.`senderKey` = ? AND `main`.`DirectMessage`.`recipientKey` = ?)) ORDER BY `main`.`DirectMessage`.`createdAt` ASC LIMIT ? OFFSET ?
+prisma:query BEGIN IMMEDIATE
+prisma:query UPDATE `main`.`DirectMessage` SET `readAt` = ? WHERE (`main`.`DirectMessage`.`senderKey` = ? AND `main`.`DirectMessage`.`recipientKey` = ? AND `main`.`DirectMessage`.`readAt` IS NULL)
+prisma:query COMMIT
+prisma:query SELECT `main`.`PeerBlock`.`id` FROM `main`.`PeerBlock` WHERE ((`main`.`PeerBlock`.`blockerKey` = ? AND `main`.`PeerBlock`.`blockedKey` = ?) AND 1=1) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`DirectMessage`.`id`, `main`.`DirectMessage`.`senderKey`, `main`.`DirectMessage`.`recipientKey`, `main`.`DirectMessage`.`iv`, `main`.`DirectMessage`.`ciphertext`, `main`.`DirectMessage`.`msgId`, `main`.`DirectMessage`.`seq`, `main`.`DirectMessage`.`createdAt`, `main`.`DirectMessage`.`readAt` FROM `main`.`DirectMessage` WHERE (`main`.`DirectMessage`.`senderKey` = ? OR `main`.`DirectMessage`.`recipientKey` = ?) ORDER BY `main`.`DirectMessage`.`createdAt` DESC LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`User`.`id`, `main`.`User`.`pubkey`, `main`.`User`.`nickname`, `main`.`User`.`bio`, `main`.`User`.`ecdhPub`, `main`.`User`.`isBot`, `main`.`User`.`botPriv`, `main`.`User`.`suspendedAt`, `main`.`User`.`suspendedUntil`, `main`.`User`.`suspendedById`, `main`.`User`.`bannedAt`, `main`.`User`.`bannedById`, `main`.`User`.`createdAt`, `main`.`User`.`updatedAt`, COALESCE(`aggr_selection_0_Post`.`_aggr_count_posts`, 0) AS `_aggr_count_posts`, COALESCE(`aggr_selection_1_Follow`.`_aggr_count_followers`, 0) AS `_aggr_count_followers`, COALESCE(`aggr_selection_2_Follow`.`_aggr_count_following`, 0) AS `_aggr_count_following` FROM `main`.`User` LEFT JOIN (SELECT `main`.`Post`.`authorId`, COUNT(*) AS `_aggr_count_posts` FROM `main`.`Post` WHERE 1=1 GROUP BY `main`.`Post`.`authorId`) AS `aggr_selection_0_Post` ON (`main`.`User`.`id` = `aggr_selection_0_Post`.`authorId`) LEFT JOIN (SELECT `main`.`Follow`.`followingId`, COUNT(*) AS `_aggr_count_followers` FROM `main`.`Follow` WHERE 1=1 GROUP BY `main`.`Follow`.`followingId`) AS `aggr_selection_1_Follow` ON (`main`.`User`.`id` = `aggr_selection_1_Follow`.`followingId`) LEFT JOIN (SELECT `main`.`Follow`.`followerId`, COUNT(*) AS `_aggr_count_following` FROM `main`.`Follow` WHERE 1=1 GROUP BY `main`.`Follow`.`followerId`) AS `aggr_selection_2_Follow` ON (`main`.`User`.`id` = `aggr_selection_2_Follow`.`followerId`) WHERE `main`.`User`.`pubkey` IN (?) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`PeerBlock`.`id`, `main`.`PeerBlock`.`blockedKey` FROM `main`.`PeerBlock` WHERE `main`.`PeerBlock`.`blockerKey` = ? LIMIT ? OFFSET ?
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    
+prisma:query 
+      SELECT
+        p.id            AS postId,
+        snippet(PostFTS, 0, '', '', '…', ?) AS snippet,
+        bm25(PostFTS)   AS rank,
+        u.pubkey        AS authorPubkey,
+        u.nickname      AS authorNickname,
+        p.createdAt     AS createdAt
+      FROM PostFTS
+      JOIN Post p ON p.id = PostFTS.postId
+      JOIN User u ON u.id = p.authorId
+      WHERE PostFTS MATCH ?
+        AND p.hiddenAt IS NULL
+        AND (u.suspendedAt IS NULL OR u.suspendedUntil < ?)
+        AND u.bannedAt IS NULL
+      ORDER BY rank
+      LIMIT ?
+      OFFSET ?
+    

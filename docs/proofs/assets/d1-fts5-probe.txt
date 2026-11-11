@@ -1,0 +1,3 @@
+FTS5 OK — diacritics match: [{"s":"l'[école] à Kinshasa","r":-0.000001}]
+negative case rows: 0n
+VERDICT: FTS5 AVAILABLE

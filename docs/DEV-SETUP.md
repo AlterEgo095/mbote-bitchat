@@ -243,6 +243,31 @@ suivre les 4 points ci-dessus et étendre `verifyBootPragmas()`.
 
 ---
 
+## 4c. Recherche D1 : FTS5 = SQL brut versionné, hors schema.prisma — même précédent que 4b
+
+La table virtuelle `PostFTS` (index plein-texte du fil public) et ses trois
+triggers vivent dans la migration
+`prisma/migrations/20261110100000_0009_d1_post_fts/migration.sql` — **pas** dans
+`schema.prisma` (Prisma ne modélise pas les tables virtuelles FTS5 ; même
+précédent que les triggers append-only 0004). Conséquences :
+
+- **Prérequis bloquant** : FTS5 doit être compilé dans le SQLite embarqué de
+  Prisma — sonde obligatoire avant tout code : `bun scripts/d1-fts5-probe.ts`
+  (exit 1 = D1 s'arrête ; plan B documenté dans la migration).
+- **`migrate deploy` lève LOUD** en cas d'échec de la DDL (Clarification 1 :
+  aucune config DB silencieuse) — ne pas « réparer » avec un try/catch.
+- La frontière de recherche est **structurelle** : `/api/search` ne sert que le
+  fil public (`type=dms` → 400) ; les DM se cherchent localement
+  (`src/lib/mbote/dm-search-index.ts`, IndexedDB, zéro réseau — preuve
+  `docs/proofs/D1-search.md` §5) et l'index local est purgé par le panic wipe
+  (`identity.ts panicWipe` → `clearDmSearchIndex`).
+
+Runner de preuve rejouable : `bash scripts/d1-search-proof-run.sh` (sonde →
+build → migrations → seed piégé → serveur :3163 → 9 tests API → preuve
+navigateur Chromium → greps frontière → check-merge-clean).
+
+---
+
 ## 5. `mobile/` : le miroir est synchronisé au VPS — ne pas ré-exclure (incident I-1)
 
 Le rsync du déploiement (`deploy-vps.yml`) synchronise `mobile/` vers le VPS.

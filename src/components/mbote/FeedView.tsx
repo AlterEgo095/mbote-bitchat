@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
@@ -9,6 +9,7 @@ import {
   Loader2,
   MapPin,
   Radio,
+  Search,
   ShieldCheck,
   Users,
   UsersRound,
@@ -20,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { apiFetchFeed, type FeedScope } from "@/lib/mbote/api";
+import { apiFetchFeed, apiGetPost, type FeedScope } from "@/lib/mbote/api";
 import type { ActiveChannel, PendingPost, PostWithMeta } from "@/lib/mbote/types";
 import { Composer } from "./Composer";
 import { PendingPostCard, PostCard } from "./PostCard";
@@ -45,6 +46,10 @@ interface FeedViewProps {
   onDismissPending: (clientRef: string) => void;
   /** F-49 : texte partagé via share_target (brouillon initial du composer) */
   draft?: string | null;
+  /** D1 : post ciblé depuis la recherche (scroll/flash, fetch isolé si absent du fil) */
+  focusPostId?: string | null;
+  /** D1 : consommé quand la cible a été affichée/flashée (ou introuvable). */
+  onFocusPostConsumed?: () => void;
 }
 
 export function FeedView({
@@ -61,6 +66,8 @@ export function FeedView({
   pendingPosts,
   onDismissPending,
   draft,
+  focusPostId,
+  onFocusPostConsumed,
 }: FeedViewProps) {
   // F-12.3 : portée du fil global — « Tous » ou « Abonnements » (scope
   // "following" du backend, consommé ici pour la première fois).
@@ -141,6 +148,61 @@ export function FeedView({
   const visiblePending = pendingPosts.filter(
     (p) => !activeChannel || p.geohash === activeChannel.geohash
   );
+
+  // ── D1 : navigation depuis la recherche ───────────────────────────────────
+  // Si le post est dans le fil → scroll + flash direct. Sinon → fetch isolé
+  // (GET /api/posts/[id], mêmes filtres de visibilité que le fil) et carte
+  // « Résultat de recherche » épinglée en haut du fil.
+  const [focusPost, setFocusPost] = useState<PostWithMeta | null>(null);
+  const [focusMissing, setFocusMissing] = useState(false);
+
+  const flashPost = useCallback((id: string) => {
+    const el = document.querySelector(`[data-post-id="${CSS.escape(id)}"]`);
+    if (!el) return false;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-primary", "ring-offset-2");
+    setTimeout(() => el.classList.remove("ring-2", "ring-primary", "ring-offset-2"), 2500);
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (!focusPostId) return;
+    // post présent dans le fil → scroll + flash direct (pas de carte dédiée :
+    // l'affichage de la carte est DÉRIVÉ au rendu — pas de setState synchrone)
+    if (posts.some((p) => p.id === focusPostId)) {
+      if (flashPost(focusPostId)) onFocusPostConsumed?.();
+      return;
+    }
+    let cancelled = false;
+    void apiGetPost(focusPostId)
+      .then((r) => {
+        if (cancelled) return;
+        setFocusPost(r.post);
+        // flash au prochain rendu (la carte vient d'être montée)
+        setTimeout(() => {
+          if (flashPost(focusPostId)) return;
+          document
+            .querySelector(`[data-search-focus="${CSS.escape(focusPostId)}"]`)
+            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 80);
+        onFocusPostConsumed?.();
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFocusMissing(true);
+          onFocusPostConsumed?.();
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+    // posts en dep : permet le flash direct dès que le post apparaît dans le fil
+  }, [focusPostId, posts, flashPost, onFocusPostConsumed]);
+
+  // carte « Résultat de recherche » : montrée SEULEMENT si le post n'a pas
+  // (encore) rejoint le fil — dérivé, aucune synchronisation d'état requise
+  const showFocusCard =
+    focusPost && !posts.some((p) => p.id === focusPost.id) ? focusPost : null;
 
   return (
     <div className="space-y-5">
@@ -308,6 +370,31 @@ export function FeedView({
       )}
 
       {/* File d'attente locale */}
+      {focusMissing && (
+        <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-600 dark:text-amber-400">
+          Le post trouvé par la recherche n&apos;est plus visible publiquement.
+        </p>
+      )}
+      {focusPost && !showFocusCard && (
+        /* le post a rejoint le fil (refetch) : la carte dédiée s'efface d'elle-même */
+        <span className="hidden" aria-hidden="true" data-search-focus={focusPost.id} />
+      )}
+      {showFocusCard && (
+        <section aria-label="Résultat de recherche" className="space-y-1">
+          <div data-search-focus={showFocusCard.id} className="space-y-1">
+            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+              <Search className="size-3" aria-hidden="true" /> Résultat de recherche
+            </p>
+            <PostCard
+              post={showFocusCard}
+              myPub={myPub}
+              forceOffline={forceOffline}
+              onLike={onLike}
+              onReply={onReply}
+            />
+          </div>
+        </section>
+      )}
       {visiblePending.length > 0 && (
         <section aria-label="File d'attente locale" className="space-y-2">
           {visiblePending.map((p) => (
@@ -374,14 +461,15 @@ export function FeedView({
       ) : (
         <div className="space-y-3">
           {posts.map((p) => (
-            <PostCard
-              key={p.id}
-              post={p}
-              myPub={myPub}
-              forceOffline={forceOffline}
-              onLike={onLike}
-              onReply={onReply}
-            />
+            <div key={p.id} data-post-id={p.id}>
+              <PostCard
+                post={p}
+                myPub={myPub}
+                forceOffline={forceOffline}
+                onLike={onLike}
+                onReply={onReply}
+              />
+            </div>
           ))}
           {feed.isFetching && !feed.isLoading && !feed.isFetchingNextPage && (
             <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">

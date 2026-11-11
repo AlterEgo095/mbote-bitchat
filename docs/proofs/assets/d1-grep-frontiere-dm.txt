@@ -1,0 +1,12 @@
+## grep fetch/XMLHttpRequest/WebSocket dans dm-search-index.ts (attendu : 0)
+(aucune occurrence — 0 requête réseau)
+
+## structure GlobalSearch : la section DM n'utilise QUE searchLocalDm
+9: *  • « Messages privés » : searchLocalDm (IndexedDB local) — ZÉRO requête
+34:import { apiSearchPosts, type SearchResultPost } from "@/lib/mbote/api";
+35:import { searchLocalDm, type DmSearchHit } from "@/lib/mbote/dm-search-index";
+94:    queryFn: () => apiSearchPosts(debounced, 0, 20),
+104:    void searchLocalDm(debounced, 20)
+
+## garde serveur : /api/search refuse type=dms (route.ts)
+68:    if (type !== "posts") {

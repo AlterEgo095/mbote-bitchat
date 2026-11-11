@@ -1,0 +1,17 @@
+{
+  "onboarded": true,
+  "publicHits": 1,
+  "publicNavigation": true,
+  "dmSent": true,
+  "dmHits": 1,
+  "dmNavigationFlash": true,
+  "searchRequests": 2,
+  "searchRequestUrls": [
+    "http://127.0.0.1:3163/api/search?q=kinshasa&type=posts&limit=20&offset=0",
+    "http://127.0.0.1:3163/api/search?q=secrete&type=posts&limit=20&offset=0",
+    "http://127.0.0.1:3163/api/search?q=zzzrienzzz&type=posts&limit=20&offset=0"
+  ],
+  "boundaryViolations": 0,
+  "emptyState": true,
+  "ok": true
+}

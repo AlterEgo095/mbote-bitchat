@@ -288,3 +288,38 @@ export function apiBridgeDownlink(gatewayId: string, since?: string) {
   if (since) q.set("since", since);
   return jsonFetch<BridgeDownlink>(`/api/mesh/bridge?${q.toString()}`);
 }
+
+// ---------- recherche (D1) ----------
+
+export interface SearchResultPost {
+  postId: string;
+  snippet: string;
+  /** bm25(PostFTS) — plus petit = plus pertinent (convention SQLite) */
+  rank: number;
+  authorPubkey: string;
+  authorNickname: string;
+  createdAt: string;
+}
+
+/**
+ * D1 : recherche SERVEUR du fil public uniquement. Les DM ne passent JAMAIS
+ * par le réseau (searchLocalDm dans dm-search-index.ts) — frontière E2EE.
+ */
+export function apiSearchPosts(q: string, offset = 0, limit = 20) {
+  const sp = new URLSearchParams({ q, type: "posts", limit: String(limit), offset: String(offset) });
+  return jsonFetch<{
+    query: string;
+    ftsQuery: string;
+    results: SearchResultPost[];
+    hasMore: boolean;
+    nextOffset: number | null;
+  }>(`/api/search?${sp.toString()}`);
+}
+
+/**
+ * D1 : fetch isolé d'un post public (navigation depuis la recherche — le post
+ * ciblé n'est pas forcément dans la première page du fil). 404 si non public.
+ */
+export function apiGetPost(id: string) {
+  return jsonFetch<{ post: PostWithMeta }>(`/api/posts/${encodeURIComponent(id)}`);
+}

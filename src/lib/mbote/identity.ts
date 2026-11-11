@@ -167,6 +167,8 @@ function deleteDb(name: string): Promise<void> {
  *  - outbox sociale (LS, F-31 : purge par pruneOutbox) ;
  *  - outbox durable binaire : IndexedDB `mbote-outbox` + repli LS
  *    `mbote.outbox.packets.v1` ;
+ *  - index de recherche DM : IndexedDB `mbote-dm-search` (D1 — textes
+ *    déchiffrés, cf. dm-search-index.ts) ;
  *  - mode mesh forcé + thème (état local).
  */
 export async function panicWipe(): Promise<void> {
@@ -179,6 +181,11 @@ export async function panicWipe(): Promise<void> {
   // Ordre important (F-11) : purge du record AVANT la suppression des bases —
   // clearSecureKeys ré-ouvrirait sinon la base juste après deleteDatabase.
   await clearSecureKeys();
+  // D1 : l'index de recherche DM contient des textes déchiffrés — il ne
+  // survit JAMAIS à un wipe (import tardif pour éviter tout cycle : ce module
+  // n'importe que des utilitaires purs).
+  const { clearDmSearchIndex } = await import("./dm-search-index");
+  await clearDmSearchIndex();
   await Promise.all([deleteDb("mbote-secure"), deleteDb("mbote-outbox")]);
 }
 
