@@ -11,8 +11,15 @@ const isDev = process.env.NODE_ENV !== "production";
 // F-35 : en-têtes de sécurité. La CSP autorise les styles inline (Next.js),
 // les scripts inline (bootstrap Next) et 'unsafe-eval' en dev uniquement
 // (HMR). connect-src est étendu au hub temps réel public quand il est défini.
+// C2 (bug réel attrapé par la preuve navigateur) : une entrée CSP `http://…`
+// ne couvre PAS le websocket `ws://…` (ni https→wss) sur Chromium moderne —
+// les deux schémas sont listés explicitement, sinon l'ouverture du socket est
+// bloquée SILENCIEUSEMENT par la CSP (« violates connect-src » en console).
 const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
-const connectSrc = ["'self'", ...(socketUrl ? [socketUrl] : [])].join(" ");
+const socketConnectSrc = socketUrl
+  ? [socketUrl, socketUrl.replace(/^http/, "ws")]
+  : [];
+const connectSrc = ["'self'", ...socketConnectSrc].join(" ");
 
 const contentSecurityPolicy = [
   "default-src 'self'",

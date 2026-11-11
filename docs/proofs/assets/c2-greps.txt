@@ -1,0 +1,5 @@
+## capture fil call:* (c2-wire-capture.jsonl) — signalisation uniquement
+trames call:* capturées : 14
+## log hub — aucun octet de média (le hub ne voit que SDP/ICE)
+0
+(le hub ne logge PAS les payloads — signalisation seulement, by design)

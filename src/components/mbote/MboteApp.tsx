@@ -88,6 +88,9 @@ import { MboteAvatar } from "./Avatar";
 // bundle initial. ChannelsView/NetworkView/ProfileView restent dynamic
 // (hors périmètre B2 — note NON TESTÉ).
 import { MessagesView } from "./MessagesView";
+// C2 : overlay d'appel audio (survit aux changements de vue)
+import { CallView } from "./CallView";
+import { callManager } from "@/lib/mbote/webrtc";
 const ChannelsView = dynamic(
   () => import("./ChannelsView").then((m) => m.ChannelsView),
   { ssr: false, loading: ViewSkeleton }
@@ -324,6 +327,14 @@ export function MboteApp() {
   const canSend = isOnline && !forceOffline;
 
   // ---------- temps réel (hub socket.io) ----------
+  useEffect(() => {
+    if (!mounted) return;
+    // C2 : le gestionnaire d'appels signe avec l'identité courante (les
+    // événements call:* exigent une identité PROUVÉE côté hub). Panic wipe →
+    // destruction locale immédiate sans signalisation.
+    callManager.setIdentity(identity ? { pubkey: identity.pubkey, signPriv: identity.signPriv } : null);
+  }, [mounted, identity]);
+
   useEffect(() => {
     if (!mounted) return;
     const s = getSocket();
@@ -628,6 +639,7 @@ export function MboteApp() {
     // F-11 : efface TOUT l'état local promis (clés IndexedDB, outbox binaire,
     // repli LS, thème) — voir identity.ts panicWipe.
     closeWebOutbox(); // libère la connexion IndexedDB avant deleteDatabase
+    await callManager.wipe(); // C2 : détruit toute session d'appel locale (pc/tracks/ringtone)
     await panicWipe();
     setIdentity(null);
     setPendingPosts([]);
@@ -1023,6 +1035,8 @@ export function MboteApp() {
       </nav>
 
       {/* ---------- onboarding ---------- */}
+      {/* C2 : overlay d'appel audio — au-dessus de toutes les vues */}
+      <CallView />
       <OnboardingDialog
         open={onboardingOpen}
         creating={creating}

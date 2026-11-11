@@ -62,6 +62,20 @@ export function identityProofMessage(f: IdentityProofFields): string {
   return `${f.pubkey}|identity|${f.nickname}|${f.bio ?? ""}|${f.ecdhPub ?? ""}|${f.ts}`;
 }
 
+/**
+ * C2 — chaînes canoniques de SIGNALISATION d'appel (événements socket.io
+ * relayés par le hub). Le hub vérifie la signature AVANT de relayer vers la
+ * room dm:<to> — anti-usurpation : seul le détenteur de `from` peut émettre.
+ * kind ∈ call-offer | call-answer | call-ice | call-hangup | call-reject.
+ * Le SDP/ICE ne porte AUCUN contenu de conversation — le hub ne voit que de
+ * la signalisation (l'audio est DTLS-SRTP, chiffrement de bout en bout P2P).
+ */
+export type CallSignalKind = "call-offer" | "call-answer" | "call-ice" | "call-hangup" | "call-reject";
+
+export function callProofMessage(kind: CallSignalKind, from: string, to: string, callId: string, ts: number): string {
+  return `${from}|${kind}|${to}|${callId}|${ts}`;
+}
+
 export function likeProofMessage(pubkey: string, postId: string, ts: number): string {
   return `${pubkey}|like|${postId}|${ts}`;
 }

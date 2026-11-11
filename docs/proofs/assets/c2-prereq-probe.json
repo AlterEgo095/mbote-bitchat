@@ -1,0 +1,9 @@
+{
+  "turn_relay": true,
+  "dtls_srtp": true,
+  "fake_mic": true,
+  "ok": true,
+  "fake_mic_detail": "track Fake Default Audio Input settings={\"autoGainControl\":true,\"channelCount\":1,\"deviceId\":\"default\",\"echoCancellation\":true,\"groupId\":\"76dc10353c8333d83c65d3a",
+  "turn_detail": "connectionState=connected relayCandidate=relay audioBytesReceived=3539",
+  "dtls_detail": "connectionState=connected localCandidate=host audioBytesReceived=3923"
+}

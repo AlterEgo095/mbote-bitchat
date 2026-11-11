@@ -79,8 +79,8 @@ export function vapidPublicKey(): string | null {
 }
 
 export interface PushKnock {
-  /** type fermé V1 — le seul scénario est un DM reçu (C4 étendra aux groupes) */
-  type: "new_message";
+  /** type fermé — C1 : DM reçu · C2 : appel entrant (knock SANS contenu, E2EE oblige) */
+  type: "new_message" | "incoming_call";
   /** libellé PUBLIC de l'expéditeur (nickname annuaire — jamais de contenu) */
   fromLabel: string;
 }

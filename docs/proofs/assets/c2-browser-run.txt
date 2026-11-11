@@ -1,0 +1,29 @@
+[c2-browser] E1 — onboarding A + B
+[c2-browser] E2 — A appelle B
+[c2-browser] E3 — B reçoit l'appel entrant
+[c2-browser] E4 — B répond, connexion DTLS-SRTP
+[c2-browser] E7 — knock POST /api/call-knock → HTTP 202
+[c2-browser] E5 — B raccroche (fin propre des deux côtés)
+{
+  "dialingShown": true,
+  "ringingAtB": true,
+  "establishMs": 722,
+  "callActive": true,
+  "knockStatus": 202,
+  "hangupClean": true,
+  "residualAudioElements": 0,
+  "wireEvents": 14,
+  "wireEventKinds": [
+    "call:offer",
+    "call-offer",
+    "call:ice",
+    "call-ice",
+    "call:answer",
+    "call-answer",
+    "call:hangup",
+    "call-hangup"
+  ],
+  "wireMaxSize": 1771,
+  "hubRelayMs": 5,
+  "ok": true
+}

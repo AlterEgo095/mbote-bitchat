@@ -1,0 +1,14 @@
+{"t":1794414415007,"dir":"from-A","event":"call:offer","size":1771}
+{"t":1794414415012,"dir":"to-B","event":"call-offer","size":1771}
+{"t":1794414415030,"dir":"from-A","event":"call:ice","size":552}
+{"t":1794414415046,"dir":"to-B","event":"call-ice","size":552}
+{"t":1794414415063,"dir":"from-A","event":"call:ice","size":579}
+{"t":1794414415064,"dir":"to-B","event":"call-ice","size":579}
+{"t":1794414415121,"dir":"from-A","event":"call:ice","size":563}
+{"t":1794414415122,"dir":"to-B","event":"call-ice","size":563}
+{"t":1794414415923,"dir":"from-B","event":"call:answer","size":1672}
+{"t":1794414415926,"dir":"to-A","event":"call-answer","size":1672}
+{"t":1794414415934,"dir":"from-B","event":"call:ice","size":552}
+{"t":1794414415935,"dir":"to-A","event":"call-ice","size":552}
+{"t":1794414417031,"dir":"from-B","event":"call:hangup","size":385}
+{"t":1794414417032,"dir":"to-A","event":"call-hangup","size":385}
