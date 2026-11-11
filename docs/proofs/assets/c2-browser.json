@@ -1,0 +1,23 @@
+{
+  "dialingShown": true,
+  "ringingAtB": true,
+  "establishMs": 722,
+  "callActive": true,
+  "knockStatus": 202,
+  "hangupClean": true,
+  "residualAudioElements": 0,
+  "wireEvents": 14,
+  "wireEventKinds": [
+    "call:offer",
+    "call-offer",
+    "call:ice",
+    "call-ice",
+    "call:answer",
+    "call-answer",
+    "call:hangup",
+    "call-hangup"
+  ],
+  "wireMaxSize": 1771,
+  "hubRelayMs": 5,
+  "ok": true
+}

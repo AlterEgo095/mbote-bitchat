@@ -56,16 +56,15 @@ interface HelloProof {
   signature?: unknown;
 }
 
-async function verifyHelloProof(pubkey: string, proof: HelloProof | undefined): Promise<boolean> {
+/** Vérifie une signature ECDSA P-256 (SHA-256) sur un message canonique. */
+async function verifySignature(pubkey: string, message: string, ts: unknown, signature: unknown, maxAgeMs: number): Promise<boolean> {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) return false;
-  const ts = proof?.ts;
-  const signature = proof?.signature;
   if (typeof signature !== "string" || signature.length === 0) return false;
   const tsNum = typeof ts === "number" ? ts : Number(ts);
   if (!Number.isFinite(tsNum) || tsNum <= 0) return false;
   const age = Date.now() - tsNum;
-  if (age > HELLO_MAX_AGE_MS || age < -HELLO_FUTURE_TOLERANCE_MS) return false;
+  if (age > maxAgeMs || age < -HELLO_FUTURE_TOLERANCE_MS) return false;
 
   const pubBytes = b64urlToBytes(pubkey);
   const sigBytes = b64urlToBytes(signature);
@@ -82,11 +81,21 @@ async function verifyHelloProof(pubkey: string, proof: HelloProof | undefined): 
       { name: "ECDSA", hash: { name: "SHA-256" } },
       key,
       sigBytes as unknown as BufferSource,
-      new TextEncoder().encode(`${pubkey}|relay-hello|${tsNum}`)
+      new TextEncoder().encode(message)
     );
   } catch {
     return false;
   }
+}
+
+async function verifyHelloProof(pubkey: string, proof: HelloProof | undefined): Promise<boolean> {
+  return verifySignature(
+    pubkey,
+    `${pubkey}|relay-hello|${(typeof proof?.ts === "number" ? proof.ts : Number(proof?.ts))}`,
+    proof?.ts,
+    proof?.signature,
+    HELLO_MAX_AGE_MS
+  );
 }
 
 // ───────────────────────── création du hub ─────────────────────────
@@ -148,6 +157,11 @@ export function createRelayHub(
   }
 
   io.on("connection", (socket) => {
+    // C2 : identité PROUVÉE du socket (posée par hello signé) — les événements
+    // call:* ne partent QUE de cette identité (anti-usurpation : un socket non
+    // prouvé ne peut pas émettre d'offre au nom de qui que ce soit).
+    socket.data.pubkey = null as string | null;
+
     socket.on("hello", async (data: {
       pubkey?: string | null;
       nickname?: string | null;
@@ -159,6 +173,7 @@ export function createRelayHub(
       socket.join("feed");
 
       if (!pubkey) {
+        socket.data.pubkey = null;
         detachPresence(socket);
         return;
       }
@@ -169,10 +184,12 @@ export function createRelayHub(
       if (!isValidPubkeyFormat(pubkey)) return;
       const ok = await verifyHelloProof(pubkey, data?.dmAuth);
       if (!ok) {
+        socket.data.pubkey = null;
         detachPresence(socket);
         return;
       }
 
+      socket.data.pubkey = pubkey;
       socket.join(`dm:${pubkey}`);
       // re-hello (ex. après panic wipe) → l'ancienne présence de CE socket est d'abord retirée
       detachPresence(socket);
@@ -194,6 +211,93 @@ export function createRelayHub(
       const rooms = Array.isArray(data?.rooms) ? data.rooms.slice(0, 20) : [];
       for (const room of rooms) socket.leave(room);
     });
+
+    // ───────────────────────── C2 : signalisation d'appels ─────────────────────────
+    // Le hub est un RELAIS DE SIGNALISATION UNIQUEMENT : SDP/ICE (adresses de
+    // transport WebRTC), JAMAIS de média (l'audio est DTLS-SRTP P2P). Chaque
+    // événement porte une preuve ECDSA (`${from}|${kind}|${to}|${callId}|${ts}`)
+    // vérifiée ICI avant relayage — un socket ne parle qu'au nom de son
+    // identité prouvée, vers la room dm:<to> uniquement.
+    const CALL_MAX_AGE_MS = 2 * 60_000;
+    const CALL_SDP_MAX = 16_384;
+    const CALL_ICE_MAX = 2_048;
+    const CALL_RATE_PER_MIN = 60;
+    let callEventsThisMinute = 0;
+    let callWindowStart = Date.now();
+
+    function callRateOk(): boolean {
+      const now = Date.now();
+      if (now - callWindowStart >= 60_000) {
+        callWindowStart = now;
+        callEventsThisMinute = 0;
+      }
+      callEventsThisMinute += 1;
+      return callEventsThisMinute <= CALL_RATE_PER_MIN;
+    }
+
+    interface CallEnvelope {
+      to?: unknown;
+      callId?: unknown;
+      ts?: unknown;
+      sig?: unknown;
+      [k: string]: unknown;
+    }
+
+    function callEnvelopeOk(data: CallEnvelope, maxPayload: number): { from: string; to: string; callId: string } | null {
+      const from = socket.data.pubkey as string | null;
+      if (!from) return null; // socket non prouvé → aucune signalisation
+      if (!callRateOk()) return null;
+      const to = typeof data?.to === "string" ? data.to : null;
+      const callId = typeof data?.callId === "string" ? data.callId : null;
+      if (!to || !isValidPubkeyFormat(to)) return null;
+      if (!callId || callId.length < 8 || callId.length > 64 || !/^[A-Za-z0-9_-]+$/.test(callId)) return null;
+      if (JSON.stringify(data ?? {}).length > maxPayload) return null; // borne anti-ampère
+      return { from, to, callId };
+    }
+
+    async function relayCall(
+      kind: "call-offer" | "call-answer" | "call-ice" | "call-hangup" | "call-reject",
+      data: CallEnvelope,
+      maxPayload: number,
+      extraCheck?: (d: CallEnvelope) => boolean
+    ): Promise<void> {
+      const env = callEnvelopeOk(data, maxPayload);
+      if (!env) return;
+      if (extraCheck && !extraCheck(data)) return;
+      const ok = await verifySignature(
+        env.from,
+        `${env.from}|${kind}|${env.to}|${env.callId}|${typeof data.ts === "number" ? data.ts : Number(data.ts)}`,
+        data.ts,
+        data.sig,
+        CALL_MAX_AGE_MS
+      );
+      if (!ok) return; // signature absente/invalide → silencieusement ignoré (pas d'info au spammeur)
+      io.to(`dm:${env.to}`).emit(kind, {
+        from: env.from,
+        to: env.to,
+        callId: env.callId,
+        ts: data.ts,
+        ...data,
+      });
+    }
+
+    socket.on("call:offer", (d: CallEnvelope) => {
+      void relayCall("call-offer", d, CALL_SDP_MAX, (x) =>
+        !!(x.offer && typeof (x.offer as { sdp?: unknown }).sdp === "string" && (x.offer as { sdp: string }).sdp.length <= CALL_SDP_MAX)
+      );
+    });
+    socket.on("call:answer", (d: CallEnvelope) => {
+      void relayCall("call-answer", d, CALL_SDP_MAX, (x) =>
+        !!(x.answer && typeof (x.answer as { sdp?: unknown }).sdp === "string" && (x.answer as { sdp: string }).sdp.length <= CALL_SDP_MAX)
+      );
+    });
+    socket.on("call:ice", (d: CallEnvelope) => {
+      void relayCall("call-ice", d, CALL_ICE_MAX, (x) =>
+        !!(x.candidate && typeof (x.candidate as { candidate?: unknown }).candidate === "string")
+      );
+    });
+    socket.on("call:hangup", (d: CallEnvelope) => void relayCall("call-hangup", d, CALL_ICE_MAX));
+    socket.on("call:reject", (d: CallEnvelope) => void relayCall("call-reject", d, CALL_ICE_MAX));
 
     socket.on("disconnect", () => detachPresence(socket));
   });

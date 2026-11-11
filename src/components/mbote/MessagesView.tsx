@@ -33,6 +33,9 @@ import {
 
 /** D1 : placeholder d'échec de déchiffrement — JAMAIS indexé (bruit de recherche). */
 const UNDECRYPTABLE = "🔒 Enveloppe indéchiffrable";
+// C2 : appel audio — bouton téléphone + résolveur annuaire pour les entrants
+import { callManager } from "@/lib/mbote/webrtc";
+import { CallButton } from "./CallView";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -372,6 +375,13 @@ export function MessagesView({
     queryKey: ["users"],
     queryFn: () => apiListUsers(),
   });
+
+  // C2 : nommer l'APPELANT sur l'overlay entrant (annuaire → CallView)
+  useEffect(() => {
+    callManager.setLabelResolver(async (pk) => {
+      return users.data?.users.find((u) => u.pubkey === pk)?.nickname ?? null;
+    });
+  }, [users.data]);
 
   const [selectedPub, setSelectedPub] = useState<string | null>(null);
   const [newConvOpen, setNewConvOpen] = useState(false);
@@ -1273,10 +1283,14 @@ export function MessagesView({
                   </div>
                 </div>
                 {peer.ecdhPub ? (
-                  <Badge variant="outline" className="shrink-0 gap-1 border-primary/40 text-[10px] text-primary">
-                    <ShieldCheck className="size-3" aria-hidden="true" />
-                    E2E actif
-                  </Badge>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {/* C2 : appel audio 1:1 — disponible dès que le pair a une clé E2EE */}
+                    <CallButton peer={peer.pubkey} peerLabel={peer.nickname} />
+                    <Badge variant="outline" className="gap-1 border-primary/40 text-[10px] text-primary">
+                      <ShieldCheck className="size-3" aria-hidden="true" />
+                      E2E actif
+                    </Badge>
+                  </div>
                 ) : (
                   <Badge variant="outline" className="shrink-0 gap-1 border-amber-500/40 text-[10px] text-amber-500">
                     <AlertTriangle className="size-3" aria-hidden="true" />

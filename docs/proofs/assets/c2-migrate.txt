@@ -1,0 +1,31 @@
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": SQLite database "c2-calls-proof.db" at "file:/home/z/wt-b1/db/c2-calls-proof.db"
+
+SQLite database c2-calls-proof.db created at file:/home/z/wt-b1/db/c2-calls-proof.db
+
+6 migrations found in prisma/migrations
+
+Applying migration `0001_baseline`
+Applying migration `0002_drop_avatar_seed`
+Applying migration `0003_a1a2a3_replay_trust_moderation`
+Applying migration `20261105202309_0004_admin`
+Applying migration `20261106000000_0007_b2_media`
+Applying migration `20261107094500_0008_c1_push`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 0001_baseline/
+    └─ migration.sql
+  └─ 0002_drop_avatar_seed/
+    └─ migration.sql
+  └─ 0003_a1a2a3_replay_trust_moderation/
+    └─ migration.sql
+  └─ 20261105202309_0004_admin/
+    └─ migration.sql
+  └─ 20261106000000_0007_b2_media/
+    └─ migration.sql
+  └─ 20261107094500_0008_c1_push/
+    └─ migration.sql
+      
+All migrations have been successfully applied.

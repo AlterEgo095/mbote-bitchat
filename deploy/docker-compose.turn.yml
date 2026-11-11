@@ -1,0 +1,72 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  C2 — Serveur TURN coturn (prod VPS) — adaptation RDC / CGNAT
+# ─────────────────────────────────────────────────────────────────────────────
+#  POURQUOI TURN (constat C2) : les opérateurs RDC (Vodacom, Airtel, Orange)
+#  CGNATent leurs abonnés — deux mobiles ne peuvent PAS se joindre en
+#  host-to-host ; sans relay, l'appel tombe. 443/TCP en priorité : plusieurs
+#  opérateurs filtrent UDP non-DNS (3478/UDP) mais laissent passer 443/TCP
+#  (indistinguables du HTTPS). Ordre de préférence ICE côté client :
+#    1. turns:443?transport=tcp   (TLS sur 443 — quasi inbloquable)
+#    2. turn:443?transport=tcp    (TURN TCP sur 443)
+#    3. turn:3478 (UDP)           (le plus léger quand il passe)
+#
+#  DÉPLOIEMENT :
+#    docker compose -f deploy/docker-compose.turn.yml up -d
+#  Variables (fichier .env à côté) :
+#    TURN_SHARED_SECRET=<openssl rand -hex 32>   # schéma REST (credentials éphémères)
+#    TURN_SERVER_NAME=<domaine ou IP publique>
+#    TURN_EXTERNAL_IP=<IP publique VPS>
+#
+#  VALIDATION PROD (NON TESTÉ en sandbox — pas de docker/root, voir preuve C2) :
+#    turnutils_uclient -u <user>:<pass> -p 443 -T <domaine>   # TCP
+#    turnutils_uclient -u <user>:<pass> -p 3478 <domaine>     # UDP
+#  + re-jouer la sonde navigateur (scripts/c2-prereq-probe.ts) pointée sur le
+#    vrai serveur : connectionState=connected + relayCandidate=relay.
+#
+#  SÉCURITÉ : le média reste DTLS-SRTP de bout en bout — le relay ne voit que
+#  du chiffré ; la signalisation passe par le hub (preuves ECDSA), jamais ici.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  coturn:
+    image: coturn/coturn:4.6-alpine
+    restart: unless-stopped
+    network_mode: host          # nécessaire pour le relay UDP/TCP direct
+    command:
+      - -n
+      - --realm=${TURN_SERVER_NAME}
+      - --server-name=${TURN_SERVER_NAME}
+      - --external-ip=${TURN_EXTERNAL_IP}
+      # auth par secret partagé (schéma REST — cf. /api/turn-credentials)
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SHARED_SECRET}
+      # ── priorité RDC/CGNAT : 443 TLS/TCP d'abord ──
+      # TLS nécessite un certificat (monté ici : Let's Encrypt du VPS)
+      - --no-tlsv1
+      - --no-tlsv1_1
+      - --min-port=49152
+      - --max-port=65535
+      # sécurité : pas d'usage relais ouvert (credentials éphémères obligatoires)
+      - --no-multicast-peers
+      - --no-cli
+      - --fingerprint
+      - --lt-cred-mech
+      - --rest-api-separator=:
+      # logs sobres (JAMAIS de log de contenu — le média est chiffré de toute façon)
+      - --simple-log
+    volumes:
+      - /etc/letsencrypt/live/${TURN_SERVER_NAME}/fullchain.pem:/etc/coturn/fullchain.pem:ro
+      - /etc/letsencrypt/live/${TURN_SERVER_NAME}/privkey.pem:/etc/coturn/privkey.pem:ro
+    # ⚠️ les flags TLS (cert/pkey + listening-ssl-port) sont posés au premier
+    # déploiement réel : ajouter alors
+    #   - --cert=/etc/coturn/fullchain.pem
+    #   - --pkey=/etc/coturn/privkey.pem
+    #   - --no-udp    # (variante CGNAT stricte : TCP-only, à mesurer 48 h)
+    #   - --listening-port=443
+    # et retirer --lt-cred-mech si --use-auth-secret seul suffit (coturn 4.6 :
+    # auth-secret implique lt-cred-mech).
+    healthcheck:
+      test: ["CMD", "turnserver", "--help"]
+      interval: 60s
+      timeout: 5s
+      retries: 3

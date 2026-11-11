@@ -123,8 +123,10 @@ async function afficherKnock(knock) {
     knock && typeof knock.fromLabel === "string" && knock.fromLabel.length > 0
       ? knock.fromLabel.slice(0, 60)
       : "un contact";
+  // C2 : knock d'appel entrant — rendu distinct, TOUJOURS sans contenu
+  const isCall = knock && knock.type === "incoming_call";
   await self.registration.showNotification("Mbote", {
-    body: `Nouveau message de ${fromLabel}`,
+    body: isCall ? `Appel de ${fromLabel} — touchez pour répondre` : `Nouveau message de ${fromLabel}`,
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
     tag: "mbote-dm", // une seule notification empilée (rate limit outbound côté serveur)
