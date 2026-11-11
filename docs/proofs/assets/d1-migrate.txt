@@ -3,15 +3,17 @@ Datasource "db": SQLite database "d1-search-proof.db" at "file:/home/z/wt-adm/db
 
 SQLite database d1-search-proof.db created at file:/home/z/wt-adm/db/d1-search-proof.db
 
-9 migrations found in prisma/migrations
+11 migrations found in prisma/migrations
 
 Applying migration `0001_baseline`
 Applying migration `0002_drop_avatar_seed`
 Applying migration `0003_a1a2a3_replay_trust_moderation`
 Applying migration `20261105202309_0004_admin`
 Applying migration `20261105212940_0005_admin_auth`
+Applying migration `20261106000000_0007_b2_media`
 Applying migration `20261106092200_0006_etape6_queue`
 Applying migration `20261107090000_0007_etape9_four_eyes`
+Applying migration `20261107094500_0008_c1_push`
 Applying migration `20261107100000_0008_etape10_audit_stress`
 Applying migration `20261110100000_0009_d1_post_fts`
 
@@ -28,9 +30,13 @@ migrations/
     └─ migration.sql
   └─ 20261105212940_0005_admin_auth/
     └─ migration.sql
+  └─ 20261106000000_0007_b2_media/
+    └─ migration.sql
   └─ 20261106092200_0006_etape6_queue/
     └─ migration.sql
   └─ 20261107090000_0007_etape9_four_eyes/
+    └─ migration.sql
+  └─ 20261107094500_0008_c1_push/
     └─ migration.sql
   └─ 20261107100000_0008_etape10_audit_stress/
     └─ migration.sql
