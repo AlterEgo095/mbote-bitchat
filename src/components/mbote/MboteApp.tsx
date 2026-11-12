@@ -16,6 +16,7 @@ import {
   Users,
   Wifi,
   WifiOff,
+  UsersRound,
 } from "lucide-react";
 import Image from "next/image";
 import { toast } from "sonner";
@@ -91,6 +92,7 @@ import { MessagesView } from "./MessagesView";
 import { GlobalSearch } from "./GlobalSearch";
 // C2 : overlay d'appel audio (survit aux changements de vue)
 import { CallView } from "./CallView";
+import { GroupsView } from "./GroupsView";
 import { callManager } from "@/lib/mbote/webrtc";
 const ChannelsView = dynamic(
   () => import("./ChannelsView").then((m) => m.ChannelsView),
@@ -122,12 +124,13 @@ const NAV_ITEMS: { key: ViewKey; label: string; icon: typeof Newspaper }[] = [
   { key: "feed", label: "Fil", icon: Newspaper },
   { key: "channels", label: "Canaux", icon: MapPinned },
   { key: "messages", label: "Messages", icon: MessageSquare },
+  { key: "groups", label: "Groupes", icon: UsersRound },
   { key: "network", label: "Réseau", icon: Radio },
   { key: "profile", label: "Profil", icon: UserRound },
 ];
 
 /** F-14 : allowlist des valeurs acceptées pour le raccourci PWA `?view=…` */
-const VIEW_KEYS: readonly ViewKey[] = ["feed", "channels", "messages", "network", "profile"];
+const VIEW_KEYS: readonly ViewKey[] = ["feed", "channels", "messages", "groups", "network", "profile"];
 
 export function MboteApp() {
   const qc = useQueryClient();
@@ -732,6 +735,12 @@ export function MboteApp() {
             focusMessage={searchFocusMessage}
             onFocusConsumed={() => setSearchFocusMessage(null)}
           />
+        ) : (
+          <IdentityCta onOpen={() => setOnboardingOpen(true)} />
+        );
+      case "groups":
+        return identity ? (
+          <GroupsView identity={identity} />
         ) : (
           <IdentityCta onOpen={() => setOnboardingOpen(true)} />
         );

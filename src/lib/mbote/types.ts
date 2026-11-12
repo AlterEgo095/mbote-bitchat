@@ -78,7 +78,7 @@ export interface PendingPost {
   queuedAt: number;
 }
 
-export type ViewKey = "feed" | "channels" | "messages" | "network" | "profile";
+export type ViewKey = "feed" | "channels" | "messages" | "groups" | "network" | "profile";
 
 export interface ActiveChannel {
   geohash: string;

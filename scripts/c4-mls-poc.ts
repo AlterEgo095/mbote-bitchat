@@ -36,7 +36,6 @@ import {
   createApplicationMessage,
   encodeMlsMessage,
   decodeMlsMessage,
-  ciphersuites,
   getCiphersuiteFromName,
   getCiphersuiteImpl,
   type ClientState,
@@ -99,8 +98,8 @@ function leafIndexByIdentity(state: ClientState, identity: string): number {
       | { nodeType?: string; leaf?: { credential?: { credentialType?: string; identity?: Uint8Array } } }
       | null
       | undefined;
-    if (node?.nodeType === "leaf" && node.leaf?.credential?.credentialType === "basic") {
-      const id = new TextDecoder().decode(node.leaf.credential.identity!);
+    if (node?.nodeType === "leaf" && node.leaf?.credential?.credentialType === "basic" && node.leaf.credential.identity instanceof Uint8Array) {
+      const id = new TextDecoder().decode(node.leaf.credential.identity);
       if (id === identity) return i / 2;
     }
   }

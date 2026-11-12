@@ -314,7 +314,6 @@ export async function createGroupMls(name: string, memberKeys: string[]): Promis
 export async function joinFromWelcome(serverGroupId: string, welcomeB64: string): Promise<void> {
   const m = await loadMls();
   const impl = await cs();
-  const me = requireIdentity();
   const rt = await runtimeFor(serverGroupId);
   if (rt.state) return; // déjà joint (dédoublonnage)
 
@@ -565,8 +564,9 @@ export function leafIndexByPubkey(state: ClientState, pubkey: string): number {
       | { nodeType?: string; leaf?: { credential?: { credentialType?: string; identity?: Uint8Array } } }
       | null
       | undefined;
-    if (node?.nodeType === "leaf" && node.leaf?.credential?.credentialType === "basic") {
-      const id = new TextDecoder().decode(node.leaf.credential.identity!);
+    const identityBytes = node?.leaf?.credential;
+    if (node?.nodeType === "leaf" && identityBytes?.credentialType === "basic" && identityBytes.identity instanceof Uint8Array) {
+      const id = new TextDecoder().decode(identityBytes.identity);
       if (id === pubkey) return i / 2;
     }
   }

@@ -144,12 +144,6 @@ export async function clearAllGroupStates(): Promise<void> {
 
 // ── cache des key packages privés (survit aux rechargements) ────────────────
 
-interface CachedKpEntry {
-  wire: string;
-  pub: unknown;
-  priv: unknown;
-}
-
 /** Clés privées des key packages PUBLIÉS — scellées comme l'état de groupe. */
 const KP_CACHE_ID = "__kp_cache";
 
