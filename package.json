@@ -18,6 +18,10 @@
     "db:backfill": "bun scripts/backfill-counters.ts"
   },
   "dependencies": {
+    "@hpke/chacha20poly1305": "^1.8.1",
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^2.4.0",
+    "@node-rs/argon2": "^2.2.2",
     "@prisma/client": "^6.11.1",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -38,6 +42,7 @@
     "next": "^16.1.1",
     "next-themes": "^0.4.6",
     "prisma": "^6.11.1",
+    "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "sharp": "^0.34.3",
@@ -45,9 +50,8 @@
     "socket.io-client": "^4.8.4",
     "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1",
-    "web-push": "^4.0.0",
-    "@node-rs/argon2": "^2.2.2",
-    "qrcode": "^1.5.4"
+    "ts-mls": "^1.6.4",
+    "web-push": "^4.0.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
