@@ -57,7 +57,7 @@ fi
 
 # Branches de travail actives locales (hors main, archive/*, vieilles branches
 # mortes a1-a3) — il doit en rester exactement UNE : feat/mbote-v1.
-ACTIVE=$(git for-each-ref 'refs/heads/*' --format '%(refname:short)' \
+ACTIVE=$(git for-each-ref 'refs/heads/' --format '%(refname:short)' \
   | grep -v '^main$' | grep -v '^archive/' | grep -vE '^feat/(a1-anti-replay|a2-key-auth|a3-moderation)$' || true)
 COUNT_ACTIVE=$(echo "$ACTIVE" | grep -c . || true)
 echo "branches de travail actives : $COUNT_ACTIVE ($(echo "$ACTIVE" | tr '\n' ' '))"
