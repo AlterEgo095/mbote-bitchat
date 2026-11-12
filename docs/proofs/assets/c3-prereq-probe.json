@@ -1,0 +1,17 @@
+{
+  "p1FakeCam640x480": true,
+  "p1Settings": {
+    "videoTrack": "live",
+    "audioTrack": "live",
+    "width": 640,
+    "height": 480,
+    "frameRate": 20
+  },
+  "p2EncoderControls": true,
+  "p2Result": {
+    "maxBitrate": 450000,
+    "scaleResolutionDownBy": 1.5
+  },
+  "p3OfferHasVideoMline": true,
+  "ok": true
+}

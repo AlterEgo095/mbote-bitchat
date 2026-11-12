@@ -297,7 +297,7 @@ describe("C3 qualité vidéo adaptative", () => {
     // 2ᵉ consécutive → descend vers medium
     expect(c.measure(0.2)).toBe("down");
     expect(c.stage.quality).toBe("medium");
-    expect(c.stage.maxBitrate).toBe(VIDEO_QUALITY_STAGES[1]!.maxBitrate);
+    expect(c.stage.maxBitrate).toBe(VIDEO_QUALITY_STAGES[1]?.maxBitrate);
 
     // descente jusqu'à l'étage bas puis PLAFOND (jamais au-delà)
     expect(c.measure(0.3)).toBe("hold");

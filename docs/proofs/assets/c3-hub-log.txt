@@ -1,0 +1,6 @@
+[relay] socket.io hub démarré sur :3033 (path=/)
+[relay] CORS : aucune origine croisée (même origine via Caddy)
+[relay] endpoint interne d'émission sur :3035 (/emit, /health) — bind 127.0.0.1
+[relay] ⚠️ RELAY_EMIT_TOKEN vide : /emit SANS authentification (acceptable réseau Docker interne uniquement — définir le token en production, F-51)
+[relay] SIGTERM — arrêt…
+[relay] arrêt…

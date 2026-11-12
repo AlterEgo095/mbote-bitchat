@@ -1,0 +1,8 @@
+## capture fil call:* (c3-wire-capture.jsonl) — signalisation uniquement
+trames call:* capturées : 32
+## offre vidéo sur le fil (m=video dans call:offer) :
+1
+## événements call:media traversés :
+10
+## log hub — le hub ne logge PAS les payloads (signalisation only, by design)
+0

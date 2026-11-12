@@ -75,24 +75,26 @@ const QUALITY_LABEL: Record<CallSnapshot["videoQuality"], string> = {
   low: "240p",
 };
 
-/** Attachement srcObject par ref (jamais de re-création de flux au render). */
+/** Attachement srcObject par ref (jamais de re-création de flux au render) —
+ *  ré-attachement à chaque CHANGEMENT d'id de flux (flip caméra → nouveau flux). */
 function useVideoSink(streamId: string | null, isVideo: boolean): React.RefObject<HTMLVideoElement | null> {
   const ref = useRef<HTMLVideoElement | null>(null);
-  const getStream = useCallback(() => streamId, [streamId]);
+  const attachedId = useRef<string | null>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (isVideo && streamId && el.srcObject === null) {
-      // le flux vit dans le manager — branché ici UNE fois par changement d'id
-      const stream = getStream() ? callManagerStream(streamId) : null;
+    if (isVideo && streamId && attachedId.current !== streamId) {
+      const stream = callManagerStream(streamId);
       if (stream) {
         el.srcObject = stream;
         void el.play().catch(() => undefined);
+        attachedId.current = streamId;
       }
     } else if (!isVideo || !streamId) {
-      el.srcObject = null;
+      if (el.srcObject !== null) el.srcObject = null;
+      attachedId.current = null;
     }
-  }, [streamId, isVideo, getStream]);
+  }, [streamId, isVideo]);
   return ref;
 }
 
@@ -120,6 +122,15 @@ export function CallView() {
   const isVideo = call.callType === "video";
   const remoteSink = useVideoSink(call.remoteStreamId, isVideo);
   const localSink = useVideoSink(call.localStreamId, isVideo);
+
+  // plein écran réservé à l'appel vidéo ACTIF — reset à chaque fin d'appel
+  // (tick asynchrone — règle set-state-in-effect, même pattern que useElapsed)
+  useEffect(() => {
+    if (call.state === "idle" && expanded) {
+      const t = setTimeout(() => setExpanded(false), 0);
+      return () => clearTimeout(t);
+    }
+  }, [call.state, expanded]);
 
   if (call.state === "idle") {
     return call.fallbackNotice ? (

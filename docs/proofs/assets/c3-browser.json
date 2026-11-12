@@ -1,0 +1,54 @@
+{
+  "dialingShownVideo": true,
+  "ringingVideoAtB": true,
+  "establishMs": 767,
+  "establishBudgetMs": 5000,
+  "establishWithinBudget": true,
+  "callActiveVideo": true,
+  "remoteVideoDecodedOnA": true,
+  "localPreviewDecodedBoth": true,
+  "remoteVideoSize": {
+    "w": 640,
+    "h": 480
+  },
+  "cameraOffOnA": true,
+  "cameraOffIndicatorOnB": true,
+  "cameraBackOnA": true,
+  "flipKeptCallAlive": true,
+  "localPreviewBeforeFlip": "none",
+  "setParametersApplied": [
+    {
+      "t": 1794483454643,
+      "maxBitrate": 450000,
+      "scaleResolutionDownBy": 1.5
+    }
+  ],
+  "unstableIndicatorShown": true,
+  "qualityLabel": "360p",
+  "knockStatus": 202,
+  "knockVideo": true,
+  "hangupClean": true,
+  "residualMediaElements": 0,
+  "wireEvents": 32,
+  "wireEventKinds": [
+    "call:offer",
+    "call-offer",
+    "call:ice",
+    "call-ice",
+    "call:answer",
+    "call:media",
+    "call-answer",
+    "call-media",
+    "call:hangup",
+    "call-hangup"
+  ],
+  "wireMaxSize": 6072,
+  "hubRelayMs": 5,
+  "hubRelayBudgetMs": 100,
+  "offerSdpHasVideo": true,
+  "wireMediaEvents": 10,
+  "fallbackRingingAudioAtB": true,
+  "fallbackEstablished": true,
+  "fallbackNoVideoStage": true,
+  "ok": true
+}

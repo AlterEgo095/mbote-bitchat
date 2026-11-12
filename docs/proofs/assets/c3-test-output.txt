@@ -1,0 +1,15 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/c3-video-calls.test.ts:
+(pass) C3 signalisation vidéo (hub réel) > V1 — offer m=video / answer vidéo / ice / hangup relayés intacts [321.23ms]
+(pass) C3 signalisation vidéo (hub réel) > V2 — call:media {videoOn,audioOn} relayé ; champs non booléens → NON relayé [909.65ms]
+(pass) C3 signalisation vidéo (hub réel) > V3 — call:media signature absente/mauvaise ou usurpation → NON relayé [1007.29ms]
+(pass) C3 signalisation vidéo (hub réel) > V4 — bornes : SDP vidéo > 16 Ko NON relayé ; call:media dans le rate limit 60/min [2431.26ms]
+(pass) C3 qualité vidéo adaptative > V5 — descente 480p→360p→240p avec hystérésis ; jamais de remontée ; bornes [0.36ms]
+(pass) C3 qualité vidéo adaptative > V6 — offerHasVideo : m=video port 0 → false (m-line rejetée), port 9 → true [0.24ms]
+(pass) C3 knock vidéo > V7 — la chaîne `…|call-knock|…|video|ts` est vérifiée par la route ; falsification du type → refus [2.04ms]
+
+ 7 pass
+ 0 fail
+ 38 expect() calls
+Ran 7 tests across 1 file. [4.77s]

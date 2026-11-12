@@ -540,6 +540,8 @@ class CallManager {
         }
         return;
       }
+      // C3 : le TYPE de l'appel est lu dans le SDP de l'offre (m=video) —
+      // l'overlay sonne « Appel vidéo entrant » dès la sonnerie, pas après accept
       this.pendingOffer = {
         from: d.from,
         callId: d.callId,
@@ -572,6 +574,12 @@ class CallManager {
         peer: d.from,
         peerLabel: this.labels.get(d.from) ?? null,
         callId: d.callId,
+        callType: offerHasVideo(d.offer.sdp) ? "video" : "audio",
+        remoteCameraOn: null,
+        remoteMuted: null,
+        unstable: false,
+        videoQuality: "high",
+        remoteStreamId: null,
         error: null,
       });
     });

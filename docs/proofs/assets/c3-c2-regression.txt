@@ -1,0 +1,17 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/c2-calls.test.ts:
+prisma:query PRAGMA journal_mode=WAL
+(pass) C2 signalisation (hub réel) > S1 — offer/answer/ice/hangup relayés entre identités prouvées [317.84ms]
+(pass) C2 signalisation (hub réel) > S2a — offre avec signature absente/invalide → NON relayée [1006.50ms]
+(pass) C2 signalisation (hub réel) > S2b — usurpation (from ≠ identité prouvée) → NON relayée [1006.69ms]
+(pass) C2 signalisation (hub réel) > S2c — socket sans hello (aucune preuve) → NON relayée [755.85ms]
+(pass) C2 signalisation (hub réel) > S2d — SDP surdimensionné (> 16 Ko) → NON relayé [906.53ms]
+(pass) C2 signalisation (hub réel) > S2e — rate limit 60 événements/min → excès NON relayés [1532.98ms]
+(pass) C2 TURN > S3a — buildRestTurnCredentials : format REST coturn exact [0.35ms]
+(pass) C2 fallback > S5 — 2 échecs < 30 s → notice notes vocales ; succès → reset [0.20ms]
+
+ 8 pass
+ 0 fail
+ 16 expect() calls
+Ran 8 tests across 1 file. [5.68s]
