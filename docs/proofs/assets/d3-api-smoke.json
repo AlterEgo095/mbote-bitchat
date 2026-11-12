@@ -1,0 +1,56 @@
+{
+  "measuredAt": "2026-11-12T21:36:38.471Z",
+  "baseUrl": "http://127.0.0.1:3168",
+  "routes": [
+    {
+      "path": "/api/stats",
+      "expect": 200,
+      "label": "stats (compteurs publics)",
+      "got": 200,
+      "ok": true
+    },
+    {
+      "path": "/api/posts?scope=global&limit=5",
+      "expect": 200,
+      "label": "fil public",
+      "got": 200,
+      "ok": true
+    },
+    {
+      "path": "/api/users",
+      "expect": 200,
+      "label": "liste identités",
+      "got": 200,
+      "ok": true
+    },
+    {
+      "path": "/api/channels",
+      "expect": 200,
+      "label": "canaux géohash",
+      "got": 200,
+      "ok": true
+    },
+    {
+      "path": "/api/search?q=mbote&type=posts",
+      "expect": 200,
+      "label": "recherche FTS5 (D1)",
+      "got": 200,
+      "ok": true
+    },
+    {
+      "path": "/api/identity?pubkey=probe-d3",
+      "expect": 200,
+      "label": "profil (DTO quota D2)",
+      "got": 200,
+      "ok": true
+    },
+    {
+      "path": "/api/push/config",
+      "expect": 503,
+      "label": "push VAPID (fail-closed sans clés — 503 attendu)",
+      "got": 503,
+      "ok": true
+    }
+  ],
+  "pass": true
+}

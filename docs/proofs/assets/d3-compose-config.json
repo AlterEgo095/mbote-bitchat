@@ -1,0 +1,31 @@
+{
+  "mbote": {
+    "read_only": true,
+    "no_new_privileges": true,
+    "cap_drop_all": true,
+    "tmpfs": [
+      "/tmp",
+      "/app/.next/cache"
+    ],
+    "user_non_root_expected_from_dockerfile": true
+  },
+  "relay": {
+    "read_only": true,
+    "no_new_privileges": true,
+    "cap_drop_all": true,
+    "tmpfs": [
+      "/tmp"
+    ],
+    "user_non_root_expected_from_dockerfile": true
+  },
+  "admin": {
+    "read_only": true,
+    "no_new_privileges": true,
+    "cap_drop_all": true,
+    "tmpfs": [
+      "/tmp",
+      "/app/.next/cache"
+    ],
+    "user_non_root_expected_from_dockerfile": true
+  }
+}

@@ -40,6 +40,13 @@ LABEL org.opencontainers.image.title="Mbote Admin" \
       org.opencontainers.image.source="https://github.com/AlterEgo095/mbote-bitchat" \
       org.opencontainers.image.description="Panneau d'administration Mbote Mesh — BFF sans état, zéro accès DB direct"
 
+# D3 — durcissement : utilisateur non-root (BFF sans état, zéro DB —
+# docs/specs/ADMIN-RBAC.md §1)
+RUN addgroup --system --gid 10003 admpannel \
+    && adduser --system --uid 10003 --ingroup admpannel --no-create-home admpannel
+ENV HOME=/tmp BUN_INSTALL=/tmp/.bun
+USER admpannel
+
 EXPOSE 3001
 
 CMD ["bun", "server.js"]

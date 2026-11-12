@@ -56,18 +56,27 @@ LABEL org.opencontainers.image.title="Mbote BitChat" \
       org.opencontainers.image.source="https://github.com/AlterEgo095/mbote-bitchat" \
       org.opencontainers.image.description="Messagerie offline-first (Next.js standalone + relay socket.io) — migrations Prisma appliquées au démarrage"
 
-# TODO(F-supply-chain) : USER non-root volontairement NON ajouté pour l'instant.
-# Raison : le volume /app/db est créé par root et appartient à root — passer à
-# un utilisateur dédié rendrait la base SQLite illisible/immuable et casserait
-# la prod (migrations Prisma + écritures au démarrage).
-# Procédure future (release coordonnée, pas un hotfix) :
-#   1. Ici : RUN adduser --system --uid 10001 mbote \
-#        && chown -R mbote:mbote /app/db  puis  USER mbote
-#   2. Sur le VPS : docker compose down && chown -R 10001:<gid> <volume hôte /app/db>
-#        && docker compose up -d (migration des droits du volume existant)
-#   3. Vérifier /api/stats en santé après déploiement avant de supprimer ce TODO.
+# ── D3 (supply chain 2026-11-13) : durcissement runtime — USER NON-ROOT ────
+# Procédure documentée (le TODO ci-dessous a été exécuté à la vague D3) :
+#   1. Ici : utilisateur dédié mbote (uid/gid 10001), /app/db chowné (le
+#      volume Nommé Docker est initialisé AVEC les droits de l'image au
+#      premier montage) ;
+#   2. Sur le VPS (volume EXISTANT) : docker compose down &&
+#      chown -R 10001:10001 <chemin du volume mbote-data> && docker compose
+#      up -d — migration des droits RÉALISÉE AVANT le premier déploiement de
+#      cette image (docs/DOCKER-HARDENING.md §procédure VPS) ;
+#   3. Vérifier /api/stats en santé après déploiement.
+RUN mkdir -p /app/db \
+    && addgroup --system --gid 10001 mbote \
+    && adduser --system --uid 10001 --ingroup mbote --no-create-home mbote \
+    && chown -R mbote:mbote /app/db
+# HOME/BUN_INSTALL dans /tmp (tmpfs read-only-compose) : bunx prisma ne doit
+# JAMAIS tenter d'écrire dans un HOME root — toute écriture éphémère part en
+# tmpfs, la base seule est persistée dans /app/db.
+ENV HOME=/tmp \
+    BUN_INSTALL=/tmp/.bun
+USER mbote
 
-RUN mkdir -p /app/db
 VOLUME ["/app/db"]
 
 EXPOSE 3000

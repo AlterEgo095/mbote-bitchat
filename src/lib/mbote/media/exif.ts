@@ -23,6 +23,9 @@
  */
 
 import sharp from "sharp";
+// sharp 0.35 (triage D3) : les types ne s'exportent plus en namespace —
+// l'import nommé remplace `sharp.Metadata`
+import type { Metadata } from "sharp";
 
 export class MediaExifError extends Error {
   constructor(
@@ -65,7 +68,7 @@ export async function stripExif(imageBytes: Uint8Array): Promise<StripResult> {
     throw new MediaExifError("too-large", `image ${imageBytes.byteLength} o > limite ${IMAGE_MAX_BYTES} o (spec §2)`);
   }
   const input = Buffer.from(imageBytes);
-  let meta: sharp.Metadata;
+  let meta: Metadata;
   try {
     meta = await sharp(input).metadata();
   } catch {
@@ -103,6 +106,6 @@ export async function stripExif(imageBytes: Uint8Array): Promise<StripResult> {
 }
 
 /** Lecture des métadonnées résiduelles — utilisé par les tests (GPS absent). */
-export async function inspectMetadata(imageBytes: Uint8Array): Promise<sharp.Metadata> {
+export async function inspectMetadata(imageBytes: Uint8Array): Promise<Metadata> {
   return sharp(Buffer.from(imageBytes)).metadata();
 }

@@ -3,15 +3,15 @@
   "powProgressText": "Préparation du compte… 4%",
   "onboarded": true,
   "powBench": {
-    "ms": 2522.699999999255,
-    "iterations": 349670,
+    "ms": 11483.800000000745,
+    "iterations": 1673579,
     "bits": 20
   },
   "uiPublish": true,
   "reputationBadgeText": "Réputation neutre",
   "quotaPostsText": "9/10 posts restants aujourd'hui",
   "quotaDmsText": "50/50 DMs restants aujourd'hui",
-  "myPub": "BGxUuhS8HJFVi9Mf1bkum-26xx-iibiMaPsMUgxrwIPZwIXYROmdhLIKUsVH9lyqyrCUac8o6ZTcvLn_VyatLR8",
+  "myPub": "BCCjCASUQklDD8_ZWKbDdTBBCK8M1D5R2MF1b2KVp6S7oGWqC8QBYd2WbTRZNOP-bRt-vYkzy7PTeB580gK5_Fs",
   "quotaToastShown": true,
   "identityQuota": {
     "reputationScore": 0,

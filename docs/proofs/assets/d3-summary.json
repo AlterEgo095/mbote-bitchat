@@ -1,0 +1,16 @@
+{
+  "wave": "D3 \u2014 supply chain",
+  "checks": {
+    "secrets_scan": "0 secret r\u00e9el (127 commits, 2 exclusions document\u00e9es)",
+    "audit_prod": "0 vuln\u00e9rabilit\u00e9 (11 patch\u00e9es/overrides)",
+    "audit_dev": "13 dev-only accept\u00e9es et document\u00e9es (SECURITY-TRIAGE.md \u00a73)",
+    "bun_digest": "\u00e9pinglage oven/bun:1 v\u00e9rifi\u00e9 \u00e0 jour (registry API)",
+    "compose_hardening": "read_only + no-new-privileges + cap_drop ALL \u00d73 services",
+    "user_non_root": "mbote(10001) / relay(10002) / admpannel(10003)",
+    "api_smoke": "routes 200 comme avant les patchs (next 16.4.6, sharp 0.35.5, prisma 6.19.3)"
+  },
+  "docs": [
+    "docs/SECURITY-TRIAGE.md",
+    "docs/DOCKER-HARDENING.md"
+  ]
+}

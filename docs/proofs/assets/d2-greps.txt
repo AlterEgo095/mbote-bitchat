@@ -12,8 +12,8 @@ src/app/api/dms/route.ts:3
 ## Bench PoW navigateur (d2-pow-bench.json)
 {
   "measuredIn": "browser (Web Worker, WebCrypto SHA-256)",
-  "ms": 2522.699999999255,
-  "iterations": 349670,
+  "ms": 11483.800000000745,
+  "iterations": 1673579,
   "bits": 20,
-  "iterationsPerSecond": 138609
+  "iterationsPerSecond": 145734
 }

@@ -13,5 +13,12 @@ COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY hub.ts ./
 COPY index.ts ./
+# D3 — durcissement : utilisateur non-root (relay sans état : aucune écriture
+# disque — /tmp tmpfs suffit pour les éphémères)
+RUN addgroup --system --gid 10002 relay \
+    && adduser --system --uid 10002 --ingroup relay --no-create-home relay
+ENV HOME=/tmp BUN_INSTALL=/tmp/.bun
+USER relay
+
 EXPOSE 3030 3031
 CMD ["bun", "index.ts"]

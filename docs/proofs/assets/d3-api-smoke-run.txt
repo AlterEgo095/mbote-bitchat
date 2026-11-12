@@ -1,0 +1,8 @@
+[d3-smoke] ok  /api/stats → 200 (attendu 200) — stats (compteurs publics)
+[d3-smoke] ok  /api/posts?scope=global&limit=5 → 200 (attendu 200) — fil public
+[d3-smoke] ok  /api/users → 200 (attendu 200) — liste identités
+[d3-smoke] ok  /api/channels → 200 (attendu 200) — canaux géohash
+[d3-smoke] ok  /api/search?q=mbote&type=posts → 200 (attendu 200) — recherche FTS5 (D1)
+[d3-smoke] ok  /api/identity?pubkey=probe-d3 → 200 (attendu 200) — profil (DTO quota D2)
+[d3-smoke] ok  /api/push/config → 503 (attendu 503) — push VAPID (fail-closed sans clés — 503 attendu)
+[d3-smoke] PASS

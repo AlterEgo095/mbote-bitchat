@@ -71,3 +71,6 @@ mobile/ios/
 # sauvegardes locales (ne jamais committer : données chiffrées + clé)
 backups/
 .backup-key
+
+# D3 : généré par security.yml (npm audit) — bun.lock est la source de vérité
+package-lock.json

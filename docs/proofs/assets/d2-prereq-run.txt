@@ -1,1 +1,1 @@
-[d2-probe] PoW 20 bits — desktop 7743 ms · throttled ×4 625 ms · nonce=82484
+[d2-probe] PoW 20 bits — desktop 7690 ms · throttled ×4 633 ms · nonce=82484

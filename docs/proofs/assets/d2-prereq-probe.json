@@ -2,12 +2,12 @@
   "workerOk": true,
   "powDesktop": {
     "nonce": "1554206",
-    "ms": 7743,
+    "ms": 7689.9000000003725,
     "bits": 20
   },
   "powThrottled4x": {
     "nonce": "82484",
-    "ms": 624.5,
+    "ms": 632.5999999996275,
     "bits": 20
   },
   "pass": true

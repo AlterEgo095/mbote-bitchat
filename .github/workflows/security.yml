@@ -14,11 +14,16 @@ on:
   schedule:
     - cron: "0 6 * * 1" # hebdomadaire — lundi 06:00 UTC
   push:
-    branches: [main]
+    branches: [main, "feat/**"]
+    # feat/** ajouté (D3, directive : vérification CI sur la branche consolidée
+    # feat/mbote-v1 après la pause post-D3) — les paths restent les mêmes.
     paths:
       - "package.json"
       - "bun.lock"
       - "Dockerfile"
+      - "docker-compose.yml"
+      - "mini-services/relay-service/Dockerfile"
+      - "admin/Dockerfile"
       - ".github/workflows/security.yml"
 
 permissions:
@@ -44,14 +49,26 @@ jobs:
         # npm audit exige un lockfile npm (il ne lit pas bun.lock).
         # --package-lock-only : résolution seule — aucun paquet téléchargé,
         # --ignore-scripts : aucun script de cycle de vie exécuté.
-        run: npm install --package-lock-only --ignore-scripts
+        # --legacy-peer-deps : OBLIGATOIRE depuis C4 — ts-mls@1.6.4 déclare un
+        # peerOptional @hpke/chacha20poly1305@"1.8.0" EXACT alors que le projet
+        # dépend de ^1.8.1 (résolu par bun) — sans ce flag, la résolution npm
+        # échouait (ERESOLVE) et le job npm audit était ROUGE sans le savoir
+        # (découverte triage D3, docs/SECURITY-TRIAGE.md).
+        run: npm install --package-lock-only --ignore-scripts --legacy-peer-deps
 
-      - name: Audit npm (seuil high+)
-        # continue-on-error : le rapport est publié en artefact sans casser la
-        # CI pendant le triage initial — resserrer après triage initial
-        # (supprimer continue-on-error + passer --audit-level=low).
+      - name: Audit npm — surface PRODUCTION seule (BLOQUANT)
+        # Triage D3 (docs/SECURITY-TRIAGE.md) : la surface production est
+        # RESSENERRÉE — exit-code 1 sur toute vulnérabilité high+ en prod
+        # (les 11 vulns prod du triage initial sont toutes corrigées).
+        # --omit=dev : les dépendances de dev (eslint, harnais TURN…) restent
+        # en rapport-seul (job suivant) — elles ne partent JAMAIS en prod.
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit npm — arbre complet (rapport seul, continue-on-error)
+        # Les vulns DEV-only restantes (13 après triage D3) sont tracées ici
+        # sans casser la CI — décisions par vuln dans docs/SECURITY-TRIAGE.md.
         continue-on-error: true
-        run: npm audit --audit-level=high --json > npm-audit-report.json || true
+        run: npm audit --json > npm-audit-report.json || true
 
       - name: Résumé lisible (comptage par sévérité)
         if: always()
@@ -82,7 +99,6 @@ jobs:
           name: npm-audit-report
           path: npm-audit-report.json
           retention-days: 30
-
   scan-trivy:
     name: Scan Trivy (vuln + secret + misconfig)
     runs-on: ubuntu-latest
@@ -91,23 +107,23 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 — épinglé par SHA (supply chain, condition 6)
 
       - name: Trivy — scan filesystem (vulnérabilités, secrets, misconfig)
-        # Politique de resserrement planifiée : exit-code 0 = rapport seul pour
-        # commencer (triage du bruit initial / faux positifs) ; une fois le
-        # triage fait, passer exit-code à "1" (+ .trivyignore documenté) pour
-        # faire échouer la CI sur toute nouvelle vulnérabilité HIGH/CRITICAL.
+        # Politique post-triage D3 (docs/SECURITY-TRIAGE.md) : exit-code 0
+        # conservé pour le bruit misconfig à filtrer, mais l'artefact SARIF
+        # est désormais nommé security-report.sarif (directive D3) et le
+        # rapport secrets sert d'entrée au scan manuel git du runner D3.
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 — épinglé par SHA
         with:
           scan-type: fs
           scanners: vuln,secret,misconfig
           severity: HIGH,CRITICAL
-          exit-code: "0" # rapport seulement pour commencer — resserrage planifié
+          exit-code: "0" # rapport seul pour commencer — resserrage planifié
           format: sarif
-          output: trivy-results.sarif
+          output: security-report.sarif
 
       - name: Publier le rapport SARIF
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2 — épinglé par SHA
         with:
-          name: trivy-results-sarif
-          path: trivy-results.sarif
+          name: security-report-sarif
+          path: security-report.sarif
           retention-days: 30

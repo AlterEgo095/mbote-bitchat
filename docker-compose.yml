@@ -37,6 +37,17 @@ services:
       - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@mbotemesh.aenews.online}
     volumes:
       - mbote-data:/app/db
+    # ── D3 — durcissement runtime (docs/DOCKER-HARDENING.md) ──
+    # read_only : le conteneur n'écrit QUE /app/db (volume) et /tmp
+    # (tmpfs) — le cache Next (image optimization) est un tmpfs éphémère.
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL # ports > 1024 : aucun cap_add nécessaire (NET_BIND_SERVICE inutile)
     restart: unless-stopped
     depends_on:
       relay:
@@ -73,6 +84,14 @@ services:
     environment:
       - RELAY_ALLOWED_ORIGIN=${RELAY_ALLOWED_ORIGIN:-}
       - RELAY_EMIT_TOKEN=${RELAY_EMIT_TOKEN:-}
+    # ── D3 — durcissement : relay sans état (aucune écriture persistante)
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     restart: unless-stopped
     healthcheck:
       test:
@@ -105,6 +124,15 @@ services:
       - HOSTNAME=0.0.0.0
       - BACKEND_INTERNAL_URL=http://mbote:3000
       - ADMIN_INTERNAL_TOKEN=${ADMIN_INTERNAL_TOKEN:-}
+    # ── D3 — durcissement : BFF sans état (cache Next en tmpfs)
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       mbote:
         condition: service_healthy
