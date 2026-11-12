@@ -1,0 +1,12 @@
+{
+  "browserMls": {
+    "ok": true,
+    "steps": {
+      "ciphersuite": "P256 OK (WebCrypto natif)",
+      "groupCreated": "epoch 0",
+      "bobJoined": "epoch 1",
+      "bobReads": "hello-from-browser"
+    }
+  },
+  "ok": true
+}
