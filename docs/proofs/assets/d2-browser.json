@@ -1,0 +1,30 @@
+{
+  "powVisibleDuringCalc": true,
+  "powProgressText": "Préparation du compte… 4%",
+  "onboarded": true,
+  "powBench": {
+    "ms": 2522.699999999255,
+    "iterations": 349670,
+    "bits": 20
+  },
+  "uiPublish": true,
+  "reputationBadgeText": "Réputation neutre",
+  "quotaPostsText": "9/10 posts restants aujourd'hui",
+  "quotaDmsText": "50/50 DMs restants aujourd'hui",
+  "myPub": "BGxUuhS8HJFVi9Mf1bkum-26xx-iibiMaPsMUgxrwIPZwIXYROmdhLIKUsVH9lyqyrCUac8o6ZTcvLn_VyatLR8",
+  "quotaToastShown": true,
+  "identityQuota": {
+    "reputationScore": 0,
+    "tier": "neutral",
+    "posts": {
+      "limit": 10,
+      "used": 10,
+      "remaining": 0
+    },
+    "dms": {
+      "limit": 50,
+      "used": 0,
+      "remaining": 50
+    }
+  }
+}

@@ -535,10 +535,17 @@ async function applyUserBanInTx(
     });
   }
 
-  // (2) ban définitif
+  // (2) ban définitif — D2 (Sybil phase 0) : un ban = confirmation finale
+  // de reports → −5 de réputation + +1 flaggedCount, dans la même tx que le
+  // ban (le score du banni plafonné à ses plafonds négatifs au réveil).
   const row = await tx.user.update({
     where: { id: user.id },
-    data: { bannedAt: now, bannedById: executor.adminUserId },
+    data: {
+      bannedAt: now,
+      bannedById: executor.adminUserId,
+      reputationScore: { decrement: 5 },
+      flaggedCount: { increment: 1 },
+    },
     select: { pubkey: true, bannedAt: true },
   });
 

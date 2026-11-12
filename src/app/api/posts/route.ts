@@ -10,6 +10,9 @@ import {
 import { isValidPubkeyFormat } from "@/lib/mbote/proof";
 import { verifyPostSignature } from "@/lib/mbote/verify";
 import { parseBoundedInt, parseGeohashPrecision, parseBodyPrecision } from "@/lib/mbote/params";
+// D2 — Sybil phase 0 : sweep réputation + plafonds quotidiens
+import { POSTS_LIMIT_MESSAGE, quotaVerdict, type UsageCounterRow } from "@/lib/mbote/sybil";
+import { commitUsageIncrement, sweepPostReputation } from "@/lib/mbote/sybil-server";
 
 export const dynamic = "force-dynamic";
 
@@ -315,6 +318,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── D2 — Sybil phase 0 : sweep de réputation paresseux + plafond ─────
+    // Le sweep crédite d'abord les posts > 24 h sans report (+1/post) : le
+    // plafond est calculé sur le score À JOUR. Les posts d'origine mesh
+    // (passerelle BitChat) ne passent PAS ici — T0 hors-ligne sans plafond.
+    const freshScore = await sweepPostReputation(author.id);
+    author.reputationScore = freshScore;
+    const usageRow: UsageCounterRow = {
+      reputationScore: freshScore,
+      postsToday: author.postsToday,
+      dmsToday: author.dmsToday,
+      usageDay: author.usageDay,
+    };
+    const quota = quotaVerdict(usageRow, "posts", new Date());
+    if (!quota.allowed) {
+      return NextResponse.json(
+        {
+          error: POSTS_LIMIT_MESSAGE,
+          code: "quota_posts",
+          limit: quota.limit,
+          used: quota.used,
+          remaining: 0,
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(quota.retryAfterSeconds ?? 60) },
+        }
+      );
+    }
+
     if (parentId) {
       const parent = await db.post.findUnique({ where: { id: parentId } });
       if (!parent) {
@@ -338,6 +370,8 @@ export async function POST(req: NextRequest) {
 
     try {
       // écriture atomique : le post + l'incrément du compteur du parent (D5)
+      // + le compteur de quota D2 (reset paresseux inclus) dans la même tx —
+      // un post accepté compte toujours pour le plafond, un refus jamais.
       const post = await db.$transaction(async (tx) => {
         const created = await tx.post.create({ data });
         if (parentId) {
@@ -346,6 +380,7 @@ export async function POST(req: NextRequest) {
             data: { replyCount: { increment: 1 } },
           });
         }
+        await commitUsageIncrement(author.id, quota, "posts", tx);
         return created;
       });
 

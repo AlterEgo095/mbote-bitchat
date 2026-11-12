@@ -77,6 +77,15 @@ export async function POST(req: NextRequest) {
         data: { likeCount: { increment: 1 } },
         select: { likeCount: true },
       });
+      // D2 — réputation : +2 par like REÇU (création uniquement — un unlike
+      // ne re-crédite pas ; un auto-like ne crédite jamais). Dans la même tx
+      // que le like : réputation et compteur ne peuvent pas diverger.
+      if (post.authorId !== user.id) {
+        await tx.user.update({
+          where: { id: post.authorId },
+          data: { reputationScore: { increment: 2 } },
+        });
+      }
       return { liked: true, likeCount: updated.likeCount };
     });
 

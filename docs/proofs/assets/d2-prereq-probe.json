@@ -1,0 +1,14 @@
+{
+  "workerOk": true,
+  "powDesktop": {
+    "nonce": "1554206",
+    "ms": 7743,
+    "bits": 20
+  },
+  "powThrottled4x": {
+    "nonce": "82484",
+    "ms": 624.5,
+    "bits": 20
+  },
+  "pass": true
+}

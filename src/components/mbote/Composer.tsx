@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Loader2, Mail, MapPin, Send } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,9 +41,16 @@ export function Composer({
     setText("");
     try {
       await onSubmit(content);
-    } catch {
+    } catch (e) {
       // remet le texte si échec pour éviter la perte
       setText(content);
+      // D2 : le message SERVEUR est affiché tel quel — plafond de réputation
+      // atteint (« … Le score de réputation augmente avec la participation de
+      // qualité. »), suspension, etc. Un toast explicite vaut mieux qu'un
+      // échec muet (directive D2 : message clair si plafond atteint).
+      toast.error(e instanceof Error ? e.message : "Publication refusée", {
+        duration: 6000,
+      });
     }
   };
 

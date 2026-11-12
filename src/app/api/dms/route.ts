@@ -12,6 +12,9 @@ import {
 } from "@/lib/mbote/proof";
 import { checkDmReplay, type ReplayVerdict } from "@/lib/mbote/anti-replay";
 import { prismaReplayStoreFor } from "@/lib/mbote/anti-replay-prisma";
+// D2 — Sybil phase 0 : plafond quotidien de DMs par réputation de l'expéditeur
+import { DMS_LIMIT_MESSAGE, quotaVerdict, type UsageCounterRow } from "@/lib/mbote/sybil";
+import { commitUsageIncrement } from "@/lib/mbote/sybil-server";
 
 export const dynamic = "force-dynamic";
 
@@ -226,6 +229,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── D2 — plafond de DMs quotidiens du score de réputation ──────────────
+    // (les DMs sont le vecteur n°1 — le plafond s'applique à l'EXPÉDITEUR ;
+    // le destinataire reçoit sans plafond. La fenêtre min existante reste.)
+    const usageRow: UsageCounterRow = {
+      reputationScore: sender.reputationScore,
+      postsToday: sender.postsToday,
+      dmsToday: sender.dmsToday,
+      usageDay: sender.usageDay,
+    };
+    const dmQuota = quotaVerdict(usageRow, "dms", new Date());
+    if (!dmQuota.allowed) {
+      return NextResponse.json(
+        {
+          error: DMS_LIMIT_MESSAGE,
+          code: "quota_dms",
+          limit: Number.isFinite(dmQuota.limit) ? dmQuota.limit : null,
+          used: dmQuota.used,
+          remaining: 0,
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(dmQuota.retryAfterSeconds ?? 60) },
+        }
+      );
+    }
+
     // A1 : garde + compteur + message dans UNE transaction — un rejeu ne
     // double-livre jamais, un message accepté ne se perd jamais.
     const message = await db.$transaction(async (tx) => {
@@ -240,7 +269,7 @@ export async function POST(req: NextRequest) {
         seq: isV2 ? Number(seq ?? 0) : null,
       });
       if (!verdict.ok) throw new ReplayRefusedError(verdict);
-      return tx.directMessage.create({
+      const created = await tx.directMessage.create({
         data: {
           senderKey,
           recipientKey,
@@ -249,6 +278,10 @@ export async function POST(req: NextRequest) {
           ...(isV2 ? { msgId: String(msgId), seq: Number(seq ?? 0) } : {}),
         },
       });
+      // D2 : compteur de DMs de l'expéditeur dans la MÊME transaction —
+      // un message livré compte toujours, un refus jamais.
+      await commitUsageIncrement(sender.id, dmQuota, "dms", tx);
+      return created;
     });
 
     // livraison temps réel : boîtes aux lettres des deux parties (contenu opaque)

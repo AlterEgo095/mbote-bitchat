@@ -1,3 +1,4 @@
+import { solvePow } from "./pow-harness";
 /**
  * ─────────────────────────────────────────────────────────────────────────────
  *  E2E A1 — anti-rejeu DM contre l'API RÉELLE (serveur dev :3000)
@@ -68,7 +69,8 @@ async function makeIdentity(nickname: string) {
   );
   const r = await jsonFetch("/api/identity", {
     method: "POST",
-    body: JSON.stringify({ pubkey, nickname, ecdhPub, ts, signature }),
+    // D2 : PoW de création obligatoire
+    body: JSON.stringify({ pubkey, nickname, ecdhPub, ts, signature, pow: solvePow(pubkey, ts) }),
   });
   if (r.status !== 200) throw new Error(`identité ${nickname} refusée : ${r.status} ${JSON.stringify(r.body)}`);
   return { pubkey, ecdhPub, signPriv: pair.privateKey };

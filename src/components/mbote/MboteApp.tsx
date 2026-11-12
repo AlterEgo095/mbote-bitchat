@@ -108,6 +108,8 @@ const ProfileView = dynamic(
 );
 import { FeedView } from "./FeedView";
 import { OnboardingDialog } from "./OnboardingDialog";
+// D2 — preuve de travail de création (Sybil phase 0) : Web Worker non bloquant
+import { computePow, exposePowBenchmark } from "@/lib/mbote/pow-client";
 
 /** Squelette de chargement des vues découpées (F-34). */
 function ViewSkeleton() {
@@ -140,6 +142,8 @@ export function MboteApp() {
   const [identity, setIdentity] = useState<StoredIdentity | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  // D2 — progression du PoW de création (0..1), null = pas de calcul en cours
+  const [powProgress, setPowProgress] = useState<number | null>(null);
   const [view, setView] = useState<ViewKey>("feed");
   /** F-49 : texte reçu via share_target (?text=&url=) → brouillon composer */
   const [shareDraft, setShareDraft] = useState<string | null>(null);
@@ -462,12 +466,15 @@ export function MboteApp() {
         };
         await saveIdentity(stored);
         setIdentity(stored);
-        setOnboardingOpen(false);
+        // D2 : le dialogue RESTE ouvert pendant le PoW (progression visible)
+        // — la création locale est déjà effective (T0 : publier/signer hors
+        // ligne marche sans serveur ni PoW) ; seule la publication serveur
+        // attend la preuve de travail.
         // F-01 : preuve de possession signée AVANT tout — envoyée maintenant,
         // ou conservée telle quelle dans la file locale (courrier) pour être
         // re-jouée au retour du réseau (tolérance offline 7 j côté serveur).
         const ts = Date.now();
-        const identityPayload = {
+        const identityPayload: Parameters<typeof apiUpsertIdentity>[0] = {
           pubkey: bundle.pubkey,
           nickname,
           bio: bio || undefined,
@@ -484,6 +491,19 @@ export function MboteApp() {
             })
           ),
         };
+        // D2 — PoW 20 bits en Web Worker : ~2-5 s mobile bas de gamme, avec
+        // progression visible. Un worker indisponible n'empêche RIEN : le
+        // payload part sans PoW (le serveur refusera la création → file
+        // courrier), la création locale reste effective.
+        try {
+          setPowProgress(0);
+          const pow = await computePow(bundle.pubkey, ts, (p) => setPowProgress(p.ratio));
+          exposePowBenchmark(pow);
+          identityPayload.pow = { nonce: pow.nonce };
+          setPowProgress(1);
+        } catch {
+          setPowProgress(null);
+        }
         try {
           await apiUpsertIdentity(identityPayload);
           toast.success("Identité créée et publiée", {
@@ -496,6 +516,8 @@ export function MboteApp() {
             description: "Ton profil sera publié au retour du réseau.",
           });
         }
+        setOnboardingOpen(false);
+        setPowProgress(null);
         qc.invalidateQueries();
       } finally {
         setCreating(false);
@@ -1086,6 +1108,7 @@ export function MboteApp() {
       <OnboardingDialog
         open={onboardingOpen}
         creating={creating}
+        powProgress={powProgress}
         onCreate={createIdentity}
         onOpenChange={setOnboardingOpen}
       />

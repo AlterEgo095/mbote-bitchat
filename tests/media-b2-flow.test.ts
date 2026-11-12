@@ -31,6 +31,7 @@
  */
 
 import { describe, test, expect, beforeAll } from "bun:test";
+import { cfSpoofHeaders, solvePow } from "./pow-harness";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -426,8 +427,10 @@ async function publishIdentity(id: TestIdentity, nickname: string, ecdhPubB64: s
   const signature = await id.sign(msg);
   const res = await fetch(`${BASE_URL}/api/identity`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pubkey: id.pub, nickname, bio: "", ecdhPub: ecdhPubB64, ts, signature }),
+    // D2 : PoW de création + isolation IP (cfSpoofHeaders — plusieurs identités
+    // par fichier dépasseraient le plafond 3/h/IP d'un seul bucket)
+    headers: { "Content-Type": "application/json", ...cfSpoofHeaders("d2media") },
+    body: JSON.stringify({ pubkey: id.pub, nickname, bio: "", ecdhPub: ecdhPubB64, ts, signature, pow: solvePow(id.pub, ts) }),
   });
   expect(res.ok).toBe(true);
 }

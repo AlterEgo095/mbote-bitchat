@@ -1,3 +1,4 @@
+import { solvePow } from "./pow-harness";
 /**
  * ─────────────────────────────────────────────────────────────────────────────
  *  C4 — GROUPES PRIVÉS MLS : tests ADVERSARIAUX SYSTÈME (3 clients réels)
@@ -112,6 +113,7 @@ async function onboard(identity: Identity): Promise<void> {
       ecdhPub: identity.ecdhPub,
       ts,
       signature,
+      pow: solvePow(identity.pubkey, ts),
     }),
   });
   if (!res.ok && res.status !== 409) {

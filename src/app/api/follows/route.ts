@@ -85,12 +85,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ following: false });
     }
 
-    await db.follow.upsert({
-      where: {
-        followerId_followingId: { followerId: follower.id, followingId: target.id },
-      },
-      update: {},
-      create: { followerId: follower.id, followingId: target.id },
+    await db.$transaction(async (tx) => {
+      // D2 — réputation : +1 par follow REÇU, UNIQUEMENT la première fois
+      // par paire (FollowCredit survit à l'unfollow — l'aller-retour
+      // follow/unfollow ne farme pas le score). Dans la même tx.
+      await tx.follow.upsert({
+        where: {
+          followerId_followingId: { followerId: follower.id, followingId: target.id },
+        },
+        update: {},
+        create: { followerId: follower.id, followingId: target.id },
+      });
+      const alreadyCredited = await tx.followCredit.findUnique({
+        where: {
+          followerId_followingId: { followerId: follower.id, followingId: target.id },
+        },
+      });
+      if (!alreadyCredited) {
+        await tx.followCredit.create({
+          data: { followerId: follower.id, followingId: target.id },
+        });
+        await tx.user.update({
+          where: { id: target.id },
+          data: { reputationScore: { increment: 1 } },
+        });
+      }
     });
     return NextResponse.json({ following: true });
   } catch (e) {

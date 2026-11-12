@@ -1,3 +1,4 @@
+import { cfSpoofHeaders, solvePow } from "./pow-harness";
 /**
  * ─────────────────────────────────────────────────────────────────────────────
  *  E2E A3 — modération du fil public contre l'API RÉELLE (serveur dev)
@@ -124,7 +125,9 @@ async function makeIdentity(nickname: string): Promise<Identity> {
   const signature = await sign(pair.privateKey, `${pubkey}|identity|${nickname}||${ecdhPub}|${ts}`);
   const r = await jsonFetch("/api/identity", {
     method: "POST",
-    body: JSON.stringify({ pubkey, nickname, ecdhPub: ecdhPub, ts, signature }),
+    // D2 : PoW de création + isolation IP
+    body: JSON.stringify({ pubkey, nickname, ecdhPub: ecdhPub, ts, signature, pow: solvePow(pubkey, ts) }),
+    headers: cfSpoofHeaders("d2mod"),
   });
   if (r.status !== 200) throw new Error(`identité ${nickname} refusée : ${r.status}`);
   return { pubkey, ecdhPub: ecdhPub, signPriv: pair.privateKey };

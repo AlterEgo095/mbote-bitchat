@@ -226,6 +226,10 @@ export async function POST(req: NextRequest) {
           where: { targetKind: { in: ["post", "comment"] }, targetId, status: "open" },
           select: { id: true },
         });
+        const hiddenPost = await db.post.findUnique({
+          where: { id: targetId },
+          select: { authorId: true },
+        });
         const updated = await withWriteLock(() => db.$transaction(async (tx) => {
           const row = await tx.post.update({
             where: { id: targetId },
@@ -236,6 +240,20 @@ export async function POST(req: NextRequest) {
             await tx.report.updateMany({
               where: { id: { in: openReports.map((r) => r.id) } },
               data: { status: "actioned", handledAt, handledById: ctx.adminUserId },
+            });
+          }
+          // D2 — Sybil phase 0 : un report CONFIRMÉ par un hide coûte −5 de
+          // réputation et +1 flaggedCount à l'auteur du contenu (un hide
+          // PROACTIF sans report n'est pas un report confirmé — pas de
+          // pénalité). Dans la même transaction : réputation et trace
+          // d'audit ne peuvent pas diverger.
+          if (openReports.length > 0 && hiddenPost) {
+            await tx.user.update({
+              where: { id: hiddenPost.authorId },
+              data: {
+                reputationScore: { decrement: 5 },
+                flaggedCount: { increment: 1 },
+              },
             });
           }
           const trace = await tx.moderationAction.create({

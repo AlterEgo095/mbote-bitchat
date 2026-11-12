@@ -66,11 +66,23 @@ export function apiUpsertIdentity(payload: {
   /** preuve de possession (F-01) : horodatage signé + signature ECDSA */
   ts: number;
   signature: string;
+  /** D2 — preuve de travail de CRÉATION (nonce, 20 bits). Absent si le PoW
+   *  n'a pas pu être calculé (worker indisponible) : le serveur refusera la
+   *  création mais le payload reste rejouable dans la file courrier. */
+  pow?: { nonce: string };
 }) {
   return jsonFetch<{ user: UserPublic }>("/api/identity", {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+/** Quota quotidien exposé par GET/POST /api/identity (D2). */
+export interface UserQuota {
+  reputationScore: number;
+  tier: "negative" | "neutral" | "established" | "exemplary";
+  posts: { limit: number; used: number; remaining: number | null };
+  dms: { limit: number | null; used: number; remaining: number | null };
 }
 
 export function apiGetUser(pubkey: string) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound, Loader2, ShieldCheck, WifiOff } from "lucide-react";
+import { KeyRound, Loader2, ShieldCheck, WifiOff, Hammer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,17 +18,22 @@ import { Textarea } from "@/components/ui/textarea";
 export function OnboardingDialog({
   open,
   creating,
+  powProgress,
   onCreate,
   onOpenChange,
 }: {
   open: boolean;
   creating: boolean;
+  /** D2 — progression du PoW (0..1) pendant la publication serveur de la
+   *  création ; null = pas de calcul en cours (création locale seule). */
+  powProgress: number | null;
   onCreate: (nickname: string, bio: string) => Promise<void>;
   onOpenChange: (open: boolean) => void;
 }) {
   const [nickname, setNickname] = useState("");
   const [bio, setBio] = useState("");
   const valid = nickname.trim().length >= 2;
+  const powPct = powProgress != null ? Math.round(Math.min(1, Math.max(0, powProgress)) * 100) : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -83,6 +88,39 @@ export function OnboardingDialog({
           </div>
 
           <DialogFooter className="mt-5 flex-col gap-2 sm:flex-col">
+            {powPct != null && (
+              <div
+                className="w-full rounded-lg border border-border bg-muted/40 p-3"
+                data-testid="pow-progress"
+                role="status"
+                aria-live="polite"
+              >
+                <div className="flex items-center justify-between text-xs font-medium text-foreground">
+                  <span className="inline-flex items-center gap-1.5" data-testid="pow-progress-label">
+                    <Hammer className="size-3.5 text-primary" aria-hidden="true" />
+                    Préparation du compte… {powPct}%
+                  </span>
+                </div>
+                <div
+                  className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={powPct}
+                  aria-label="Progression de la preuve de travail"
+                >
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width] duration-200 ease-linear"
+                    style={{ width: `${powPct}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+                  Preuve de travail anti-spam (20 bits) : un petit calcul sur ton
+                  appareil qui rend la création de faux comptes coûteuse pour les
+                  fermes à spambots — pas pour toi.
+                </p>
+              </div>
+            )}
             <Button
               className="w-full"
               disabled={!valid || creating}

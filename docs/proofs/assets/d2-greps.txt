@@ -1,0 +1,19 @@
+## PoW exigé à la création (route identity)
+4
+## Anti-rejeu global (PowSpent)
+src/app/api/identity/route.ts:2
+prisma/schema.prisma:2
+## Plafonds branchés aux points d'application
+src/app/api/posts/route.ts:3
+src/app/api/dms/route.ts:3
+## T0 préservé : le bridge mesh n'importe AUCUN module Sybil
+0
+0 (aucune référence — attendu)
+## Bench PoW navigateur (d2-pow-bench.json)
+{
+  "measuredIn": "browser (Web Worker, WebCrypto SHA-256)",
+  "ms": 2522.699999999255,
+  "iterations": 349670,
+  "bits": 20,
+  "iterationsPerSecond": 138609
+}

@@ -4,6 +4,9 @@
  * Les compteurs viennent des COLONNES dénormalisées (D5), plus aucun COUNT.
  */
 
+// D2 — réputation/plafonds (module pur isomorphe, sans dépendance node)
+import { dailyLimits, reputationTier, utcDay } from "./sybil";
+
 export interface PostLikeRow {
   id: string;
   content: string;
@@ -61,7 +64,46 @@ export interface UserPrivateRow {
   ecdhPub: string | null;
   isBot: boolean;
   createdAt: Date;
+  /** D2 — champs de réputation/plafonds (optionnels : les anciens appels
+   *  sans select D2 continuent de sérialiser sans eux). */
+  reputationScore?: number;
+  flaggedCount?: number;
+  postsToday?: number;
+  dmsToday?: number;
+  usageDay?: string | null;
   _count?: { posts: number; followers: number; following: number };
+}
+
+/** Quota quotidien exposé au client (D2) — calculé à la volée depuis les
+ *  compteurs dénormalisés (reset paresseux appliqué en LECTURE pour l'affiche,
+ *  l'écriture du reset reste aux points d'application). */
+export function toUserQuotaDto(u: {
+  reputationScore?: number;
+  postsToday?: number;
+  dmsToday?: number;
+  usageDay?: string | null;
+}) {
+  const now = new Date();
+  const today = utcDay(now);
+  const freshPosts = u.usageDay === today ? (u.postsToday ?? 0) : 0;
+  const freshDms = u.usageDay === today ? (u.dmsToday ?? 0) : 0;
+  const score = u.reputationScore ?? 0;
+  const limits = dailyLimits(score);
+  const posts = {
+    limit: limits.posts,
+    used: freshPosts,
+    remaining: Number.isFinite(limits.posts)
+      ? Math.max(0, limits.posts - freshPosts)
+      : null, // null = pas de plafond affichable
+  };
+  const dms = {
+    limit: Number.isFinite(limits.dms) ? limits.dms : null,
+    used: freshDms,
+    remaining: Number.isFinite(limits.dms)
+      ? Math.max(0, limits.dms - freshDms)
+      : null,
+  };
+  return { reputationScore: score, tier: reputationTier(score), posts, dms };
 }
 
 export function toUserDto(u: UserPrivateRow) {
@@ -73,6 +115,11 @@ export function toUserDto(u: UserPrivateRow) {
     ecdhPub: u.ecdhPub,
     isBot: u.isBot,
     createdAt: u.createdAt,
+    // D2 : réputation + plafonds QUAND la ligne les porte (select D2) —
+    // jamais botPriv ni aucune donnée privée.
+    ...(u.reputationScore !== undefined
+      ? { quota: toUserQuotaDto(u), flaggedCount: u.flaggedCount ?? 0 }
+      : {}),
     ...(u._count ? { _count: u._count } : {}),
   };
 }

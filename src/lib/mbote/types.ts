@@ -6,6 +6,15 @@ export interface UserPublic {
   ecdhPub?: string | null;
   isBot: boolean;
   createdAt: string;
+  /** D2 — réputation + plafonds quotidiens (présent quand le serveur porte
+   *  les champs D2 ; absent sur les anciennes sérialisations). */
+  quota?: {
+    reputationScore: number;
+    tier: "negative" | "neutral" | "established" | "exemplary";
+    posts: { limit: number; used: number; remaining: number | null };
+    dms: { limit: number | null; used: number; remaining: number | null };
+  };
+  flaggedCount?: number;
   _count?: {
     posts: number;
     followers: number;

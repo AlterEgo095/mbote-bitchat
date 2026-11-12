@@ -1,0 +1,23 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/d2-sybil.test.ts:
+(pass) D2 — PoW de création (serveur réel) > P1 — création valide acceptée : 200, user créé, quota exposé [1578.83ms]
+(pass) D2 — PoW de création (serveur réel) > P2 — création sans nonce → 403 pow_required [5.26ms]
+(pass) D2 — PoW de création (serveur réel) > P3 — nonce invalide (difficulté non atteinte) → 403 [14.33ms]
+(pass) D2 — PoW de création (serveur réel) > P4 — nonce REJOUÉ (rejeu exact de la création de A) → 409 pow_replayed [1557.35ms]
+(pass) D2 — réputation et plafonds (serveur réel + DB directe) > Q2 — score −5 (report confirmé simulé) : plafond 3/j → 4ᵉ refusé [55.85ms]
+(pass) D2 — réputation et plafonds (serveur réel + DB directe) > Q1 — score 0 : 10 posts OK, 11ᵉ → 429 quota_posts + message directive [328.06ms]
+(pass) D2 — réputation et plafonds (serveur réel + DB directe) > Q3 — score 15 : plafonds 50 posts / 200 DMs, tier established [5.44ms]
+(pass) D2 — réputation et plafonds (serveur réel + DB directe) > Q4 — DMs score −5 : 10 OK, 11ᵉ → 429 quota_dms [259.32ms]
+(pass) D2 — rate-limit durci et T0 mesh > R1 — 4ᵉ création de compte sur la même heure/IP → 429 + Retry-After ≥ 3600 [530.35ms]
+(pass) D2 — rate-limit durci et T0 mesh > M1 — T0 mesh : clé jamais onboardée publie via la passerelle sans PoW ni plafond [26.72ms]
+(pass) D2 — fonctions pures (matrice plafonds, reset UTC, difficulté) > F1a — matrice dailyLimits exacte (directive) [0.14ms]
+(pass) D2 — fonctions pures (matrice plafonds, reset UTC, difficulté) > F1b — quotaVerdict : reset du jour + Retry-After jusqu'à minuit UTC [0.19ms]
+(pass) D2 — fonctions pures (matrice plafonds, reset UTC, difficulté) > F1c — hashMeetsDifficultyHex : cas limites (0 bits, 20 bits, octets zéros) [492.46ms]
+(pass) D2 — fonctions pures (matrice plafonds, reset UTC, difficulté) > F1d — reputationTier : 4 tiers [0.24ms]
+(pass) D2 — fonctions pures (matrice plafonds, reset UTC, difficulté) > F1e — utcDay : borne UTC (pas locale) [0.05ms]
+
+ 15 pass
+ 0 fail
+ 97 expect() calls
+Ran 15 tests across 1 file. [4.92s]

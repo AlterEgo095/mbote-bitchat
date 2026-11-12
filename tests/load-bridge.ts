@@ -1,3 +1,4 @@
+import { cfSpoofHeaders, solvePow } from "./pow-harness";
 /**
  * Test de charge Mbote — cible audit §15.4 : « montée à ~100 posts/min via
  * pont (rate limits + N+1 channels), FragmentAssembler sous flood de
@@ -313,8 +314,9 @@ for (const [i, id] of idsD.entries()) {
   const signature = await sign(id.priv, `${id.pubkey}|identity|${nickname}|${bio}|${ecdh}|${ts}`);
   const r = await fetch(`${VPS}/api/identity`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pubkey: id.pubkey, nickname, bio, ecdhPub: ecdh || undefined, ts, signature }),
+    // D2 : PoW de création + IP unique par identité (20 créations > 3/h/IP)
+    headers: { "Content-Type": "application/json", ...cfSpoofHeaders("d2load") },
+    body: JSON.stringify({ pubkey: id.pubkey, nickname, bio, ecdhPub: ecdh || undefined, ts, signature, pow: solvePow(id.pubkey, ts) }),
   });
   if (r.ok) dRegistered++;
 }

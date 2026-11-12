@@ -41,6 +41,24 @@ model User {
   bannedAt DateTime?
   bannedById Int?
   bannedByAdmin AdminUser? @relation("userBannedBy", fields: [bannedById], references: [id])
+  // ── D2 — Sybil phase 0 (directive 2026-11-13) ──────────────────────────
+  // Réputation basique : +1 par post > 24 h sans report (sweep paresseux),
+  // +2 par like reçu, +1 par follow reçu, −5 par report confirmé (hide/ban).
+  // Le score pilote les plafonds de débit quotidiens (dailyLimits §sybil.ts).
+  reputationScore Int @default(0)
+  // Nombre d'actions de modération confirmées contre ce compte (hide/ban) —
+  // signal brut exposé dans le profil, non plafonné.
+  flaggedCount Int @default(0)
+  // Plafonds de débit quotidiens — compteurs DÉNORMALISÉS (pattern D5) :
+  // reset paresseux à minuit UTC (usageDay = "YYYY-MM-DD" UTC auquel ils se
+  // rapportent). Aucun cron — évalués aux points d'application.
+  postsToday Int @default(0)
+  dmsToday   Int @default(0)
+  usageDay   String?
+  // Anti-rejeu PoW : dernier challenge consommé par cette identité à la
+  // création (`${pubkey}|pow|${ts}`). Le rejet global est garanti par la
+  // table PowSpent (PK challenge) — ce champ garde la trace locale.
+  powChallenge String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -75,6 +93,10 @@ model Post {
   // clair) → hiddenById (FK AdminUser) — identité traçable, jamais de secret.
   hiddenById Int?
   hiddenByAdmin AdminUser? @relation("postHiddenBy", fields: [hiddenById], references: [id])
+  // D2 — sweep de réputation paresseux : +1 au score de l'auteur APRÈS 24 h
+  // sans report. Un seul crédit par post (flag), évalué aux points
+  // d'application (publication, profil) — jamais de cron.
+  reputationRewarded Boolean @default(false)
   createdAt  DateTime @default(now())
 
   likes Like[]
@@ -95,6 +117,17 @@ model Like {
   createdAt DateTime @default(now())
 
   @@unique([postId, userId])
+}
+
+// D2 — anti-rejeu PoW GLOBAL : chaque challenge PoW consommé
+// (pk + ts inclus dans la chaîne) est enregistré ici à la création
+// d'identité. Un rejeu (requête capturée rejouée, même nonce) → PK déjà
+// présente → 409. Le challenge inclut la pubkey ET le ts : un nonce n'est
+// jamais réutilisable pour une autre identité ni une autre tentative (le
+// hash change). Lignes ≈ 100 o × créations — purge non nécessaire phase 0.
+model PowSpent {
+  challenge  String   @id
+  consumedAt DateTime @default(now())
 }
 
 // Paquets BitChat déjà ingérés par la passerelle VPS (dédup persistante)
@@ -402,6 +435,17 @@ model Follow {
 }
 
 // Message privé : le serveur ne stocke QUE du chiffré (AES-GCM sur ECDH P-256)
+// D2 — mémoire du crédit de follow : un follow NE crédITE +1 QU'UNE fois
+// par paire (abonné, suivi) — la ligne survit à l'unfollow, l'aller-retour
+// follow/unfollow ne farme pas le score.
+model FollowCredit {
+  followerId String
+  followingId String
+  createdAt  DateTime @default(now())
+
+  @@id([followerId, followingId])
+}
+
 model DirectMessage {
   id           String    @id @default(cuid())
   senderKey    String // pubkey hex/base64url de l'expéditeur

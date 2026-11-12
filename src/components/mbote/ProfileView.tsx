@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   AlertDialog,
@@ -39,6 +40,8 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetchFeed, apiGetUser, apiUpsertIdentity } from "@/lib/mbote/api";
+// D2 — réputation : libellés des tiers (module pur isomorphe)
+import { REPUTATION_TIER_LABEL } from "@/lib/mbote/sybil";
 import { shortKey, signPayload } from "@/lib/mbote/crypto";
 import { identityProofMessage } from "@/lib/mbote/proof";
 import {
@@ -301,6 +304,22 @@ export function ProfileView({
                   <BadgeCheck className="size-4" aria-hidden="true" />
                   clés locales vérifiées
                 </span>
+                {user?.quota && (
+                  <Badge
+                    data-testid="reputation-badge"
+                    variant={
+                      user.quota.tier === "exemplary"
+                        ? "default"
+                        : user.quota.tier === "negative"
+                          ? "destructive"
+                          : "secondary"
+                    }
+                    className={user.quota.tier === "established" ? "bg-emerald-600 text-white" : undefined}
+                    title={`Score de réputation : ${user.quota.reputationScore} (D2 — +1 post de qualité après 24 h, +2 par like reçu, +1 par follow reçu, −5 par report confirmé)`}
+                  >
+                    {REPUTATION_TIER_LABEL[user.quota.tier]}
+                  </Badge>
+                )}
               </div>
 
               <p className="mt-1 text-sm text-muted-foreground">
@@ -340,6 +359,32 @@ export function ProfileView({
                   <p className="text-[10px] text-muted-foreground">abonnements</p>
                 </div>
               </div>
+
+              {user?.quota && (
+                <div
+                  data-testid="quota-counters"
+                  className="mt-2 rounded-lg border border-dashed bg-muted/30 p-2 text-[11px] text-muted-foreground"
+                >
+                  <span data-testid="quota-posts" className="font-medium text-foreground">
+                    {user.quota.posts.remaining === null
+                      ? "posts : illimités aujourd'hui"
+                      : `${user.quota.posts.remaining}/${user.quota.posts.limit} posts restants aujourd'hui`}
+                  </span>
+                  <span className="mx-2" aria-hidden="true">
+                    ·
+                  </span>
+                  <span data-testid="quota-dms" className="font-medium text-foreground">
+                    {user.quota.dms.remaining === null
+                      ? "DMs : illimités aujourd'hui"
+                      : `${user.quota.dms.remaining}/${user.quota.dms.limit} DMs restants aujourd'hui`}
+                  </span>
+                  {user.flaggedCount ? (
+                    <span className="mt-1 block text-amber-600">
+                      {user.flaggedCount} signalement(s) confirmé(s) par la modération
+                    </span>
+                  ) : null}
+                </div>
+              )}
 
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button

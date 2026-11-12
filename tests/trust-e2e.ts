@@ -1,3 +1,4 @@
+import { solvePow } from "./pow-harness";
 /**
  * ─────────────────────────────────────────────────────────────────────────────
  *  E2E A2 — authentification des clés contre l'API RÉELLE (serveur dev :3000)
@@ -60,7 +61,8 @@ async function makeIdentity(nickname: string, ecdhPub?: string): Promise<Identit
   const signature = await sign(pair.privateKey, `${pubkey}|identity|${nickname}||${pub}|${ts}`);
   const r = await jsonFetch("/api/identity", {
     method: "POST",
-    body: JSON.stringify({ pubkey, nickname, ecdhPub: pub, ts, signature }),
+    // D2 : PoW de création obligatoire (2 créations ≤ 3/h — pas de spoof IP)
+    body: JSON.stringify({ pubkey, nickname, ecdhPub: pub, ts, signature, pow: solvePow(pubkey, ts) }),
   });
   if (r.status !== 200) throw new Error(`identité ${nickname} refusée : ${r.status}`);
   return { pubkey, ecdhPub: pub, signPriv: pair.privateKey };

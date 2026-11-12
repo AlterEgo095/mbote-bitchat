@@ -1,0 +1,10 @@
+[d2-browser] E1 — onboarding + PoW visible
+[d2-browser] capture d2-pow-onboarding.png
+[d2-browser] PoW : 2523 ms, 349670 itérations, 20 bits
+[d2-browser] E4 — publication réelle depuis l'UI
+[d2-browser] E3 — profil : badge réputation + compteurs
+[d2-browser] capture d2-profile-reputation.png
+[d2-browser] badge: Réputation neutre · 9/10 posts restants aujourd'hui
+[d2-browser] E5 — plafond atteint (toast serveur)
+[d2-browser] capture d2-quota-reached.png
+[d2-browser] OK — tous les scénarios verts

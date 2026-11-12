@@ -1,0 +1,7 @@
+{
+  "measuredIn": "browser (Web Worker, WebCrypto SHA-256)",
+  "ms": 2522.699999999255,
+  "iterations": 349670,
+  "bits": 20,
+  "iterationsPerSecond": 138609
+}
