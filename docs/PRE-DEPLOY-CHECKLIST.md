@@ -34,7 +34,24 @@
       #  20261107090000_0007_etape9_four_eyes
       #  20261107094500_0008_c1_push
       #  20261107100000_0008_etape10_audit_stress
+      #  (+ migrations B/C/D suivantes : 0009_d1_post_fts, 0010_c4_groups, 0011_d2_sybil…)
       ```
+- [ ] **0.5 — PAUSE DÉPLOIEMENT après D3 (directive 2026-11-13, non négociable)** :
+      après D3 verte, STOP obligatoire avant toute nouvelle phase (D4 = décision
+      E/F/G maintenant ou déploiement d'abord) :
+      1. `git push origin feat/mbote-v1` — PAS main : vérification de CI sur la
+         branche consolidée uniquement, AUCUN déploiement prod ;
+      2. attendre la CI verte sur la branche : `tests.yml` (harnais) +
+         `security.yml` (audit deps/Trivy) + `weekly-proof-run.yml` (preuves
+         navigateur hebdo — Cl. 1) — un run success OU skipped avec raison
+         documentée ;
+      3. rapports de bilan D2 + D3 (`docs/proofs/D2-sybil.md`,
+         `docs/proofs/D3-supply-chain.md`) présentés avec les preuves navigateur ;
+      4. **décision D4 explicite** (E/F/G maintenant ou déploiement d'abord)
+         consignée dans le canal de validation AVANT de coder quoi que ce soit.
+      Si CI rouge → diagnostic + correctif avant toute nouvelle phase. La pause
+      existe parce que 17 phases se sont enchaînées sans vérifier une seule
+      fois la CI consolidée : « sinon on continuera indéfiniment sans vérifier ».
 
 ---
 

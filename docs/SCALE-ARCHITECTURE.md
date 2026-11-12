@@ -215,11 +215,28 @@ qu'UNE branche de travail — le merge à répétition est terminé.
 > réel : conflits > 3 fichiers = résoudre MAINTENANT, pas au déploiement.**
 
 Exécution rejouable : `bash scripts/check-merge-clean.sh` — vérifie
-l'invariant de consolidation (archive ⊆ mbote-v1, une seule branche active)
-et, optionnellement, `bash scripts/check-merge-clean.sh <branche>` fait un
+l'invariant de consolidation (archive ⊆ mbote-v1, une seule branche active),
+l'invariant **main ⊆ mbote-v1** sur les fichiers partagés (Cl. 2 vague D2+D3 —
+divergences non documentées dans `docs/DIVERGENCES-MAIN.md` = exit 1) et,
+optionnellement, `bash scripts/check-merge-clean.sh <branche>` fait un
 `git merge --no-commit --no-ff <branche>` puis `git merge --abort` (aucun
 état modifié). Le résultat est consigné dans le rapport de preuve de chaque
 vague (C3, C4, D2, D3…).
+
+### §8.2 — Note benchmarks mono-client (Cl. 3 vague D2+D3, 2026-11-13)
+
+> **Benchmarks C3/C4 mesurés en mono-client local (établissement 94 ms / 767 ms,
+> envoi 10 ms). Charge multi-utilisateurs non testée — à mesurer avant ouverture
+> publique.**
+
+Ces chiffres proviennent des preuves navigateur C3 (établissement d'appel vidéo
+767 ms, relay 5 ms — `docs/proofs/C3-video-calls.md`) et C4 (établissement MLS
+94 ms, envoi message de groupe 10 ms — `docs/proofs/C4-mls-groups.md`), mesurés
+sur un seul client local en sandbox. Ils valident la borne de LATENCE
+individuelle (budget < 5 s d'établissement), pas la capacité de charge : le
+nombre de sessions concurrentes, la saturation du hub socket.io et le coût
+CPU des rotations d'epoch MLS multi-groupes restent à mesurer AVANT toute
+ouverture publique (voir GLOBAL-SCALING-BUDGET.md).
 
 ---
 

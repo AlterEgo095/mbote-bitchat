@@ -1,0 +1,120 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Mbote BitChat — Preuves navigateur HEBDOMADAIRES (DEV-SETUP §7)
+# ─────────────────────────────────────────────────────────────────────────────
+#  Problème visé (directive 2026-11-13, Clarification 1 vague D2+D3) : les
+#  preuves navigateur (*.proof-run.sh) ne tournaient qu'en LOCAL manuel. Si un
+#  composant client casse plus tard (CSP, Permissions-Policy, WebSocket, fake
+#  devices, hydratation — 4 vagues consécutives de bugs invisibles aux
+#  harnais), la CI restait verte. Ce workflow exécute les 4 runners critiques
+#  (D1 recherche · C2 audio · C3 vidéo · C4 MLS) une fois par semaine.
+#
+#  SKIP PROPRE (documenté, jamais silencieux) : si les prérequis ne peuvent
+#  pas être installés (chromium, réseau), le job est SUCCESS mais avec :
+#   - un step nommé « SKIP — ... » avec annotation ::notice::,
+#   - un résumé de job (GITHUB_STEP_SUMMARY) expliquant la raison et rappelant
+#     que la preuve navigateur reste OBLIGATOIRE en local avant livraison.
+#  Docker est vérifié et rapporté pour traçabilité (les 4 runners n'en
+#  dépendent pas directement : TURN = harnais bun, DB = SQLite fichier).
+#
+#  Supply chain : actions épinglées par SHA de commit (condition 6) — mêmes
+#  SHA que tests.yml/security.yml.
+# ─────────────────────────────────────────────────────────────────────────────
+name: "Preuves navigateur — hebdomadaires (§7 DEV-SETUP)"
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * 1" # hebdomadaire — lundi 07:00 UTC (après security.yml 06:00)
+  push:
+    branches: ["feat/**"]
+    paths:
+      - ".github/workflows/weekly-proof-run.yml"
+      - "scripts/*proof-run.sh"
+
+permissions:
+  contents: read # lecture seule (F-50)
+
+jobs:
+  browser-proofs:
+    name: Runners de preuve navigateur (D1 · C2 · C3 · C4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 — épinglé par SHA
+
+      - name: Bun (version pinned = lockfile reproductible)
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 — épinglé par SHA
+        with:
+          bun-version: "1.3.14"
+
+      - name: Installer les dépendances (lockfile strict)
+        run: bun install --frozen-lockfile
+
+      - name: "Garde-fous — prérequis navigateur (absence → SKIP documenté)"
+        id: prereqs
+        run: |
+          {
+            echo "## Prérequis des preuves navigateur"
+            echo ""
+            if docker info >/dev/null 2>&1; then
+              echo "- docker : disponible (rapporté pour traçabilité — les 4 runners n'en dépendent pas directement)"
+            else
+              echo "- docker : INDISPONIBLE (les 4 runners n'en dépendent pas directement — non bloquant)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "docker=$(docker info >/dev/null 2>&1 && echo disponible || echo indisponible)" >> "$GITHUB_OUTPUT"
+          # Chromium : version ALIGNÉE au lockfile (playwright-core 1.65.0 →
+          # build chromium-1200, même chemin que les scripts de preuve :
+          # ~/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome).
+          if bunx playwright-core install --with-deps chromium; then
+            echo "skip=" >> "$GITHUB_OUTPUT"
+            echo "- chromium : installé (aligné playwright-core du lockfile)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=chromium" >> "$GITHUB_OUTPUT"
+            echo "- chromium : ÉCHEC d'installation → preuves navigateur SKIPPÉES (raison documentée ci-dessous)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - if: steps.prereqs.outputs.skip == ''
+        name: "D1 — recherche FTS5 + frontière DM (preuve navigateur)"
+        run: bash scripts/d1-search-proof-run.sh
+
+      - if: steps.prereqs.outputs.skip == ''
+        name: "C2 — appels audio 1:1 WebRTC (preuve navigateur)"
+        run: bash scripts/c2-audio-calls-proof-run.sh
+
+      - if: steps.prereqs.outputs.skip == ''
+        name: "C3 — appels vidéo 1:1 WebRTC (preuve navigateur)"
+        run: bash scripts/c3-video-calls-proof-run.sh
+
+      - if: steps.prereqs.outputs.skip == ''
+        name: "C4 — groupes privés MLS (preuve navigateur)"
+        run: bash scripts/c4-mls-groups-proof-run.sh
+
+      - if: steps.prereqs.outputs.skip != ''
+        name: "SKIP — preuves navigateur non exécutées (raison explicite)"
+        run: |
+          echo "::notice::Preuves navigateur SKIPPÉES — prérequis manquant : ${{ steps.prereqs.outputs.skip }}. Ce skip est DOCUMENTÉ (pas un fail silencieux) : voir résumé du job. La preuve navigateur reste OBLIGATOIRE en local avant toute livraison (docs/DEV-SETUP.md §7)."
+          {
+            echo "## ⏭️ Preuves navigateur SKIPPÉES"
+            echo ""
+            echo "**Raison** : prérequis manquant — \`${{ steps.prereqs.outputs.skip }}\`."
+            echo ""
+            echo "Le skip est volontaire et traçable (jamais silencieux) : la discipline"
+            echo "§7 de docs/DEV-SETUP.md exige une preuve navigateur réelle pour tout"
+            echo "nouveau flux utilisateur — en LOCAL avant livraison. Ce workflow est"
+            echo "la filet hebdomadaire de non-régression."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publier les assets de preuve (captures, JSON, logs)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2 — épinglé par SHA
+        with:
+          name: proof-assets
+          path: |
+            docs/proofs/assets/*.png
+            docs/proofs/assets/*.json
+            docs/proofs/assets/*.jsonl
+            docs/proofs/assets/*.txt
+          retention-days: 30
+          if-no-files-found: ignore
