@@ -256,7 +256,7 @@ export function createRelayHub(
     }
 
     async function relayCall(
-      kind: "call-offer" | "call-answer" | "call-ice" | "call-hangup" | "call-reject",
+      kind: "call-offer" | "call-answer" | "call-ice" | "call-hangup" | "call-reject" | "call-media",
       data: CallEnvelope,
       maxPayload: number,
       extraCheck?: (d: CallEnvelope) => boolean
@@ -298,6 +298,14 @@ export function createRelayHub(
     });
     socket.on("call:hangup", (d: CallEnvelope) => void relayCall("call-hangup", d, CALL_ICE_MAX));
     socket.on("call:reject", (d: CallEnvelope) => void relayCall("call-reject", d, CALL_ICE_MAX));
+    // C3 : état pistes ({videoOn, audioOn}) — indicateurs « caméra coupée » /
+    // « micro coupé » côté distant. Borne CALL_ICE_MAX (payload minuscule),
+    // champs strictement booléens (pas de contenu, jamais).
+    socket.on("call:media", (d: CallEnvelope) =>
+      void relayCall("call-media", d, CALL_ICE_MAX, (x) =>
+        typeof x.videoOn === "boolean" && typeof x.audioOn === "boolean"
+      )
+    );
 
     socket.on("disconnect", () => detachPresence(socket));
   });

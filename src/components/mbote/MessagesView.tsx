@@ -1286,6 +1286,8 @@ export function MessagesView({
                   <div className="flex shrink-0 items-center gap-1.5">
                     {/* C2 : appel audio 1:1 — disponible dès que le pair a une clé E2EE */}
                     <CallButton peer={peer.pubkey} peerLabel={peer.nickname} />
+                    {/* C3 : appel vidéo 1:1 — mêmes patterns, m-line vidéo */}
+                    <CallButton peer={peer.pubkey} peerLabel={peer.nickname} mode="video" />
                     <Badge variant="outline" className="gap-1 border-primary/40 text-[10px] text-primary">
                       <ShieldCheck className="size-3" aria-hidden="true" />
                       E2E actif

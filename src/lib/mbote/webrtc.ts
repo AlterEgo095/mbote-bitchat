@@ -3,24 +3,33 @@
 /**
  * ─────────────────────────────────────────────────────────────────────────────
  *  C2 — Appels audio 1:1 (WebRTC) — gestionnaire de session côté client
+ *  C3 — extension vidéo 1:1 : MÊMES patterns (signalisation signée call:*,
+ *  TURN éphémère, DTLS-SRTP, knock push) — seule la piste média change :
+ *  m-line vidéo dans l'offre, fallback audio si caméra absente/refusée,
+ *  dégradation adaptative 480p→360p→240p via RTCRtpSender.setParameters.
  * ─────────────────────────────────────────────────────────────────────────────
  *  RÔLES :
  *   • signalisation : événements socket.io call:offer/answer/ice/hangup/reject
  *     relayés par le hub (preuve ECDSA `${from}|${kind}|${to}|${callId}|${ts}`
  *     vérifiée côté hub — voir proof.ts callProofMessage) ;
- *   • média : RTCPeerConnection DTLS-SRTP — l'audio ne traverse JAMAIS le
- *     serveur (sauf relay TURN, qui ne voit que du chiffré) ;
+ *   • C3 : call:media porte l'état des pistes locales (videoOn/audioOn) —
+ *     annonce signée, même mécanique — pour l'indicateur « caméra coupée »
+ *     distant (les frames noires de track.enabled=false ne sont PAS détectables
+ *     côté receiver sans ce message) ;
+ *   • média : RTCPeerConnection DTLS-SRTP — l'audio/vidéo ne traversent JAMAIS
+ *     le serveur (sauf relay TURN, qui ne voit que du chiffré) ;
  *   • TURN : credentials éphémères via /api/turn-credentials (TTL 10 min) ;
  *     2 échecs d'établissement en 30 s → fallbackMode (notes vocales
  *     recommandées dans l'UI) ;
- *   • knock : POST /api/call-knock fire-and-forget (push type 'incoming_call',
- *     SANS contenu — reprise C1) ;
+ *   • knock : POST /api/call-knock fire-and-forget (push type 'incoming_call'
+ *     ou 'incoming_video_call' — SANS contenu — reprise C1) ;
  *   • hygiène : hangup → pc.close() + tracks stop + listeners détachés +
  *     ringtone stoppé (test « zéro fuite » du harnais).
  *
  *  MUTE : track.enabled = false — le navigateur émet des frames de SILENCE
  *  (le canal RTP reste ouvert, la renégociation est inutile). Le harnais
- *  vérifie enabled === false sur la piste émettrice.
+ *  vérifie enabled === false sur la piste émettrice. Même pattern pour la
+ *  caméra (frames noires).
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -33,6 +42,10 @@ import { callProofMessage, type CallSignalKind } from "./proof";
 export type CallState = "idle" | "dialing" | "ringing" | "connecting" | "active" | "ending";
 export type CallDirection = "outgoing" | "incoming";
 export type TurnMode = "relay" | "direct" | "unavailable";
+/** C3 : type d'appel — l'offreur décide, le répondeur suit le SDP de l'offre. */
+export type CallType = "audio" | "video";
+/** C3 : étages de dégradation vidéo (adaptatif réseau). */
+export type VideoQuality = "high" | "medium" | "low";
 
 export interface CallSnapshot {
   state: CallState;
@@ -43,6 +56,21 @@ export interface CallSnapshot {
   muted: boolean;
   startedAt: number | null;
   turnMode: TurnMode;
+  /** C3 : type d'appel résolu (fallback caméra → "audio") */
+  callType: CallType;
+  /** C3 : caméra locale ON — false si coupée ou fallback audio */
+  cameraOn: boolean;
+  /** C3 : état DISTANT annoncé via call:media (null = pas encore annoncé) */
+  remoteCameraOn: boolean | null;
+  remoteMuted: boolean | null;
+  /** C3 : réseau dégradé (packet loss vidéo > 5 % via getStats) — indicateur UI */
+  unstable: boolean;
+  /** C3 : étage de qualité vidéo courant (480p/360p/240p) */
+  videoQuality: VideoQuality;
+  /** C3 : id du flux local courant (change au flip caméra) — sync preview PiP */
+  localStreamId: string | null;
+  /** C3 : id du flux vidéo distant (null = audio seul / pas encore reçu) */
+  remoteStreamId: string | null;
   /** raison du fallback notes vocales (2 échecs TURN/30 s) — null sinon */
   fallbackNotice: string | null;
   error: string | null;
@@ -57,6 +85,14 @@ const IDLE: CallSnapshot = {
   muted: false,
   startedAt: null,
   turnMode: "direct",
+  callType: "audio",
+  cameraOn: false,
+  remoteCameraOn: null,
+  remoteMuted: null,
+  unstable: false,
+  videoQuality: "high",
+  localStreamId: null,
+  remoteStreamId: null,
   fallbackNotice: null,
   error: null,
 };
@@ -87,6 +123,62 @@ class TurnFailureTracker {
 
   get notice(): string | null {
     return this.fallbackNotice;
+  }
+}
+
+// ─────────────── C3 : qualité vidéo adaptative (480p → 360p → 240p) ───────────────
+
+export interface VideoQualityStage {
+  quality: VideoQuality;
+  /** bitrate max (bps) appliqué via RTCRtpSender.setParameters */
+  maxBitrate: number;
+  /** réduction d'échelle appliquée par l'encodeur (1 = résolution native) */
+  scaleResolutionDownBy: number;
+}
+
+/** Étages C3 : 480p (900 kbps) → 360p (450 kbps) → 240p (200 kbps). */
+export const VIDEO_QUALITY_STAGES: readonly VideoQualityStage[] = [
+  { quality: "high", maxBitrate: 900_000, scaleResolutionDownBy: 1 },
+  { quality: "medium", maxBitrate: 450_000, scaleResolutionDownBy: 1.5 },
+  { quality: "low", maxBitrate: 200_000, scaleResolutionDownBy: 2 },
+];
+
+/** Filet de sécurité (index hors bornes impossible — jamais utilisé en pratique). */
+const HIGH_STAGE: VideoQualityStage = { quality: "high", maxBitrate: 900_000, scaleResolutionDownBy: 1 };
+
+/** Directive C3 : packet loss > 5 % = connexion instable (indicateur UI). */
+export const PACKET_LOSS_BAD_RATIO = 0.05;
+/** Hystérésis : N mesures consécutives dégradées avant de descendre d'un étage. */
+const DEGRADE_CONSECUTIVE_BAD = 2;
+
+/**
+ * Contrôleur PUR (testable en harnais) : ne touche JAMAIS à l'encodeur —
+ * décide uniquement quand descendre d'un étage. Descente seule (la remontée
+ * d'étage est hors périmètre C3 — NON TESTÉ, documenté dans la preuve).
+ */
+export class VideoQualityController {
+  private stageIndex = 0;
+  private consecutiveBad = 0;
+
+  get stage(): VideoQualityStage {
+    // index borné par measure() (jamais > STAGES.length - 1) — fallback explicite
+    return VIDEO_QUALITY_STAGES[this.stageIndex] ?? HIGH_STAGE;
+  }
+
+  /** Feed une mesure de packet loss (0-1). Retourne "down" si un étage est descendu. */
+  measure(lossRatio: number): "down" | "hold" {
+    if (!Number.isFinite(lossRatio) || lossRatio < 0) return "hold";
+    if (lossRatio > PACKET_LOSS_BAD_RATIO) {
+      this.consecutiveBad += 1;
+      if (this.consecutiveBad >= DEGRADE_CONSECUTIVE_BAD && this.stageIndex < VIDEO_QUALITY_STAGES.length - 1) {
+        this.stageIndex += 1;
+        this.consecutiveBad = 0;
+        return "down";
+      }
+    } else {
+      this.consecutiveBad = 0;
+    }
+    return "hold";
   }
 }
 
@@ -160,6 +252,16 @@ interface IncomingOffer {
 
 const DIAL_TIMEOUT_MS = 45_000;
 
+/** C3 : l'offre annonce-t-elle une m-line vidéo ACTIVE (port ≠ 0) ? */
+function offerHasVideo(sdp: string | undefined): boolean {
+  if (!sdp) return false;
+  for (const line of sdp.split("\n")) {
+    const m = /^m=video\s+(\d+)\b/i.exec(line.trim());
+    if (m && m[1] !== "0") return true;
+  }
+  return false;
+}
+
 class CallManager {
   private snapshot: CallSnapshot = IDLE;
   private listeners = new Set<() => void>();
@@ -181,6 +283,12 @@ class CallManager {
   private bound = false;
   private pendingIce: RTCIceCandidateInit[] = [];
   private remoteSet = false;
+  // ── C3 ──
+  private remoteVideoStream: MediaStream | null = null;
+  private videoSender: RTCRtpSender | null = null;
+  private qualityTimer: ReturnType<typeof setInterval> | null = null;
+  private qualityController = new VideoQualityController();
+  private facing: "user" | "environment" = "user";
 
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn);
@@ -189,6 +297,16 @@ class CallManager {
 
   getSnapshot(): CallSnapshot {
     return this.snapshot;
+  }
+
+  /** C3 : flux vidéo DISTANT (null en audio / pas encore reçu) — attaché par CallView. */
+  getRemoteVideoStream(): MediaStream | null {
+    return this.remoteVideoStream;
+  }
+
+  /** C3 : flux local (audio[+vidéo]) — preview PiP de CallView. */
+  getLocalStream(): MediaStream | null {
+    return this.localStream;
   }
 
   /** Libellé public (annuaire) — alimenté par l'UI avant l'appel. */
@@ -273,6 +391,14 @@ class CallManager {
       }
     };
     pc.ontrack = (e) => {
+      if (e.track.kind === "video") {
+        // C3 : sink vidéo distant — l'attachement <video> se fait dans CallView.
+        if (!this.remoteVideoStream || this.remoteVideoStream.id !== e.streams[0].id) {
+          this.remoteVideoStream = e.streams[0];
+          this.set({ remoteStreamId: e.streams[0].id });
+        }
+        return; // l'audio arrive par son propre event ontrack
+      }
       if (!this.remoteAudio) {
         this.remoteAudio = document.createElement("audio");
         this.remoteAudio.autoplay = true;
@@ -286,6 +412,7 @@ class CallManager {
       if (pc.connectionState === "connected") {
         this.turnTracker.recordSuccess();
         this.set({ state: "active", startedAt: Date.now(), error: null });
+        this.startQualityMonitor(pc);
       } else if (pc.connectionState === "failed") {
         this.turnTracker.recordFailure();
         void this.end("failed");
@@ -299,10 +426,97 @@ class CallManager {
     return pc;
   }
 
-  private async getMic(): Promise<MediaStream> {
-    return navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
+  private async getMedia(callType: CallType): Promise<MediaStream> {
+    const audio: MediaTrackConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    };
+    if (callType !== "video") return navigator.mediaDevices.getUserMedia({ audio });
+    // C3 : vidéo 640×480@24 (directive) — caméra absente/refusée → FALLBACK AUDIO SEUL
+    // (l'appel s'établit quand même, uniquement dégradé en audio — preuve E-scénario)
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        audio,
+        video: {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 24 },
+          facingMode: { ideal: this.facing },
+        },
+      });
+    } catch (e) {
+      if (
+        e instanceof DOMException &&
+        (e.name === "NotFoundError" || e.name === "OverconstrainedError" || e.name === "NotAllowedError")
+      ) {
+        return navigator.mediaDevices.getUserMedia({ audio });
+      }
+      throw e;
+    }
+  }
+
+  // ── C3 : monitor qualité — getStats toutes les 2 s, dégradation automatique ──
+
+  private startQualityMonitor(pc: RTCPeerConnection): void {
+    if (this.snapshot.callType !== "video" || this.qualityTimer) return;
+    const tick = async () => {
+      if (!this.pc || this.pc !== pc || pc.connectionState !== "connected") return;
+      try {
+        const stats = await pc.getStats();
+        let worst = 0;
+        stats.forEach((r) => {
+          const report = r as unknown as {
+            type?: string;
+            kind?: string;
+            packetsLost?: number;
+            packetsReceived?: number;
+          };
+          if (
+            (report.type === "inbound-rtp" || report.type === "remote-inbound-rtp") &&
+            report.kind === "video" &&
+            typeof report.packetsLost === "number" &&
+            typeof report.packetsReceived === "number"
+          ) {
+            const total = report.packetsLost + report.packetsReceived;
+            if (total > 0) worst = Math.max(worst, report.packetsLost / total);
+          }
+        });
+        const decision = this.qualityController.measure(worst);
+        if (decision === "down") void this.applyVideoStage();
+        const unstable = worst > PACKET_LOSS_BAD_RATIO;
+        if (this.snapshot.unstable !== unstable) this.set({ unstable });
+      } catch {
+        /* getStats indisponible — indicateurs inchangés */
+      }
+    };
+    this.qualityTimer = setInterval(() => void tick(), 2_000);
+  }
+
+  private stopQualityMonitor(): void {
+    if (this.qualityTimer) clearInterval(this.qualityTimer);
+    this.qualityTimer = null;
+  }
+
+  /** Applique l'étage courant sur le sender vidéo (AUCUNE renégociation). */
+  private async applyVideoStage(): Promise<void> {
+    const sender = this.videoSender;
+    if (!sender || !sender.track) return;
+    try {
+      const params = sender.getParameters();
+      const stage = this.qualityController.stage;
+      const encodings = params.encodings?.length ? params.encodings : [{} as RTCRtpEncodingParameters];
+      encodings[0] = {
+        ...encodings[0],
+        maxBitrate: stage.maxBitrate,
+        scaleResolutionDownBy: stage.scaleResolutionDownBy,
+      };
+      params.encodings = encodings;
+      await sender.setParameters(params);
+      if (this.snapshot.videoQuality !== stage.quality) this.set({ videoQuality: stage.quality });
+    } catch {
+      /* setParameters refusé — l'étage UI reste inchangé */
+    }
   }
 
   private bindSocket(): void {
@@ -369,6 +583,9 @@ class CallManager {
       void this.pc.setRemoteDescription(d.answer).catch(() => void this.end("negotiation"));
       for (const c of this.pendingIce.splice(0)) void this.pc.addIceCandidate(c).catch(() => undefined);
       this.set({ state: "connecting" });
+      // C3 : annonce notre état pistes dès que la réponse part/arrive (les deux
+      // côtés annoncent — chacun met à jour ses indicateurs distants)
+      void this.signalMediaState();
     });
     s.on("call-ice", (d: { from?: string; callId?: string; candidate?: RTCIceCandidateInit }) => {
       if (d.callId !== this.callId || !d.candidate) return;
@@ -380,6 +597,14 @@ class CallManager {
       void this.teardown();
       this.set({ ...IDLE, fallbackNotice: this.turnTracker.notice });
     });
+    s.on("call-media", (d: { from?: string; callId?: string; videoOn?: unknown; audioOn?: unknown }) => {
+      // C3 : état pistes DISTANT (annonce signée call:media) — indicateurs UI
+      if (d.callId !== this.callId) return;
+      this.set({
+        remoteCameraOn: typeof d.videoOn === "boolean" ? d.videoOn : null,
+        remoteMuted: typeof d.audioOn === "boolean" ? !d.audioOn : null,
+      });
+    });
     s.on("call-reject", (d: { from?: string; callId?: string }) => {
       if (d.callId !== this.callId) return;
       void this.teardown();
@@ -389,7 +614,7 @@ class CallManager {
 
   // ── actions publiques ──
 
-  async startOutgoing(peer: string, peerLabel: string | null): Promise<void> {
+  async startOutgoing(peer: string, peerLabel: string | null, callType: CallType = "audio"): Promise<void> {
     if (this.snapshot.state !== "idle") return;
     if (!this.identity) {
       this.set({ ...IDLE, error: "Identité non prête" });
@@ -407,18 +632,39 @@ class CallManager {
       muted: false,
       startedAt: null,
       error: null,
+      callType,
+      cameraOn: false,
+      remoteCameraOn: null,
+      remoteMuted: null,
+      unstable: false,
+      videoQuality: "high",
+      remoteStreamId: null,
       fallbackNotice: this.turnTracker.notice,
     });
 
     try {
-      const [{ urls, mode }, stream] = await Promise.all([this.fetchTurn(), this.getMic()]);
+      const [{ urls, mode }, stream] = await Promise.all([this.fetchTurn(), this.getMedia(callType)]);
       this.localStream = stream;
-      this.set({ turnMode: mode });
+      const videoTrack = stream.getVideoTracks()[0] ?? null;
+      // C3 : fallback caméra → l'appel démarre AUDIO SEUL (l'UI le reflète)
+      const resolvedType: CallType = videoTrack ? callType : "audio";
+      this.set({
+        turnMode: mode,
+        callType: resolvedType,
+        cameraOn: !!videoTrack,
+        localStreamId: stream.id,
+      });
       const pc = await this.makePc(mode, urls);
       this.pc = pc;
-      for (const track of stream.getAudioTracks()) pc.addTrack(track, stream);
+      for (const track of stream.getTracks()) {
+        const sender = pc.addTrack(track, stream);
+        if (track.kind === "video") this.videoSender = sender;
+      }
 
-      const offer = await pc.createOffer({ offerToReceiveAudio: true });
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: !!videoTrack,
+      });
       await pc.setLocalDescription(offer);
       this.remoteSet = false;
       await this.signal("call-offer", peer, { offer });
@@ -427,10 +673,12 @@ class CallManager {
       this.dialTimer = setTimeout(() => void this.end("no-answer"), DIAL_TIMEOUT_MS);
 
       // knock push (fire-and-forget) : réveille le callee hors hub
+      // C3 : le TYPE fait partie de la preuve (anti-falsification du rendu de
+      // notification) — `${from}|call-knock|${to}|${callId}|${type}|${ts}`
       const kts = Date.now();
       void signPayload(
         this.identity.signPriv,
-        `${this.identity.pubkey}|call-knock|${peer}|${this.callId}|${kts}`
+        `${this.identity.pubkey}|call-knock|${peer}|${this.callId}|${resolvedType}|${kts}`
       )
         .then((ksig) =>
           fetch("/api/call-knock", {
@@ -440,6 +688,7 @@ class CallManager {
               from: this.identity?.pubkey,
               to: peer,
               callId: this.callId,
+              video: resolvedType === "video",
               ts: kts,
               signature: ksig,
             }),
@@ -468,12 +717,29 @@ class CallManager {
     this.peer = incoming.from;
     this.set({ state: "connecting", muted: false, startedAt: null });
     try {
-      const [{ urls, mode }, stream] = await Promise.all([this.fetchTurn(), this.getMic()]);
+      // C3 : l'offre annonce m=video → appel vidéo ; sinon audio. Caméra refusée
+      // → fallback AUDIO SEUL (l'answer rejette la m-line vidéo, l'audio passe).
+      const wantedType: CallType = offerHasVideo(incoming.offer.sdp) ? "video" : "audio";
+      const [{ urls, mode }, stream] = await Promise.all([this.fetchTurn(), this.getMedia(wantedType)]);
       this.localStream = stream;
-      this.set({ turnMode: mode });
+      const videoTrack = stream.getVideoTracks()[0] ?? null;
+      this.set({
+        turnMode: mode,
+        callType: videoTrack ? "video" : "audio",
+        cameraOn: !!videoTrack,
+        remoteCameraOn: null,
+        remoteMuted: null,
+        unstable: false,
+        videoQuality: "high",
+        remoteStreamId: null,
+        localStreamId: stream.id,
+      });
       const pc = await this.makePc(mode, urls);
       this.pc = pc;
-      for (const track of stream.getAudioTracks()) pc.addTrack(track, stream);
+      for (const track of stream.getTracks()) {
+        const sender = pc.addTrack(track, stream);
+        if (track.kind === "video") this.videoSender = sender;
+      }
       await pc.setRemoteDescription(incoming.offer);
       this.remoteSet = true;
       const answer = await pc.createAnswer();
@@ -481,6 +747,8 @@ class CallManager {
       await this.signal("call-answer", incoming.from, { answer });
       for (const c of this.pendingIce.splice(0)) void pc.addIceCandidate(c).catch(() => undefined);
       this.pendingOffer = null;
+      // C3 : annonce l'état pistes (le caller l'attend après call-answer)
+      void this.signalMediaState();
     } catch (e) {
       this.turnTracker.recordFailure();
       if (incoming) await this.signal("call-reject", incoming.from, {});
@@ -524,15 +792,68 @@ class CallManager {
     if (!track) return this.snapshot.muted;
     track.enabled = !track.enabled;
     this.set({ muted: !track.enabled });
+    void this.signalMediaState();
     return this.snapshot.muted;
   }
 
-  /** Hygiène : ferme TOUT (pc, tracks, audio, timers, ringtone). */
+  /** C3 : coupe/remet la caméra — track.enabled (frames noires, AUCUNE renégociation). */
+  toggleCamera(): boolean {
+    const track = this.localStream?.getVideoTracks()[0];
+    if (!track) return this.snapshot.cameraOn;
+    track.enabled = !track.enabled;
+    this.set({ cameraOn: track.enabled });
+    void this.signalMediaState();
+    return this.snapshot.cameraOn;
+  }
+
+  /** C3 : flip caméra (mobile multi-caméras) — replaceTrack, AUCUNE renégociation. */
+  async flipCamera(): Promise<void> {
+    const sender = this.videoSender;
+    if (!sender) return;
+    const nextFacing = this.facing === "user" ? "environment" : "user";
+    try {
+      const next = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: nextFacing } },
+      });
+      const nextTrack = next.getVideoTracks()[0];
+      if (!nextTrack) throw new Error("no-video-track");
+      await sender.replaceTrack(nextTrack);
+      this.facing = nextFacing;
+      // le flux local est reconstruit (audio conservé + nouvelle vidéo)
+      const audioTrack = this.localStream?.getAudioTracks()[0] ?? null;
+      const merged = new MediaStream([...(audioTrack ? [audioTrack] : []), nextTrack]);
+      const oldStream = this.localStream;
+      this.localStream = merged;
+      for (const t of oldStream?.getTracks() ?? []) {
+        if (t !== audioTrack && t !== nextTrack) t.stop();
+      }
+      this.set({ cameraOn: true, localStreamId: merged.id });
+      void this.signalMediaState();
+    } catch {
+      /* pas de 2ᵉ caméra (desktop) — état inchangé, le preview continue */
+    }
+  }
+
+  /** C3 : annonce l'état pistes locales (call:media signé — même mécanique hub). */
+  private async signalMediaState(): Promise<void> {
+    if (!this.peer || !this.callId || !this.identity) return;
+    try {
+      await this.signal("call-media", this.peer, {
+        videoOn: this.snapshot.cameraOn,
+        audioOn: !this.snapshot.muted,
+      });
+    } catch {
+      /* jamais bloquant */
+    }
+  }
+
+  /** Hygiène : ferme TOUT (pc, tracks, audio, timers, ringtone, monitor C3). */
   private async teardown(): Promise<void> {
     if (this.dialTimer) {
       clearTimeout(this.dialTimer);
       this.dialTimer = null;
     }
+    this.stopQualityMonitor();
     this.ringtone.stop();
     this.pendingOffer = null;
     if (this.pc) {
@@ -553,6 +874,9 @@ class CallManager {
       this.remoteAudio.remove();
       this.remoteAudio = null;
     }
+    this.remoteVideoStream = null;
+    this.videoSender = null;
+    this.facing = "user";
     this.remoteSet = false;
     this.pendingIce = [];
     this.callId = null;

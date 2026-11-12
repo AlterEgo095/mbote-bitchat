@@ -79,8 +79,9 @@ export function vapidPublicKey(): string | null {
 }
 
 export interface PushKnock {
-  /** type fermé — C1 : DM reçu · C2 : appel entrant (knock SANS contenu, E2EE oblige) */
-  type: "new_message" | "incoming_call";
+  /** type fermé — C1 : DM reçu · C2 : appel audio entrant · C3 : appel vidéo entrant
+   *  (knock SANS contenu, E2EE oblige — seul le RENDU change dans sw.js) */
+  type: "new_message" | "incoming_call" | "incoming_video_call";
   /** libellé PUBLIC de l'expéditeur (nickname annuaire — jamais de contenu) */
   fromLabel: string;
 }

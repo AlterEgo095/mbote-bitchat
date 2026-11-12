@@ -30,7 +30,7 @@
  * « Mbote — Nouveau message de <fromLabel> », clic → focus + navigation
  * vers la vue messages (SPA ?view=messages). Badge compteur si supporté.
  */
-const VERSION = "mbote-v6";
+const VERSION = "mbote-v7";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
@@ -123,13 +123,21 @@ async function afficherKnock(knock) {
     knock && typeof knock.fromLabel === "string" && knock.fromLabel.length > 0
       ? knock.fromLabel.slice(0, 60)
       : "un contact";
-  // C2 : knock d'appel entrant — rendu distinct, TOUJOURS sans contenu
+  // C2 : knock d'appel AUDIO entrant — rendu distinct, TOUJOURS sans contenu
   const isCall = knock && knock.type === "incoming_call";
+  // C3 : knock d'appel VIDÉO entrant — rendu distinct du knock audio
+  const isVideoCall = knock && knock.type === "incoming_video_call";
+  const body = isVideoCall
+    ? `📹 Appel vidéo de ${fromLabel} — touchez pour répondre`
+    : isCall
+      ? `🔊 Appel de ${fromLabel} — touchez pour répondre`
+      : `Nouveau message de ${fromLabel}`;
   await self.registration.showNotification("Mbote", {
-    body: isCall ? `Appel de ${fromLabel} — touchez pour répondre` : `Nouveau message de ${fromLabel}`,
+    body,
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
-    tag: "mbote-dm", // une seule notification empilée (rate limit outbound côté serveur)
+    // C3 : tag distinct — un knock vidéo ne remplace pas un knock audio pendu
+    tag: isVideoCall || isCall ? "mbote-call" : "mbote-dm",
     renotify: false,
     data: { url: "/?view=messages" },
   });

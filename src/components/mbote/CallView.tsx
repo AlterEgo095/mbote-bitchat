@@ -3,19 +3,37 @@
 /**
  * ─────────────────────────────────────────────────────────────────────────────
  *  C2 — CallView : overlay d'appel audio (dialing/ringing/active) + fallback
+ *  C3 — extension vidéo : remote en grand + preview local PiP (coin
+ *  haut-droit), boutons caméra/flip/plein écran, indicateurs « caméra coupée »
+ *  (annonce call:media distante) et « connexion instable » (getStats packet
+ *  loss > 5 %), étage de qualité affiché.
  * ─────────────────────────────────────────────────────────────────────────────
  *  Monté au niveau MboteApp (l'appel survit aux changements de vue). Tous les
  *  états viennent du callManager (useSyncExternalStore). Timer, mute, hangup,
  *  ringtone (géré par le manager), indication TURN (relay/direct/indispo) et
- *  notice de fallback notes vocales.
+ *  notice de fallback notes vocales. Les flux locaux/distant vivent dans le
+ *  callManager — attachés aux <video> par refs (srcObject), pas d'état copie.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { Mic, MicOff, PhoneCall, PhoneOff, Radio, Volume2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  Mic,
+  MicOff,
+  PhoneCall,
+  PhoneOff,
+  Radio,
+  Volume2,
+  Video,
+  VideoOff,
+  Camera,
+  Maximize2,
+  Minimize2,
+  WifiOff,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { callManager, type CallSnapshot } from "@/lib/mbote/webrtc";
+import { callManager, type CallSnapshot, type CallType } from "@/lib/mbote/webrtc";
 
 function useCall(): CallSnapshot {
   return useSyncExternalStore(
@@ -51,14 +69,57 @@ const TURN_LABEL: Record<CallSnapshot["turnMode"], string> = {
   unavailable: "TURN indisponible — connexion directe uniquement",
 };
 
+const QUALITY_LABEL: Record<CallSnapshot["videoQuality"], string> = {
+  high: "480p",
+  medium: "360p",
+  low: "240p",
+};
+
+/** Attachement srcObject par ref (jamais de re-création de flux au render). */
+function useVideoSink(streamId: string | null, isVideo: boolean): React.RefObject<HTMLVideoElement | null> {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  const getStream = useCallback(() => streamId, [streamId]);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (isVideo && streamId && el.srcObject === null) {
+      // le flux vit dans le manager — branché ici UNE fois par changement d'id
+      const stream = getStream() ? callManagerStream(streamId) : null;
+      if (stream) {
+        el.srcObject = stream;
+        void el.play().catch(() => undefined);
+      }
+    } else if (!isVideo || !streamId) {
+      el.srcObject = null;
+    }
+  }, [streamId, isVideo, getStream]);
+  return ref;
+}
+
+/** Résout le flux par id (local ou distant) — single source : callManager. */
+function callManagerStream(streamId: string): MediaStream | null {
+  const local = callManager.getLocalStream();
+  if (local && local.id === streamId) return local;
+  const remote = callManager.getRemoteVideoStream();
+  if (remote && remote.id === streamId) return remote;
+  return null;
+}
+
 export function CallView() {
   const call = useCall();
   const elapsed = useElapsed(call.startedAt, call.state === "active");
+  const [expanded, setExpanded] = useState(false);
 
   const onAccept = useCallback(() => void callManager.acceptIncoming(), []);
   const onReject = useCallback(() => void callManager.rejectIncoming(), []);
   const onHangup = useCallback(() => void callManager.end("user"), []);
   const onMute = useCallback(() => callManager.toggleMute(), []);
+  const onCamera = useCallback(() => callManager.toggleCamera(), []);
+  const onFlip = useCallback(() => void callManager.flipCamera(), []);
+
+  const isVideo = call.callType === "video";
+  const remoteSink = useVideoSink(call.remoteStreamId, isVideo);
+  const localSink = useVideoSink(call.localStreamId, isVideo);
 
   if (call.state === "idle") {
     return call.fallbackNotice ? (
@@ -73,26 +134,36 @@ export function CallView() {
 
   const isRingingIncoming = call.state === "ringing" && call.direction === "incoming";
   const label = call.peerLabel ?? "Contact";
+  const dialogLabel = isVideo ? `Appel vidéo avec ${label}` : `Appel audio avec ${label}`;
 
   return (
     <div
       role="dialog"
-      aria-label={`Appel audio avec ${label}`}
-      className="fixed inset-x-3 top-16 z-50 mx-auto max-w-md rounded-2xl border bg-background/95 p-4 shadow-2xl backdrop-blur md:top-20"
+      aria-label={dialogLabel}
+      data-testid="call-overlay"
+      className={`fixed z-50 mx-auto rounded-2xl border bg-background/95 shadow-2xl backdrop-blur ${
+        expanded && isVideo
+          ? "inset-0 flex flex-col rounded-none"
+          : "inset-x-3 top-16 max-w-md p-4 md:top-20"
+      }`}
     >
-      <div className="flex items-center gap-3">
+      <div className={`flex items-center gap-3 ${expanded && isVideo ? "p-4" : ""}`}>
         <div
           className={`flex size-11 shrink-0 items-center justify-center rounded-full ${
             isRingingIncoming ? "animate-pulse bg-primary/15" : "bg-primary/10"
           }`}
         >
-          <PhoneCall className="size-5 text-primary" aria-hidden="true" />
+          {isVideo ? (
+            <Video className="size-5 text-primary" aria-hidden="true" />
+          ) : (
+            <PhoneCall className="size-5 text-primary" aria-hidden="true" />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{label}</p>
           <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-            {call.state === "dialing" && "Sonnerie…"}
-            {isRingingIncoming && "Appel entrant"}
+            {call.state === "dialing" && (isVideo ? "Sonnerie (vidéo)…" : "Sonnerie…")}
+            {isRingingIncoming && (isVideo ? "Appel vidéo entrant" : "Appel entrant")}
             {call.state === "connecting" && "Connexion…"}
             {call.state === "active" && (
               <>
@@ -110,19 +181,101 @@ export function CallView() {
           <Radio className="size-2.5" aria-hidden="true" />
           E2EE
         </Badge>
+        {isVideo && call.state === "active" && (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-8"
+            onClick={() => setExpanded((v) => !v)}
+            aria-label={expanded ? "Réduire l'appel" : "Agrandir l'appel en plein écran"}
+            aria-pressed={expanded}
+            data-testid="call-expand"
+          >
+            {expanded ? (
+              <Minimize2 className="size-4" aria-hidden="true" />
+            ) : (
+              <Maximize2 className="size-4" aria-hidden="true" />
+            )}
+          </Button>
+        )}
       </div>
 
+      {/* ── C3 : zone vidéo (remote en grand + preview local PiP) ── */}
+      {isVideo && (
+        <div
+          className={`relative overflow-hidden rounded-xl border bg-black ${
+            expanded && isVideo ? "mx-4 mb-2 min-h-0 flex-1" : "mt-3 aspect-video"
+          }`}
+          data-testid="video-stage"
+        >
+          <video
+            ref={remoteSink}
+            className="size-full object-cover"
+            playsInline
+            autoPlay
+            data-testid="remote-video"
+            aria-label={`Vidéo de ${label}`}
+          />
+          {/* écran noir + indicateur quand la caméra DISTANTE est coupée */}
+          {call.remoteCameraOn === false && (
+            <div
+              className="absolute inset-0 flex items-center justify-center bg-black/90"
+              data-testid="remote-camera-off"
+              role="status"
+            >
+              <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                <VideoOff className="size-4" aria-hidden="true" />
+                Caméra coupée
+              </span>
+            </div>
+          )}
+          {/* preview local PiP — coin haut-droit, miroir selfie */}
+          <video
+            ref={localSink}
+            className="absolute right-2 top-2 size-24 rounded-lg border border-white/20 object-cover shadow-lg sm:size-28"
+            style={{ transform: "scaleX(-1)" }}
+            playsInline
+            autoPlay
+            muted
+            data-testid="local-video"
+            aria-label="Votre caméra"
+          />
+          {call.cameraOn === false && (
+            <span className="absolute bottom-2 right-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] text-white">
+              Votre caméra est coupée
+            </span>
+          )}
+          {/* indicateurs réseau/qualité */}
+          {call.unstable && (
+            <span
+              className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-amber-500/90 px-2 py-0.5 text-[10px] font-medium text-black"
+              role="status"
+              data-testid="call-unstable"
+            >
+              <WifiOff className="size-3" aria-hidden="true" />
+              Connexion instable
+            </span>
+          )}
+          <span
+            className="absolute bottom-2 left-2 rounded-full bg-black/70 px-2 py-0.5 font-mono text-[10px] text-white"
+            data-testid="call-quality"
+          >
+            {QUALITY_LABEL[call.videoQuality]}
+          </span>
+        </div>
+      )}
+
       {/* état TURN — transparence réseau (directive : TURN 不可用提示) */}
-      <p className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground">
+      <p className={`flex items-center gap-1 text-[10px] text-muted-foreground ${isVideo && expanded ? "px-4" : "mt-2"}`}>
         {TURN_LABEL[call.turnMode]}
       </p>
       {call.error && (
-        <p role="alert" className="mt-1 text-[11px] text-destructive">
+        <p role="alert" className={`text-[11px] text-destructive ${isVideo && expanded ? "px-4" : "mt-1"}`}>
           {call.error}
         </p>
       )}
 
-      <div className="mt-3 flex items-center justify-center gap-3">
+      <div className={`flex items-center justify-center gap-3 ${isVideo && expanded ? "p-4 pb-6" : "mt-3"}`}>
         {isRingingIncoming ? (
           <>
             <Button
@@ -139,7 +292,7 @@ export function CallView() {
               size="lg"
               className="h-12 rounded-full px-6"
               onClick={onAccept}
-              aria-label="Répondre à l'appel"
+              aria-label={isVideo ? "Répondre à l'appel vidéo" : "Répondre à l'appel"}
             >
               <PhoneCall className="size-5" aria-hidden="true" />
               Répondre
@@ -150,10 +303,11 @@ export function CallView() {
             <Button
               size="lg"
               variant={call.muted ? "destructive" : "outline"}
-              className="h-12 rounded-full px-6"
+              className="h-12 rounded-full px-5"
               onClick={onMute}
               aria-label={call.muted ? "Réactiver le micro" : "Couper le micro"}
               aria-pressed={call.muted}
+              data-testid="call-mute"
             >
               {call.muted ? (
                 <MicOff className="size-5" aria-hidden="true" />
@@ -162,12 +316,43 @@ export function CallView() {
               )}
               {call.muted ? "Muet" : "Micro"}
             </Button>
+            {isVideo && (
+              <Button
+                size="lg"
+                variant={call.cameraOn ? "outline" : "destructive"}
+                className="h-12 rounded-full px-5"
+                onClick={onCamera}
+                aria-label={call.cameraOn ? "Couper la caméra" : "Réactiver la caméra"}
+                aria-pressed={!call.cameraOn}
+                data-testid="call-camera"
+              >
+                {call.cameraOn ? (
+                  <Video className="size-5" aria-hidden="true" />
+                ) : (
+                  <VideoOff className="size-5" aria-hidden="true" />
+                )}
+                {call.cameraOn ? "Caméra" : "Coupée"}
+              </Button>
+            )}
+            {isVideo && call.cameraOn && (
+              <Button
+                size="icon"
+                variant="outline"
+                className="size-12 rounded-full"
+                onClick={onFlip}
+                aria-label="Pivoter la caméra (avant/arrière)"
+                data-testid="call-flip"
+              >
+                <Camera className="size-5" aria-hidden="true" />
+              </Button>
+            )}
             <Button
               size="lg"
               variant="destructive"
               className="h-12 rounded-full px-6"
               onClick={onHangup}
               aria-label="Terminer l'appel"
+              data-testid="call-hangup"
             >
               <PhoneOff className="size-5" aria-hidden="true" />
               Raccrocher
@@ -175,22 +360,36 @@ export function CallView() {
           </>
         )}
       </div>
-      <p className="mt-2 text-center text-[9px] text-muted-foreground">
-        Audio chiffré DTLS-SRTP de bout en bout — le serveur ne transporte que
-        la signalisation.
-      </p>
+      {(!isVideo || !expanded) && (
+        <p className="mt-2 text-center text-[9px] text-muted-foreground">
+          {isVideo
+            ? "Vidéo chiffrée DTLS-SRTP de bout en bout — le serveur ne transporte que la signalisation."
+            : "Audio chiffré DTLS-SRTP de bout en bout — le serveur ne transporte que la signalisation."}
+        </p>
+      )}
     </div>
   );
 }
 
 /** Petit bouton téléphone pour l'en-tête de conversation DM. */
-export function CallButton({ peer, peerLabel, disabled }: { peer: string; peerLabel: string | null; disabled?: boolean }) {
+export function CallButton({
+  peer,
+  peerLabel,
+  disabled,
+  mode = "audio",
+}: {
+  peer: string;
+  peerLabel: string | null;
+  disabled?: boolean;
+  mode?: CallType;
+}) {
   const call = useCall();
   const busy = call.state !== "idle";
   const onStart = useCallback(() => {
     callManager.setLabel(peer, peerLabel ?? "Contact");
-    void callManager.startOutgoing(peer, peerLabel);
-  }, [peer, peerLabel]);
+    void callManager.startOutgoing(peer, peerLabel, mode);
+  }, [peer, peerLabel, mode]);
+  const isVideo = mode === "video";
   return (
     <Button
       size="icon"
@@ -198,9 +397,18 @@ export function CallButton({ peer, peerLabel, disabled }: { peer: string; peerLa
       className="size-8"
       disabled={disabled || busy}
       onClick={onStart}
-      aria-label={`Appeler ${peerLabel ?? "ce contact"} en audio`}
+      aria-label={
+        isVideo
+          ? `Appeler ${peerLabel ?? "ce contact"} en vidéo`
+          : `Appeler ${peerLabel ?? "ce contact"} en audio`
+      }
+      data-testid={isVideo ? "call-button-video" : "call-button-audio"}
     >
-      <PhoneCall className="size-4" aria-hidden="true" />
+      {isVideo ? (
+        <Video className="size-4" aria-hidden="true" />
+      ) : (
+        <PhoneCall className="size-4" aria-hidden="true" />
+      )}
     </Button>
   );
 }

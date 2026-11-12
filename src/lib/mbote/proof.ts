@@ -69,8 +69,10 @@ export function identityProofMessage(f: IdentityProofFields): string {
  * kind ∈ call-offer | call-answer | call-ice | call-hangup | call-reject.
  * Le SDP/ICE ne porte AUCUN contenu de conversation — le hub ne voit que de
  * la signalisation (l'audio est DTLS-SRTP, chiffrement de bout en bout P2P).
+ * C3 : call-media porte l'état des pistes ({videoOn, audioOn}) — même mécanique
+ * de preuve, borne payload plus petite (hub CALL_ICE_MAX).
  */
-export type CallSignalKind = "call-offer" | "call-answer" | "call-ice" | "call-hangup" | "call-reject";
+export type CallSignalKind = "call-offer" | "call-answer" | "call-ice" | "call-hangup" | "call-reject" | "call-media";
 
 export function callProofMessage(kind: CallSignalKind, from: string, to: string, callId: string, ts: number): string {
   return `${from}|${kind}|${to}|${callId}|${ts}`;

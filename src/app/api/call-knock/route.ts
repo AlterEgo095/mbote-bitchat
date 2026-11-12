@@ -7,13 +7,16 @@ import { sendPushToUser } from "@/lib/mbote/push/sender";
 export const dynamic = "force-dynamic";
 
 // ── C2 — POST /api/call-knock ────────────────────────────────────────────────
-// Knock SANS CONTENU pour appel entrant (type: "incoming_call", payload
-// { type, fromLabel } strict — E2EE oblige, identique à C1) : le push réveille
-// le callee ABSENT du hub (PWA fermée / écran éteint). Le callee EN LIGNE
-// reçoit la signalisation socket.io call:offer en parallèle.
-// Anti-abus : preuve ECDSA `${from}|call-knock|${to}|${callId}|${ts}` + rate
-// limit strict (6/min par appelant, 20/min par destinataire) + existence du
-// destinataire (pas de knock vers l'inconnu) + fire-and-forget (jamais bloquant).
+// Knock SANS CONTENU pour appel entrant (type: "incoming_call" /
+// "incoming_video_call", payload { type, fromLabel } strict — E2EE oblige,
+// identique à C1) : le push réveille le callee ABSENT du hub (PWA fermée /
+// écran éteint). Le callee EN LIGNE reçoit la signalisation socket.io
+// call:offer en parallèle.
+// Anti-abus : preuve ECDSA `${from}|call-knock|${to}|${callId}|${type}|${ts}`
+// (C3 : le TYPE fait partie de la chaîne signée — anti-falsification du rendu
+// de notification) + rate limit strict (6/min par appelant, 20/min par
+// destinataire) + existence du destinataire (pas de knock vers l'inconnu) +
+// fire-and-forget (jamais bloquant).
 
 const KNOCK_PER_MIN_PER_KEY = 6;
 const KNOCK_PER_MIN_PER_TARGET = 20;
@@ -26,19 +29,23 @@ export async function POST(req: NextRequest) {
       from?: unknown;
       to?: unknown;
       callId?: unknown;
+      video?: unknown;
       ts?: unknown;
       signature?: unknown;
     };
     const from = typeof body.from === "string" ? body.from : "";
     const to = typeof body.to === "string" ? body.to : "";
     const callId = typeof body.callId === "string" ? body.callId : "";
+    // C3 : type d'appel — fait partie de la preuve signée (anti-falsification)
+    const video = body.video === true;
+    const knockKind = video ? "video" : "audio";
 
     if (!from || !to || callId.length < 8 || callId.length > 64) {
       return NextResponse.json({ error: "from/to/callId requis" }, { status: 400 });
     }
 
     const check = await verifySignedMessage({
-      message: `${from}|call-knock|${to}|${callId}|${body.ts}`,
+      message: `${from}|call-knock|${to}|${callId}|${knockKind}|${body.ts}`,
       pubkey: from,
       ts: body.ts,
       signature: body.signature,
@@ -81,8 +88,9 @@ export async function POST(req: NextRequest) {
     });
 
     // FIRE-AND-FORGET (leçon C1 : le push ne bloque JAMAIS la requête)
+    // C3 : type distinct pour le rendu de notification (audio vs vidéo)
     void sendPushToUser(to, {
-      type: "incoming_call",
+      type: video ? "incoming_video_call" : "incoming_call",
       fromLabel: caller?.nickname ?? "un contact",
     }).catch(() => {
       /* jamais bloquant */
