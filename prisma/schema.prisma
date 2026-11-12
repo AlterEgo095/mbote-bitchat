@@ -461,3 +461,80 @@ model PushSubscription {
   @@index([userId, disabledAt]) // les destinataires actifs d'un knock
   @@index([disabledAt]) // purge des abonnements morts (410)
 }
+
+// ───────────────────────── C4 — groupes privés MLS (RFC 9420) ─────────────────────────
+// Le serveur est un RELAIS Aveugle : les messages de groupe sont du ciphertext
+// MLS opaque (invariant testé : déchiffrer avec une fausse clé → garbage).
+// Le serveur tient l'ANNUAIRE (membres, joins/leaves — visibles par définition)
+// et les ENVELOPPES de handshake MLS (commits/welcomes — binaire RFC 9420),
+// jamais de plaintext.
+
+// Registry de key packages MLS (RFC 9420 §12.4.1.5) : chaque identité publie
+// des key packages FRAIS à l'avance ; l'invitant en CONSOMME UN (single-use —
+// le HPKE init key ne sert qu'une fois). Pas de contenu sensible (publique).
+model MlsKeyPackage {
+  id         String   @id @default(cuid())
+  userKey    String // pubkey ECDSA de l'app (base64url)
+  keyPackage String // key package MLS encodé (b64 wire)
+  createdAt  DateTime @default(now())
+
+  @@index([userKey, createdAt])
+}
+
+model Group {
+  id         String   @id @default(cuid())
+  name       String
+  mlsGroupId String   @unique // identifiant MLS opaque (hex, 16 octets) — l'ancre d'epoch côté clients
+  creatorKey String // pubkey du créateur (admin MVP)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  members   GroupMember[]
+  messages  GroupMessage[]
+  envelopes GroupEnvelope[]
+
+  @@index([creatorKey])
+}
+
+model GroupMember {
+  id           String    @id @default(cuid())
+  groupId      String
+  group        Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userKey      String // pubkey du membre
+  mlsLeafIndex Int? // position TreeKEM à l'ajout (diagnostique — l'index réel vit dans l'état client)
+  joinedAt     DateTime  @default(now())
+  leftAt       DateTime? // forward secrecy : leftAt != null = exclu de l'epoch courante
+
+  @@unique([groupId, userKey])
+  @@index([userKey])
+}
+
+// Message de groupe : ciphertext MLS opaque (PrivateMessage wire b64).
+// AUCUNE lecture serveur possible (MLS est E2EE par construction) — le champ
+// mlsEpoch sert au tri client et au diagnostic, pas au déchiffrement.
+model GroupMessage {
+  id         String   @id @default(cuid())
+  groupId    String
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  senderKey  String
+  mlsEpoch   BigInt // epoch MLS au moment de l'envoi (tri client, diagnostic)
+  ciphertext String // PrivateMessage wire (b64) — opaque serveur
+  createdAt  DateTime @default(now())
+
+  @@index([groupId, createdAt])
+}
+
+// Enveloppes de HANDSHAKE MLS : commits (diffusion à tous) et welcomes
+// (destinataire unique). Relais + persistence offline — le client traite
+// DANS L'ORDRE (chaque commit avance l'epoch ; hors ordre = refus ratchet).
+model GroupEnvelope {
+  id        String   @id @default(cuid())
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  kind      String // "commit" | "welcome"
+  targetKey String? // null = diffusion à tous les membres actifs ; sinon welcome pour ce membre
+  payload   String // MLSMessage wire (b64) — opaque serveur
+  createdAt DateTime @default(now())
+
+  @@index([groupId, createdAt])
+}
