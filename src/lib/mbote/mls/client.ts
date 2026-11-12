@@ -106,15 +106,17 @@ async function authQuery(message: string): Promise<string> {
   return `me=${encodeURIComponent(me.pubkey)}&ts=${ts}&signature=${encodeURIComponent(signature)}`;
 }
 
-/** POST authentifié générique : { me, ts, signature, ...body }. */
+/** POST authentifié générique : { me, ts, signature, ...body }.
+ *  ⚠️ la signature couvre `${proofMessage}|${ts}` — le serveur vérifie la
+ *  chaîne COMPLÈTE avec le timestamp (verifyGroupProof). */
 async function authPost(url: string, proofMessage: string, body: Record<string, unknown>): Promise<Response> {
   const me = requireIdentity();
   const ts = Date.now();
-  const signature = await signPayload(me.signPriv, proofMessage);
+  const signature = await signPayload(me.signPriv, `${proofMessage}|${ts}`);
   return fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ me, ts, signature, ...body }),
+    body: JSON.stringify({ me: me.pubkey, ts, signature, ...body }),
   });
 }
 

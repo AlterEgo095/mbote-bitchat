@@ -1,0 +1,1 @@
+[BENCH] établissement groupe (création + 2 jointures MLS) = 94 ms (budget 2000) · envoi message = 10 ms (budget 500)

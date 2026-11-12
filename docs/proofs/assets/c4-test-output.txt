@@ -1,0 +1,17 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/c4-groups.test.ts:
+(pass) C4 groupes MLS — système (serveur réel) > W1 — flux complet : création, jointures, M1 lu par les trois [169.88ms]
+(pass) C4 groupes MLS — système (serveur réel) > W3 — epoch rotation visible puis retrait de Bob (epoch++) [45.78ms]
+(pass) C4 groupes MLS — système (serveur réel) > W2 — forward secrecy : Bob exclu ne déchiffre PAS M2, Carol oui [25.18ms]
+(pass) C4 groupes MLS — système (serveur réel) > W4 — replay : M1 rejoué par Carol → REFUS (ratchet) [8.81ms]
+(pass) C4 groupes MLS — système (serveur réel) > W5 — collusion : l'état exfiltré de Bob (pré-retrait) ne déchiffre pas M3 [11.70ms]
+(pass) C4 groupes MLS — système (serveur réel) > W6 — invariants serveur : preuve absente → 401, non-créateur → 403, ciphertext géant → 400, ciphertext opaque [59.40ms]
+[BENCH] établissement groupe (création + 2 jointures MLS) = 94 ms (budget 2000) · envoi message = 10 ms (budget 500)
+(pass) C4 groupes MLS — système (serveur réel) > BENCH — établissement groupe (création + invitation 2 membres) < 2 s · envoi message < 500 ms [169.54ms]
+(pass) C4 groupes MLS — système (serveur réel) > W7 — key package single-use : 2ᵉ consommation → 404 [37.06ms]
+
+ 8 pass
+ 0 fail
+ 37 expect() calls
+Ran 8 tests across 1 file. [746.00ms]

@@ -136,11 +136,28 @@ export function GroupsView({ identity }: { identity: StoredIdentity }) {
     return () => clearTimeout(t);
   }, [identity.pubkey]);
 
-  // socket : réveil immédiat (relais) — fallback polling déjà en place
+  // socket : sync des handshakes PUIS rafraîchissement — un welcome est
+  // traité même si le groupe n'est pas sélectionné (jointure hors vue)
+  const groupsRef = useRef<GroupInfo[]>([]);
   useEffect(() => {
+    groupsRef.current = groups;
+  }, [groups]);
+  useEffect(() => {
+    const syncPending = async (groupId?: string) => {
+      const targets = groupId ? [groupId] : groupsRef.current.map((g) => g.id);
+      for (const id of targets) {
+        try {
+          await syncGroupHandshakes(id);
+        } catch {
+          /* re-sync au prochain tick */
+        }
+      }
+      void refreshGroups();
+    };
     const s = getSocket();
     const onEnvelope = (d: { groupId?: string }) => {
-      if (d?.groupId) void refreshGroups();
+      // tick asynchrone (règle set-state-in-effect — syncPending → setGroups)
+      setTimeout(() => void syncPending(d?.groupId), 0);
     };
     s.on("group-envelope", onEnvelope);
     return () => {
@@ -308,6 +325,9 @@ function CreateGroupDialog({
                   onChange={() => toggle(c.pubkey)}
                   className="size-4"
                   aria-label={`Inviter ${c.nickname}`}
+                  // testid déterministe par nickname (les scripts de preuve
+                  // ciblent le testid, pas l'accessible name)
+                  data-testid={`invite-check-${c.nickname}`}
                 />
                 <span className="truncate">{c.nickname}</span>
                 <span className="ml-auto font-mono text-[10px] text-muted-foreground">
@@ -478,7 +498,13 @@ function GroupConversation({
   ];
 
   return (
-    <div className="border-t px-4 pb-4 pt-3" data-testid="group-conversation">
+    <div
+      className="border-t px-4 pb-4 pt-3"
+      data-testid="group-conversation"
+      // BUG PREUVE N4 : sans stopPropagation, chaque clic interne (envoi,
+      // badge membre) bouillonne jusqu'à la Card et désélectionne le groupe
+      onClick={(e) => e.stopPropagation()}
+    >
       {/* panneau membres */}
       <div className="mb-3 flex flex-wrap items-center gap-1.5" data-testid="group-members">
         {group.members.map((m) => (

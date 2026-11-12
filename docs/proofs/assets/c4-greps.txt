@@ -1,0 +1,5 @@
+## messages de groupe en base — invariant ciphertext opaque
+messages stockés : 8
+fuites plaintext : 0 (attendu 0 — MLS est E2EE)
+## enveloppes de handshake stockées :
+commits+welcomes : 11

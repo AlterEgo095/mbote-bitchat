@@ -1,0 +1,29 @@
+[c4-browser] N1 — onboarding A + B + C
+[c4-browser] N2 — publication des key packages (3 navigateurs)
+[c4-browser] N3 — création du groupe (commit multi-adds)
+[c4-browser] POST /api/groups me= BGNhZnRyrX members= [ "BGJoa_Zung", "BN0pElO6jC" ]
+[c4-browser] N4 — A envoie « Bonjour groupe MLS »
+[c4-browser] POST /api/groups me= BGNhZnRyrX members= []
+[c4-browser] N5 — B rejoint et déchiffre M1
+[c4-browser] N6 — A retire B (forward secrecy)
+[c4-browser] POST /api/groups me= BGNhZnRyrX members= []
+[c4-browser] N7 — M2 : C déchiffre, B exclu (forward secrecy)
+[c4-browser] POST /api/groups me= BGNhZnRyrX members= []
+{
+  "kpsPublishedAll": true,
+  "groupCreated": true,
+  "capturedMembers": [
+    "BGJoa_ZungODvfXsZJITzieHLQCgHbCXtH4RiM4wawRsLsXMeDSq9mBQuohs7TuEloJT_mTKQSiidTHrQ1LbyzQ",
+    "BN0pElO6jCf5VuokHVUkwE2QJW6bfu7pU-JxRRkhP1tlAJjOLksuWMuHfLlWB-3Bg_kuWbafxsPH-tgehJDMMEc"
+  ],
+  "m1SentByA": true,
+  "mlsBadgeShownA": true,
+  "m1DecryptedOnB": true,
+  "b2Sent": true,
+  "b2ReadOnA": true,
+  "m1AndB2ReadOnC": true,
+  "memberRemovedUI": true,
+  "m2ReadOnC": true,
+  "m2HiddenOnB": true,
+  "ok": true
+}
