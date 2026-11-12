@@ -198,22 +198,28 @@ silencieusement.
 | **Fallback WASM Opus Safari/iOS (voice notes B3)** — Option A (`@wasm-audio-encoders/opus`, MIT). Estimation **2–3 jp**. Décision B4 (2026-11-06) : Option B (bouton désactivé + message) retenue pour le MVP, Option A JALONNÉE — décision MEDIA-ENVELOPE-SPEC §8.5 | Safari (MediaRecorder sans Opus) : bouton micro désactivé + `VOICE_UNSUPPORTED_MESSAGE`. Le sniff conteneur à la réception refuse tout non-Opus (seconde barrière inchangée) | **JALON FERME (2026-11-06, clarification direction Étape 9+C1) : implémenté AVANT sortie mobile native (B5+) ou immédiatement après B4-MLS — et en tout état de cause AVANT ouverture publique** (borne dure — le public RDC inclut des iPhone) | la borne suit la même logique que la migration RN : une ouverture publique sans Safari voice = une population exclue silencieusement ; le WASM chiffré maintenant évite la découverte au moment du lancement ; le jalon ferme remplace la borne floue « avant ouverture publique » seule — un point de départ daté vaut mieux qu'une échéance négative unique |
 | **`sessionsRevoked` — no-op documenté (ADMIN-RBAC §13.4)** : aucune session utilisateur n'existe (identité = paire de clés locale). Si des sessions serveur sont ajoutées un jour, **implémenter `sessionsRevoked` dans `user-moderation.ts`** (aujourd'hui retourne toujours 0 — ajouté 2026-11-06, clarification direction B4) | Le champ prépare la forme de la réponse suspend sans promettre un effet inexistant ; no-op assumé et documenté côté code | **Le jour où une table de sessions utilisateur apparaît** (garde : grep `sessionsRevoked` à chaque ajout de session) | sinon une suspension ferait croire qu'elle révoque des sessions inexistantes — ou pire, oublierait de révoquer de vraies sessions quand elles existeront |
 
-### §8.1 — Check de merge propre par branche à chaque fin de vague (Clarification 2, vague D1+C2)
+### §8.1 — Invariant de branche unique (consolidation 2026-11-12, Clarification 1 vague C3+C4)
 
-Depuis 16 phases, `feat/adm-mvp` et `feat/b1-media-foundation` vivent
-séparément ; le déploiement testera TOUTES les branches d'un coup. Si des
-conflits de merge s'accumulent entre vagues, ils seront découverts au pire
-moment (au déploiement). Règle :
+Pendant 16 phases, `feat/adm-mvp` et `feat/b1-media-foundation` ont vécu
+séparément — chaque vague produisait 4-5 conflits de merge à résoudre
+récidivement (5 conflits en D1, 4 en C2). **Consolidation (2026-11-12)** :
+`feat/adm-mvp` est renommée `feat/mbote-v1` (elle contenait déjà TOUTE
+l'union b1 via les merges D1/C2), `feat/b1-media-foundation` est archivée
+sous `archive/b1-media-foundation` (historique conservé). Il n'y a plus
+qu'UNE branche de travail — le merge à répétition est terminé.
 
-> **Check de merge propre `feat/adm-mvp` ← `feat/b1-media-foundation` à chaque
-> fin de vague. Si conflits > 3 fichiers, résoudre maintenant, pas au
-> déploiement.**
+> **Invariant : une seule branche de travail (`feat/mbote-v1`), vérifié à
+> chaque fin de vague par `scripts/check-merge-clean.sh` (ancêtre d'archive +
+> unicité de branche = 0 conflit par construction). Si une branche cible est
+> un jour ré-ouverte (reopen d'archive), le check supporte un dry-merge
+> réel : conflits > 3 fichiers = résoudre MAINTENANT, pas au déploiement.**
 
-Exécution rejouable : `bash scripts/check-merge-clean.sh` — fait un
-`git merge --no-commit --no-ff feat/b1-media-foundation` depuis `feat/adm-mvp`,
-liste les conflits éventuels, puis `git merge --abort` (aucun état modifié).
-Le résultat est consigné dans le rapport de preuve de chaque vague (D1, C2,
-C3, C4) avec la liste des fichiers en conflit récurrents.
+Exécution rejouable : `bash scripts/check-merge-clean.sh` — vérifie
+l'invariant de consolidation (archive ⊆ mbote-v1, une seule branche active)
+et, optionnellement, `bash scripts/check-merge-clean.sh <branche>` fait un
+`git merge --no-commit --no-ff <branche>` puis `git merge --abort` (aucun
+état modifié). Le résultat est consigné dans le rapport de preuve de chaque
+vague (C3, C4, D2, D3…).
 
 ---
 

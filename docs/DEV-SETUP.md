@@ -46,7 +46,7 @@ repo principal, cwd HORS de `/home/z/my-project`) :
 
 ```bash
 git -C /home/z/my-project worktree prune                              # métadonnées orphelines
-git -C /home/z/my-project worktree add /home/z/wt-adm feat/adm-mvp    # re-création
+git -C /home/z/my-project worktree add /home/z/wt-adm feat/mbote-v1   # re-création
 # puis dans le worktree : bun install && bunx prisma generate (piège §1)
 ```
 
@@ -55,14 +55,26 @@ flip (§2b ci-dessous).
 
 **Règle non négociable (ADM et B1, toute branche future)** :
 
-1. Tout le travail d'une branche se fait dans un worktree EXTERNE au repo
-   principal — chemin canonique `/home/z/wt-<branche>` (ex. `/home/z/wt-adm`
-   pour `feat/adm-mvp`, `/home/z/wt-b1` pour B1).
+1. Tout le travail se fait dans un worktree EXTERNE au repo principal —
+   chemin canonique `/home/z/wt-<piste>` (ex. `/home/z/wt-adm` pour la piste
+   adm, `/home/z/wt-b1` pour la piste média).
+
+   **Consolidation (2026-11-12, Clarification 1 vague C3+C4)** : il n'y a plus
+   qu'UNE branche de travail, `feat/mbote-v1` (ex-`feat/adm-mvp`).
+   `feat/b1-media-foundation` est archivée sous `archive/b1-media-foundation`
+   (historique conservé, renommage pur — elle était déjà entièrement contenue
+   dans l'union D1+C2). **Tous les worktrees travaillent sur
+   `feat/mbote-v1`. Un worktree par piste de travail active (adm/média), pas
+   par feature.** Git interdisant deux worktrees sur la même branche :
+   `wt-adm` porte le checkout de la branche, `wt-b1` est en HEAD détaché sur
+   le même commit — les commits faits dans `wt-b1` avancent la branche par
+   `git -C /home/z/wt-adm merge --ff-only <hash>` (fast-forward, jamais de
+   merge-commit). Preuve : `docs/proofs/CONSOLIDATION.md`.
 2. **LA SEULE commande git tolérée dans `/home/z/my-project`** est la création
    du worktree (elle ne touche pas `HEAD` du repo principal) :
 
    ```bash
-   git -C /home/z/my-project worktree add /home/z/wt-adm feat/adm-mvp
+   git -C /home/z/my-project worktree add /home/z/wt-adm feat/mbote-v1
    ```
 
 3. Ensuite, **zéro** commande git dans le repo principal. Tout se fait avec
@@ -122,7 +134,10 @@ find /home/z /tmp -name "*.db" -newer /tmp/marker -not -path "*/node_modules/*"
 
 ```bash
 # 1. LA SEULE commande git dans le repo principal (ne touche pas son HEAD) :
-git -C /home/z/my-project worktree add /home/z/wt-adm feat/adm-mvp
+git -C /home/z/my-project worktree add /home/z/wt-adm feat/mbote-v1
+# 1b. piste média : wt-b1 en HEAD détaché (même branche — double checkout
+#     interdit par git) ; les commits y avancent la branche par ff-only.
+git -C /home/z/my-project worktree add --detach /home/z/wt-b1 feat/mbote-v1
 # 2. Tout le reste se fait DANS le worktree :
 cd /home/z/wt-adm
 bun install && bunx prisma generate
@@ -311,3 +326,35 @@ invisible côté tests).
   `rg "from '(node:)?(buffer|fs|path|crypto|os)"` — **43 fichiers
   `'use client'` (36 app principale + 7 panneau admin), 0 occurrence**
   (classe éteinte).
+
+## 7. Discipline preuve navigateur — tout nouveau flux utilisateur (2026-11-12, Clarification 2, vague C3+C4)
+
+> **« Tout nouveau flux utilisateur (pas seulement les fonctions isolées) doit
+> avoir une preuve navigateur réelle avant validation. Les harnais bun
+> valident la logique métier, pas l'intégration runtime (CSP, WebSocket, fake
+> devices, hydratation). 3 vagues consécutives ont vu des bugs critiques
+> (Buffer, Permissions-Policy, CSP ws://, call:offer, dialog mort) invisibles
+> aux harnais — la discipline est maintenant formalisée. »**
+
+Historique de la classe (chaque ligne = bug critique ATTRAPÉ par la preuve
+navigateur, INVISIBLE au harnais bun) :
+
+1. **B4 (Buffer)** — `Buffer` côté browser dans `VideoBubble.tsx` : vidéo
+   indéchiffrable côté expéditeur. Le harnais tourne sous bun, où `Buffer`
+   existe → classe invisible aux tests (§6, garde ESLint depuis).
+2. **B3 (Permissions-Policy)** — `microphone=()` dans le header durci :
+   MediaRecorder muet en prod, harnais vert (hors navigateur).
+3. **B3 (CSP media-src)** — `blob:` manquant pour la lecture voix.
+4. **C2 (CSP ws://)** — WebSocket du hub de signalisation bloqué par la CSP
+   durcie : TUÉ tout le temps réel en prod (appels + DMs + relay), détecté
+   uniquement par les captures navigateur C2.
+5. **C2 (call:offer)** — événement de signalisation jamais reçu côté
+   destinataire : flux complet vert au harnais, mort dans le navigateur réel.
+6. **C2 (dialog mort)** — panneau d'appel rendu mais non cliquable (overlay
+   invisible), uniquement visible en vraie session.
+
+**Conséquence opératoire** : la check-list de validation d'une vague est
+harnais + preuve navigateur + runner rejouable — une vague sans capture
+navigateur du flux complet n'est pas validée, même si tous les tests passent.
+Les harnais restent nécessaires (logique métier, adversarial, régression) mais
+suffisants JAMAIS.

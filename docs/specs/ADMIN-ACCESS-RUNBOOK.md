@@ -26,7 +26,7 @@ L'app principale (`mbotemesh.aenews.online`) reste inchangée et accessible au p
 |---|---|---|---|
 | P1 | **O-B fait** : counts legacy prod = 0 (4 SELECT, en-tête migration 0004) | sortie opérateur collée en preuve | ADM-rupture.md §8 |
 | P2 | **O-A fait** : `main` poussé (⚠️ déclenche `deploy-vps.yml` → migration 0004 en prod) | `git ls-remote origin main` | ADM-rupture.md §8 |
-| P3 | **O-C fait** : `feat/adm-mvp` poussé + PR schema-guard verte (fermée sans merge) | CI verte | ADM-rupture.md §8 |
+| P3 | **O-C fait** : `feat/adm-mvp` poussé + PR schema-guard verte (fermée sans merge) — branche renommée `feat/mbote-v1` le 2026-11-12 (CONSOLIDATION.md) | CI verte | ADM-rupture.md §8 |
 | P4 | **Étapes 3+4 livrées** (login+TOTP+sessions + RBAC + token interne) — *sans auth, l'admin n'existe pas fonctionnellement* | preuves ADM-step3-4 | recadrage §4 |
 | P5 | DNS : `CNAME admin.mbotemesh.aenews.online → mbotemesh.aenews.online` (proxy CF **activé**, nuage orange) | `dig` | — |
 | P6 | `.env` VPS : `ADMIN_INTERNAL_TOKEN=$(openssl rand -hex 32)` (jamais commité) | `grep -c ADMIN_INTERNAL_TOKEN .env` = 1 | RBAC §8 |

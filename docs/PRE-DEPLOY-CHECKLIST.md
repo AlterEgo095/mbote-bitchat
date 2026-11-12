@@ -11,16 +11,15 @@
 
 ## 0. Avant de toucher au VPS (10 min, local)
 
-- [ ] **0.1 — Étape 10 validée** : `feat/adm-mvp` à `docs/proofs/ADM-step10.md` vert (runner exit 0) + validation opérateur dans le canal.
-- [ ] **0.2 — CI verte sur les 3 branches** : `main`, `feat/b1-media-foundation`, `feat/adm-mvp` — GitHub Actions `tests.yml` + `schema-guard.yml` au vert sur le dernier commit de chacune.
-- [ ] **0.3 — Ordre de fusion arrêté** (les deux branches touchent `prisma/` et `src/`) :
+- [ ] **0.1 — Étape 10 validée** : `feat/mbote-v1` à `docs/proofs/ADM-step10.md` vert (runner exit 0) + validation opérateur dans le canal. (Consolidation 2026-11-12 : `feat/mbote-v1` = ex-`feat/adm-mvp` + union b1, branche UNIQUE, preuve `docs/proofs/CONSOLIDATION.md`.)
+- [ ] **0.2 — CI verte sur les 2 branches** : `main` et `feat/mbote-v1` — GitHub Actions `tests.yml` + `schema-guard.yml` au vert sur le dernier commit de chacune. (Consolidation 2026-11-12 : une seule branche de travail — `archive/b1-media-foundation` est un ancêtre de `feat/mbote-v1`, invariant vérifié par `scripts/check-merge-clean.sh`.)
+- [ ] **0.3 — Fusion simplifiée par la consolidation** (une seule branche de travail depuis 2026-11-12) :
       ```
       git checkout main && git pull origin main
-      git merge --no-ff feat/b1-media-foundation   # b1 d'abord (media + push C1)
-      git merge --no-ff feat/adm-mvp               # puis adm (admin + Étape 10)
-      # Résoudre les conflits éventuels — AUCUN conflit attendu sur prisma/migrations
-      # (timestamps distincts, voir §2.4) ; conflits src/ probables sur
-      # src/lib/mbote/justification.ts / state-store : relire, garder les DEUX apports.
+      git merge --no-ff feat/mbote-v1
+      # Un SEUL merge : l'union b1+adm est déjà dans feat/mbote-v1 (preuve CONSOLIDATION.md).
+      # AUCUN conflit attendu sur prisma/migrations (timestamps distincts, voir §2.4) ;
+      # plus de conflits src/ inter-branches (la source est unique).
       git push origin main                          # ← c'est LE commit de clôture (réf. opérateur : 7d4afb0)
       ```
 - [ ] **0.4 — Vérifier l'union des migrations après merge** (preuve collée) :
