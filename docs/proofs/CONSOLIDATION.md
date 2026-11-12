@@ -100,16 +100,35 @@ feat/mbote-v1`, (3) unicité de la branche de travail ; supporte un dry-merge
 optionnel (`bash scripts/check-merge-clean.sh <branche>`) pour un futur
 reopen. Règle §8.1 (>3 conflits = résoudre maintenant) conservée.
 
-Sortie (exécuté APRÈS commit des modifications, arbre propre) :
+Sortie réelle (exécutée APRÈS commit des modifications, arbre propre, exit 0) :
 
 ```
 $ bash scripts/check-merge-clean.sh
 ── check-merge-clean ──────────────────────────────────────────────
 branche courante : feat/mbote-v1
 INVARIANT OK : archive/b1-media-foundation ⊆ feat/mbote-v1 (commits b1 hors mbote-v1 : 0)
-branches de travail actives : 1 (feat/mbote-v1)
+branches de travail actives : 1 (feat/mbote-v1 )
 RÉSULTAT : branche unique — 0 conflit PAR CONSTRUCTION (plus de merge à répétition).
+# exit 0
+
+$ bash scripts/check-merge-clean.sh archive/b1-media-foundation   # dry-merge optionnel
+── check-merge-clean ──────────────────────────────────────────────
+branche courante : feat/mbote-v1
+INVARIANT OK : archive/b1-media-foundation ⊆ feat/mbote-v1 (commits b1 hors mbote-v1 : 0)
+branches de travail actives : 1 (feat/mbote-v1 )
+RÉSULTAT : branche unique — 0 conflit PAR CONSTRUCTION (plus de merge à répétition).
+dry-merge : feat/mbote-v1 ← archive/b1-media-foundation (merge-base 330f522)
+commits cible non fusionnés : 0
+RÉSULTAT : merge PROPRE — 0 conflit (merge annulé, aucun état modifié).
+# exit 0
 ```
+
+Incident de harnais corrigé en cours de preuve (classe §7 DEV-SETUP) :
+1re exécution → le glob `refs/heads/*` de `for-each-ref` ne matche pas les
+branches multi-niveaux (`feat/mbote-v1`) → « branches actives : 0 » faux
+positif ERREUR, et exit 0 malgré tout (`$?` après pipe = exit de tee).
+Corrigé : `refs/heads/` + exit réel via `PIPESTATUS` (pattern déjà érigé en
+règle par ADM-step10). La preuve ci-dessus est la sortie du script corrigé.
 
 ## Docs mis à jour (références vivantes ; les preuves historiques datées ne sont PAS réécrites)
 
