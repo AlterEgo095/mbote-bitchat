@@ -63,7 +63,8 @@ try {
 
   const probe = await page.evaluate(async () => {
     try {
-      const mod = (await import("/c4-mls-bundle.mjs")) as {
+      const path = "/c4-mls-bundle.mjs";
+      const mod = (await import(/* webpackIgnore: true */ path)) as {
         runMlsBrowserProbe: () => Promise<{ ok: boolean; steps: Record<string, string>; error?: string }>;
       };
       const result = await mod.runMlsBrowserProbe();

@@ -57,7 +57,7 @@ export async function runMlsBrowserProbe(): Promise<{
       wireformat: "mls_key_package",
       version: "mls10",
     });
-    const decodedKp = decodeMlsMessage(wire, 0)![0] as { keyPackage: never };
+    const decodedKp = (decodeMlsMessage(wire, 0) as unknown as Array<{ keyPackage: never }>)[0];
     const commit = await createCommit(
       { state: alice, cipherSuite: impl },
       { extraProposals: [{ proposalType: "add" as const, add: { keyPackage: decodedKp.keyPackage } }] }
@@ -79,7 +79,7 @@ export async function runMlsBrowserProbe(): Promise<{
       wireformat: "mls_private_message",
       privateMessage: app.privateMessage as never,
     });
-    const appDecoded = decodeMlsMessage(appWire, 0)![0] as { privateMessage: never };
+    const appDecoded = (decodeMlsMessage(appWire, 0) as unknown as Array<{ privateMessage: never }>)[0];
     const bobRead = await processPrivateMessage(bob, appDecoded.privateMessage, emptyPskIndex, impl);
     steps.bobReads =
       bobRead.kind === "applicationMessage" ? dec(bobRead.message) : `kind=${bobRead.kind}`;

@@ -67,16 +67,17 @@ function wirePrivate(pm: unknown): { privateMessage: never } {
     wireformat: "mls_private_message",
     privateMessage: pm as never,
   });
-  const decoded = decodeMlsMessage(wire, 0)![0] as { privateMessage: never };
-  return decoded as { privateMessage: never };
+  const arr = decodeMlsMessage(wire, 0) as unknown as Array<{ privateMessage: never }>;
+  return arr[0];
 }
 
 /** MLSMessage (résultat createCommit.commit) → wire → objet privé. */
 function wireMls(msg: unknown): { privateMessage: never } {
   const wire = encodeMlsMessage(msg as never);
-  const decoded = decodeMlsMessage(wire, 0)![0];
-  if (!decoded || !("privateMessage" in decoded)) throw new Error("commit expected as private message");
-  return decoded as { privateMessage: never };
+  const arr = decodeMlsMessage(wire, 0) as unknown as Array<{ privateMessage: never }>;
+  const decoded = arr[0];
+  if (!decoded) throw new Error("commit expected as private message");
+  return decoded;
 }
 
 function keyPackageOnWire(kp: { publicPackage: unknown }): never {
@@ -85,7 +86,8 @@ function keyPackageOnWire(kp: { publicPackage: unknown }): never {
     wireformat: "mls_key_package",
     version: "mls10",
   });
-  const decoded = decodeMlsMessage(wire, 0)![0] as { wireformat: string; keyPackage: never };
+  const arr = decodeMlsMessage(wire, 0) as unknown as Array<{ wireformat: string; keyPackage: never }>;
+  const decoded = arr[0];
   if (decoded.wireformat !== "mls_key_package") throw new Error("expected key package");
   return decoded.keyPackage;
 }
@@ -179,7 +181,7 @@ try {
     carolR1.kind === "applicationMessage" ? dec(carolR1.message) : `kind=${carolR1.kind}`;
   results.T0_deliveryOk =
     results.T0_bobReadsM1 === results.T0_carolReadsM1 &&
-    (bobR1.kind === "applicationMessage" as boolean);
+    (bobR1.kind === "applicationMessage");
   if (!results.T0_deliveryOk) throw new Error("T0 échec : livraison incohérente");
   const bobUpdated = bobR1.newState; // les états avancent à CHAQUE message traité
   const carolUpdated = carolR1.newState;
