@@ -13,8 +13,11 @@ node_modules
 # testing
 /coverage
 
-# next.js
+# next.js (racine + apps séparées — les artefacts de build ne sont JAMAIS
+# trackés : ils salissaient l'arbre à chaque harness admin-e2e, bloquant
+# check-merge-clean — vague durcissement)
 /.next/
+/admin/.next/
 /out/
 
 # production
