@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { apiFetchFeed, apiGetPost, type FeedScope } from "@/lib/mbote/api";
+import { apiFetchFeed, apiGetPost, describeApiError, type FeedScope } from "@/lib/mbote/api";
 import type { ActiveChannel, PendingPost, PostWithMeta } from "@/lib/mbote/types";
 import { Composer } from "./Composer";
 import { PendingPostCard, PostCard } from "./PostCard";
@@ -425,6 +425,27 @@ export function FeedView({
             </Card>
           ))}
         </div>
+      ) : feed.isError ? (
+        // F #15 — état d'erreur HONNÊTE : un échec réseau n'est plus déguisé
+        // en « fil vide » (mensonge d'état vide). Réessayer → refetch.
+        <Card className="border-red-300 bg-red-50" data-testid="feed-error">
+          <CardContent className="flex flex-col items-start gap-3 p-6" role="alert">
+            <p className="text-sm font-semibold text-red-900">
+              Impossible de charger le fil
+            </p>
+            <p className="text-sm text-red-800">
+              {describeApiError(feed.error)} — le contenu affiché précédemment peut être
+              périmé. Ta connexion ou le serveur est en cause, pas l'absence de messages.
+            </p>
+            <Button
+              size="sm"
+              className="h-11 bg-red-700 text-white hover:bg-red-800"
+              onClick={() => void feed.refetch()}
+            >
+              Réessayer
+            </Button>
+          </CardContent>
+        </Card>
       ) : posts.length === 0 && visiblePending.length === 0 ? (
         scope === "following" ? (
           <Card className="border-dashed">
