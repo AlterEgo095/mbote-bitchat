@@ -1,0 +1,326 @@
+{
+  "baseUrl": "http://127.0.0.1:3126",
+  "createMs": 15334,
+  "kpsPublishedAll": true,
+  "serverStored": true,
+  "dbGroup": {
+    "id": "cmwfkkke70008rnhmtavr6x3l",
+    "creatorKey": "BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV5Q8xvthK0MurwquNVs",
+    "memberCount": 2,
+    "allActive": true
+  },
+  "dbWelcomeCount": 1,
+  "serverListedContainsGroup": true,
+  "uiShowedAtSec": 2,
+  "bobRequests": [
+    {
+      "t": "+14.2s",
+      "method": "GET",
+      "url": "/api/groups?me=BNgv1c7MSI1BFAGxxEXsWbXGKtbxGeJPMX9Dy1ebz1fZbQqr6hUk-FA4ThJNcE7E4LOlWmjpAHA1idl60YvR7vs&ts=1794610188099&signature=RMgUHONONLGfPihOH-rdYiyc_bldgNFbP_5jxNsc9WfcEsgqmMIOEJf033ZOy7WYseQz5tqIqdzs_zzXtJERRA",
+      "status": 200,
+      "body": "{\"groups\":[]}"
+    },
+    {
+      "t": "+15.2s",
+      "method": "GET",
+      "url": "/api/groups/cmwfkkke70008rnhmtavr6x3l/envelopes?me=BNgv1c7MSI1BFAGxxEXsWbXGKtbxGeJPMX9Dy1ebz1fZbQqr6hUk-FA4ThJNcE7E4LOlWmjpAHA1idl60YvR7vs&ts=1794610189379&signature=dbLNKllesjHpH2cTyw8J6xMvp3EwPNAmj98C40qrTvkE7KC_Yonlto_dTX2hRuAlrkVrewXyl1DJF2Kfqf32iw",
+      "status": 200,
+      "body": "{\"envelopes\":[{\"id\":\"cmwfkkke7000brnhmipdpk30c\",\"kind\":\"commit\",\"targetKey\":null,\"payload\":\"AAEAAhCFtR0Ij1oY/eTpryzjyXubAAAAAAAAAAADABz+TkLsYbNyOC5hgXn1MV3CspCihOaeXODuKNz0QmWWHorYZb8w7jxwQEg0Tj7KYb92LjrQlRaedEP9jbFuHsZvMBQgZS3S/6YSUR/cbiB+eFQdE3NU5Q6Sft3UHZPB0hk3a4Gmrra2jHTdj3U/FAB5beSwkFVBDu6YslA/mkewh9zBpsRoTQef+MjKCq+apg0hVxfYb4NCvnZvrMEaoyRHl7bHBIXV6CmfEsK69dUM8i6STvqn39RnD0Q08B2TVclSLLqdV0fJ"
+    },
+    {
+      "t": "+15.3s",
+      "method": "GET",
+      "url": "/api/groups?me=BNgv1c7MSI1BFAGxxEXsWbXGKtbxGeJPMX9Dy1ebz1fZbQqr6hUk-FA4ThJNcE7E4LOlWmjpAHA1idl60YvR7vs&ts=1794610189518&signature=Mz-aQYNpSW0UsgKAvTVg0eNytGls2wGR6XYt7y_F8jQwzILNnPNllvoNZoNwXm1o-x7tOZvuAj_iDbrxihWz0w",
+      "status": 200,
+      "body": "{\"groups\":[{\"id\":\"cmwfkkke70008rnhmtavr6x3l\",\"name\":\"F47-Diag\",\"creatorKey\":\"BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV5Q8xvthK0MurwquNVs\",\"createdAt\":\"2026-11-13T22:49:49.376Z\",\"joinedAt\":\"2026-11-13T22:49:49.376Z\",\"members\":[{\"userKey\":\"BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV5Q8xvthK0MurwquNVs\",\"joinedAt\":\"2026-11-13T22:49:49.376Z\"},{\"user"
+    }
+  ],
+  "allRequests": [
+    {
+      "who": "A",
+      "t": "+0.6s",
+      "url": "/api/posts?scope=global&limit=50",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+0.7s",
+      "url": "/api/stats",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+0.7s",
+      "url": "/api/channels",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+1.1s",
+      "url": "/api/posts?scope=global&myPub=BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV5Q8xvthK0MurwquNVs&li",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+1.2s",
+      "url": "/api/dms/conversations?me=BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV5Q8xvthK0MurwquNVs&ts=179",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+6.8s",
+      "url": "/api/identity",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+6.8s",
+      "url": "/api/stats",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+6.8s",
+      "url": "/api/channels",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+6.8s",
+      "url": "/api/posts?scope=global&myPub=BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV5Q8xvthK0MurwquNVs&li",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+6.8s",
+      "url": "/api/dms/conversations?me=BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV5Q8xvthK0MurwquNVs&ts=179",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+8.1s",
+      "url": "/api/posts?scope=global&limit=50",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+8.1s",
+      "url": "/api/stats",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+8.1s",
+      "url": "/api/channels",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+8.5s",
+      "url": "/api/posts?scope=global&myPub=BNgv1c7MSI1BFAGxxEXsWbXGKtbxGeJPMX9Dy1ebz1fZbQqr6hUk-FA4ThJNcE7E4LOlWmjpAHA1idl60YvR7vs&li",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+8.6s",
+      "url": "/api/dms/conversations?me=BNgv1c7MSI1BFAGxxEXsWbXGKtbxGeJPMX9Dy1ebz1fZbQqr6hUk-FA4ThJNcE7E4LOlWmjpAHA1idl60YvR7vs&ts=179",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+12.6s",
+      "url": "/api/identity",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+12.7s",
+      "url": "/api/stats",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+12.7s",
+      "url": "/api/channels",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+12.7s",
+      "url": "/api/posts?scope=global&myPub=BNgv1c7MSI1BFAGxxEXsWbXGKtbxGeJPMX9Dy1ebz1fZbQqr6hUk-FA4ThJNcE7E4LOlWmjpAHA1idl60YvR7vs&li",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+12.7s",
+      "url": "/api/dms/conversations?me=BNgv1c7MSI1BFAGxxEXsWbXGKtbxGeJPMX9Dy1ebz1fZbQqr6hUk-FA4ThJNcE7E4LOlWmjpAHA1idl60YvR7vs&ts=179",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+13.7s",
+      "url": "/api/stats",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+13.7s",
+      "url": "/api/channels",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+13.7s",
+      "url": "/api/dms/conversations?me=BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV5Q8xvthK0MurwquNVs&ts=179",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+13.9s",
+      "url": "/api/groups?me=BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV5Q8xvthK0MurwquNVs&ts=1794610187906&",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+13.9s",
+      "url": "/api/users?me=BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV5Q8xvthK0MurwquNVs&exclude=BDZ58ZtL6b",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+13.9s",
+      "url": "/api/stats",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+13.9s",
+      "url": "/api/channels",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+14.0s",
+      "url": "/api/dms/conversations?me=BNgv1c7MSI1BFAGxxEXsWbXGKtbxGeJPMX9Dy1ebz1fZbQqr6hUk-FA4ThJNcE7E4LOlWmjpAHA1idl60YvR7vs&ts=179",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+14.1s",
+      "url": "/api/groups?me=BNgv1c7MSI1BFAGxxEXsWbXGKtbxGeJPMX9Dy1ebz1fZbQqr6hUk-FA4ThJNcE7E4LOlWmjpAHA1idl60YvR7vs&ts=1794610188099&",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+14.1s",
+      "url": "/api/users?me=BNgv1c7MSI1BFAGxxEXsWbXGKtbxGeJPMX9Dy1ebz1fZbQqr6hUk-FA4ThJNcE7E4LOlWmjpAHA1idl60YvR7vs&exclude=BNgv1c7MSI",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+14.2s",
+      "url": "/api/mls/keypackages",
+      "status": 201
+    },
+    {
+      "who": "A",
+      "t": "+14.3s",
+      "url": "/api/mls/keypackages",
+      "status": 201
+    },
+    {
+      "who": "A",
+      "t": "+14.3s",
+      "url": "/api/mls/keypackages",
+      "status": 201
+    },
+    {
+      "who": "B",
+      "t": "+14.3s",
+      "url": "/api/mls/keypackages",
+      "status": 201
+    },
+    {
+      "who": "B",
+      "t": "+14.4s",
+      "url": "/api/mls/keypackages",
+      "status": 201
+    },
+    {
+      "who": "B",
+      "t": "+14.4s",
+      "url": "/api/mls/keypackages",
+      "status": 201
+    },
+    {
+      "who": "A",
+      "t": "+15.0s",
+      "url": "/api/mls/keypackages/BNgv1c7MSI1BFAGxxEXsWbXGKtbxGeJPMX9Dy1ebz1fZbQqr6hUk-FA4ThJNcE7E4LOlWmjpAHA1idl60YvR7vs?me=BDZ58ZtL",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+15.1s",
+      "url": "/api/groups",
+      "status": 201
+    },
+    {
+      "who": "B",
+      "t": "+15.2s",
+      "url": "/api/groups/cmwfkkke70008rnhmtavr6x3l/envelopes?me=BNgv1c7MSI1BFAGxxEXsWbXGKtbxGeJPMX9Dy1ebz1fZbQqr6hUk-FA4ThJNcE7E4LOlW",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+15.2s",
+      "url": "/api/groups?me=BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV5Q8xvthK0MurwquNVs&ts=1794610189415&",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+15.2s",
+      "url": "/api/groups/cmwfkkke70008rnhmtavr6x3l/envelopes?me=BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV",
+      "status": 200
+    },
+    {
+      "who": "B",
+      "t": "+15.3s",
+      "url": "/api/groups?me=BNgv1c7MSI1BFAGxxEXsWbXGKtbxGeJPMX9Dy1ebz1fZbQqr6hUk-FA4ThJNcE7E4LOlWmjpAHA1idl60YvR7vs&ts=1794610189518&",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+15.3s",
+      "url": "/api/groups/cmwfkkke70008rnhmtavr6x3l/envelopes?me=BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+15.3s",
+      "url": "/api/groups?me=BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV5Q8xvthK0MurwquNVs&ts=1794610189526&",
+      "status": 200
+    },
+    {
+      "who": "A",
+      "t": "+15.4s",
+      "url": "/api/groups/cmwfkkke70008rnhmtavr6x3l/messages?me=BDZ58ZtL6bQc-K3zgX7bchyMo1RKOAJoq5QvzFdwv2bkBB2CbD1vdTTo_GIZ0N3cE4qlV5",
+      "status": 200
+    }
+  ],
+  "bobConsoleErrors": [],
+  "timeline": [
+    {
+      "tSec": 2,
+      "bobSees": true
+    }
+  ],
+  "verdict": {
+    "q1_serveurStocke": true,
+    "q2_listingContient": true,
+    "q3_uiAffiche": true,
+    "uiShowedAtSec": 2,
+    "conclusion": "NON REPRODUIT sur le build courant — le groupe est visible chez l'invité à t=+2s (poll 4 s). L'observation E (#47) est un artefact harnais : la capture E group-not-visible-bob.png montre le DIALOG D'ONBOARDING (contexte navigateur frais — identité perdue), pas la vue groupes."
+  },
+  "ok": true,
+  "finishedAt": "2026-11-13T22:49:51.772Z"
+}
