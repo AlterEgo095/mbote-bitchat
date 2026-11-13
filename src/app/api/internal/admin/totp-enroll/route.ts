@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { trackApiRequest } from "@/lib/mbote/state-store";
 import { getSessionFromToken, writeAdminAudit } from "@/lib/mbote/admin-auth";
+import { withWriteLock } from "@/lib/mbote/write-mutex";
 import {
   CSRF_HEADER,
   SESSION_TOKEN_HEADER,
@@ -48,20 +49,29 @@ export async function POST(req: NextRequest) {
     const t = verifyTotp(user.totpSecret, code, { lastCounter: user.totpLastCounter ?? null });
     if (!t.ok || t.counter === null) return denied();
 
-    await db.adminUser.update({
-      where: { id: user.id },
-      data: { totpEnrolled: true, totpLastCounter: t.counter },
-    });
-    await writeAdminAudit({
-      actorId: user.id,
-      actorRole: user.role,
-      action: "totp_enrolled",
-      targetType: "AdminUser",
-      targetId: String(user.id),
-      after: { via: "break-glass re-enrollment" },
-      ip: clientIp(req),
-      userAgent: req.headers.get("user-agent"),
-    });
+    // ATOMIQUE (invariant §4d, écart corrigé vague durcissement) : enrollment
+    // + audit dans la même $transaction — un crash entre les deux ne laisse
+    // pas un enrollment SANS trace d'audit (append-only). Section admin
+    // multi-écritures → withWriteLock (règle 2 §4d).
+    await withWriteLock(() =>
+      db.$transaction(async (tx) => {
+        await tx.adminUser.update({
+          where: { id: user.id },
+          data: { totpEnrolled: true, totpLastCounter: t.counter },
+        });
+        await writeAdminAudit({
+          tx,
+          actorId: user.id,
+          actorRole: user.role,
+          action: "totp_enrolled",
+          targetType: "AdminUser",
+          targetId: String(user.id),
+          after: { via: "break-glass re-enrollment" },
+          ip: clientIp(req),
+          userAgent: req.headers.get("user-agent"),
+        });
+      })
+    );
 
     return NextResponse.json({ ok: true, totpEnrolled: true });
   } catch (e) {
