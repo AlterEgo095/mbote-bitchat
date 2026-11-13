@@ -6,6 +6,12 @@ import { solvePow } from "./pow-harness";
  *  Commande (lancée par le runner avec le serveur RÉEL en route) :
  *    APP_URL=http://127.0.0.1:3122 bun test tests/c4-groups.test.ts
  *
+ *  Garde CI (pattern D1/D2 — skip PROPRE documenté, jamais silencieux) :
+ *  sans APP_URL (ex. bun test tests/ de tests.yml — pas de serveur de
+ *  preuve), la suite est SKIPPÉE ; sa couverture système reste assurée par
+ *  scripts/c4-mls-groups-proof-run.sh (preuve navigateur §7) et le runner
+ *  hebdomadaire weekly-proof-run.yml.
+ *
  *  Les 3 clients (Alice/Bob/Carol) sont des identités ECDSA RÉELLES avec des
  *  états MLS RÉELS (ts-mls, suite P-256) qui passent par les VRAIS endpoints
  *  HTTP (preuves de transport comprises). Aucun mock de serveur.
@@ -46,6 +52,10 @@ import {
 } from "ts-mls";
 
 const APP_URL = process.env.APP_URL ?? "http://127.0.0.1:3122";
+// Skip propre : la suite exige un serveur RÉEL (runner C4). Sans APP_URL →
+// SKIPPÉ (CI tests.yml) — un throw en beforeAll rendait TOUTE la suite rouge
+// pour un prérequis absent (bloqueur CI découvert vague durcissement).
+const d = process.env.APP_URL ? describe : describe.skip;
 
 const impl = await getCiphersuiteImpl(
   getCiphersuiteFromName("MLS_128_DHKEMP256_AES128GCM_SHA256_P256")
@@ -395,20 +405,20 @@ let ctx: GroupCtx;
 const seenB = new Set<string>();
 const seenC = new Set<string>();
 
-beforeAll(async () => {
-  // garde : le serveur doit être là (le runner le fournit)
-  const probe = await fetch(`${APP_URL}/api/stats`, { signal: AbortSignal.timeout(5000) }).catch(() => null);
-  if (!probe || !probe.ok) {
-    throw new Error(`APP_URL ${APP_URL} injoignable — lancer via scripts/c4-mls-groups-proof-run.sh`);
-  }
-  A = await makeIdentity("C4-Alice");
-  B = await makeIdentity("C4-Bob");
-  C = await makeIdentity("C4-Carol");
-  await Promise.all([onboard(A), onboard(B), onboard(C)]);
-  await Promise.all([publishKps(A, 2), publishKps(B, 2), publishKps(C, 2)]);
-});
+d("C4 groupes MLS — système (serveur réel)", () => {
+  beforeAll(async () => {
+    // garde : le serveur doit être là (le runner le fournit)
+    const probe = await fetch(`${APP_URL}/api/stats`, { signal: AbortSignal.timeout(5000) }).catch(() => null);
+    if (!probe || !probe.ok) {
+      throw new Error(`APP_URL ${APP_URL} injoignable — lancer via scripts/c4-mls-groups-proof-run.sh`);
+    }
+    A = await makeIdentity("C4-Alice");
+    B = await makeIdentity("C4-Bob");
+    C = await makeIdentity("C4-Carol");
+    await Promise.all([onboard(A), onboard(B), onboard(C)]);
+    await Promise.all([publishKps(A, 2), publishKps(B, 2), publishKps(C, 2)]);
+  });
 
-describe("C4 groupes MLS — système (serveur réel)", () => {
   test("W1 — flux complet : création, jointures, M1 lu par les trois", async () => {
     ctx = await createGroupFlow(A, [B, C], "C4-Groupe-Preuve");
     expect(ctx.serverGroupId).toBeTruthy();

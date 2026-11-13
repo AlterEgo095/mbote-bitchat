@@ -334,7 +334,9 @@ afterAll(async () => {
 
 const L = "/api/internal/admin/audit";
 
-describe("Étape 8 — audit viewer", () => {
+// skipIf (pattern D1/D2 — skip PROPRE documenté par le console.warn du garde) :
+// sans sa DB dédiée (runners ADM), la suite se SKIPPE au lieu de rendre CI rouge.
+describe.skipIf(!GUARD_OK)("Étape 8 — audit viewer", () => {
   // ── A. RBAC ──────────────────────────────────────────────────────────────
   test("A1. auditor → 200 (accès total lecture)", async () => {
     const r = await mainFetch("GET", L, { session: await sessionFor("auditor") });
