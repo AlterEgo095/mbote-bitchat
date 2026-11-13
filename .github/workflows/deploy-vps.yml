@@ -1,5 +1,17 @@
 # ─────────────────────────────────────────────────────────────────────────────
-#  Mbote BitChat — Déploiement VPS
+#  Mbote BitChat — Déploiement VPS (gâté par la CI — F-1, vague durcissement)
+#  ─ Déclenchement : workflow_run APRÈS tests.yml (main) — aucun déploiement
+#    d'un SHA qui n'a PAS passé le harnais adversarial. Le gate vérifie
+#    EN PLUS security.yml : verte si elle a tourné pour ce SHA (ses filtres
+#    paths signifient « deps/Docker/CI inchangés » quand elle est absente —
+#    pass-through documenté dans docs/CI-AUDIT.md F-1).
+#  ─ Le SHA déployé = le SHA TESTÉ (workflow_run.head_sha), jamais le HEAD
+#    courant de main (qui peut avoir avancé entre-temps).
+#  ─ Sémantique paths-ignore conservée (mobile/**, docs/**, *.md → skip) :
+#    évaluée par git diff dans le gate (le push mobile/docs seul ne déploie pas).
+#  ─ workflow_dispatch : deploy manuel — le gate reste ENFORCE (tests vertes
+#    obligatoires sur le SHA) ; l'urgence passe par une run de tests d'abord,
+#    pas par un contournement (F-1 : du code non testé ne part pas en prod).
 #  ─ rsync du commit exact → docker compose up -d --build
 #  ─ En cas d'échec de build : les anciens conteneurs continuent de tourner
 #  ─ Idempotent : premier déploiement == 100e déploiement
@@ -16,14 +28,13 @@ name: Déploiement VPS
 
 permissions:
   contents: read # F-50 : le déploiement n'a besoin d'aucune écriture sur le dépôt
+  actions: read # gate F-1 : lecture des conclusions tests.yml / security.yml pour le SHA
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Tests — harness adversarial"]
+    types: [completed]
     branches: [main]
-    paths-ignore:
-      - "mobile/**"
-      - "docs/**"
-      - "**.md"
   workflow_dispatch:
 
 concurrency:
@@ -32,7 +43,12 @@ concurrency:
 
 jobs:
   deploy:
-    name: rsync + docker compose
+    name: gate CI (F-1) puis rsync + docker compose
+    # Ne s'exécute que si le workflow DÉCLENCHEUR (tests.yml) est vert ; pour
+    # un dispatch manuel, le gate de SHA ci-dessous fait la vérification.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
       VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -41,35 +57,90 @@ jobs:
       VPS_DIR: ${{ secrets.VPS_DEPLOY_DIR || '/opt/mbote-bitchat' }}
       VPS_WEB_PORT: ${{ secrets.VPS_WEB_PORT || '3000' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (épinglé par SHA — supply chain)
+      - name: Récupérer le dépôt au SHA TESTÉ (historique complet pour le diff)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (épinglé par SHA — supply chain)
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Bun (portail qualité — lint web)
+      - name: Gate F-1 — le SHA déployé a passé tests (+ security si exécutée)
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+          concl() {
+            # dernière run COMPLÈTE du workflow $1 pour ce SHA (API : tri desc)
+            gh api "repos/$REPO/actions/workflows/$1/runs?head_sha=$SHA&per_page=100" \
+              --jq '[.workflow_runs[] | select(.status == "completed")] | .[0].conclusion // "absent"' \
+              2>/dev/null || echo "absent"
+          }
+
+          # 0) paths-ignore (sémantique push historique conservée) : un push ne
+          #    touchant que mobile/**, docs/** ou *.md ne déploie pas.
+          if git cat-file -e "$SHA^" 2>/dev/null; then
+            CHANGED="$(git diff --name-only "$SHA^" "$SHA" || true)"
+          else
+            CHANGED="" # push initial → diff indisponible → déployer
+          fi
+          RELEVANT="$(printf '%s\n' "$CHANGED" | grep -Ev '(^mobile/|^docs/|\.md$)' || true)"
+          if [ -n "$CHANGED" ] && [ -z "$RELEVANT" ]; then
+            echo "::notice::push $SHA ne touche que mobile/**, docs/** ou *.md — déploiement ignoré (paths-ignore conservés)"
+            echo "ok=false" >> "$GITHUB_OUTPUT"; echo "reason=paths-ignore" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
+          # 1) tests.yml : verte OBLIGATOIRE pour ce SHA — le cœur de F-1.
+          TESTS="$(concl tests.yml)"
+          if [ "$TESTS" != "success" ]; then
+            echo "::error::F-1 : tests.yml n'est PAS vert sur $SHA (conclusion: $TESTS) — déploiement REFUSÉ (aucun code non testé ne part en prod)"
+            echo "ok=false" >> "$GITHUB_OUTPUT"; echo "reason=tests-$TESTS" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
+          # 2) security.yml : verte SI elle a tourné pour ce SHA. Absente =
+          #    ses paths (package.json/bun.lock/Dockerfile*/security.yml)
+          #    sont inchangés → l'audit précédent reste valide (pass-through
+          #    documenté CI-AUDIT F-1). En échec → REFUS.
+          SECURITY="$(concl security.yml)"
+          if [ "$SECURITY" != "success" ] && [ "$SECURITY" != "absent" ]; then
+            echo "::error::F-1 : security.yml est $SECURITY sur $SHA — déploiement REFUSÉ (audit des dépendances/Docker en échec)"
+            echo "ok=false" >> "$GITHUB_OUTPUT"; echo "reason=security-$SECURITY" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$SECURITY" == "absent" ]; then
+            echo "::notice::security.yml absente pour $SHA (paths deps/Docker inchangés) — pass-through documenté CI-AUDIT F-1"
+          fi
+
+          # 3) secrets VPS configurés ?
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ]; then
+            echo "::warning::Secrets VPS absents (VPS_HOST, VPS_USER, VPS_SSH_KEY) — déploiement ignoré. Voir docs/CI-CD.md"
+            echo "ok=false" >> "$GITHUB_OUTPUT"; echo "reason=vps-secrets" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
+          echo "→ gate F-1 PASS : tests=success security=$SECURITY — déploiement de $SHA vers $VPS_USER@$VPS_HOST:$VPS_DIR"
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+
+      - name: Bun (portail qualité — lint web + typecheck)
+        if: steps.gate.outputs.ok == 'true'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (épinglé par SHA — supply chain)
         with:
           bun-version: "1.3.14"
 
-      - name: Portail qualité — lint web + typecheck
+      - name: Portail qualité — lint + typecheck
+        if: steps.gate.outputs.ok == 'true'
         run: |
           bun install --frozen-lockfile
           bun run lint
           bunx tsc --noEmit
 
-      - name: Garde — secrets VPS configurés ?
-        id: guard
-        run: |
-          if [ -n "$VPS_HOST" ] && [ -n "$VPS_USER" ]; then
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-            echo "→ déploiement vers $VPS_USER@$VPS_HOST:$VPS_DIR"
-          else
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Secrets VPS absents (VPS_HOST, VPS_USER, VPS_SSH_KEY) — déploiement ignoré. Voir docs/CI-CD.md"
-          fi
-
       - name: Empreinte du déploiement
-        run: echo "$GITHUB_SHA" > .deploy-commit
+        if: steps.gate.outputs.ok == 'true'
+        run: echo "${{ steps.gate.outputs.sha }}" > .deploy-commit
 
-      - name: Synchroniser le code (rsync du commit exact)
-        if: steps.guard.outputs.ok == 'true'
+      - name: Synchroniser le code (rsync du SHA testé)
+        if: steps.gate.outputs.ok == 'true'
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_mbote_ci
@@ -98,7 +169,7 @@ jobs:
           echo "✅ code synchronisé (commit $(cat .deploy-commit))"
 
       - name: Environnement de build (.env sur le VPS — 6 variables critiques)
-        if: steps.guard.outputs.ok == 'true'
+        if: steps.gate.outputs.ok == 'true'
         run: |
           if [ -z "$ADMIN_API_KEY" ]; then
             echo "::warning::Secret ADMIN_API_KEY absent — la modération admin restera DÉSACTIVÉE en prod (403 uniforme, défaut sûr). Provisionner : gh secret set ADMIN_API_KEY --repo AlterEgo095/mbote-bitchat — voir docs/RUNBOOK-ADMIN-KEY.md"
@@ -126,14 +197,14 @@ jobs:
           ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
 
       - name: Build & démarrage
-        if: steps.guard.outputs.ok == 'true'
+        if: steps.gate.outputs.ok == 'true'
         run: |
           ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes \
             "$VPS_USER@$VPS_HOST" \
             "cd '$VPS_DIR' && docker compose up -d --build && docker image prune -f"
 
       - name: Vérification santé
-        if: steps.guard.outputs.ok == 'true'
+        if: steps.gate.outputs.ok == 'true'
         run: |
           ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes \
             "$VPS_USER@$VPS_HOST" \
