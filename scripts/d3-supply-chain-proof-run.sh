@@ -127,6 +127,12 @@ say "5. USER non-root (3 Dockerfiles)"
   done
 } | tee "$ASSETS/d3-dockerfiles-user.txt"
 
+# ── 5b. tsc --noEmit — gate AVANT le build (Clarification 1, leçon F-17 : un
+#      type faux — ex. TS2345 — bloquait le build, jamais silencieux) ─────────
+say "5b. tsc --noEmit (gate avant build — Clarification 1)"
+bunx tsc --noEmit > /tmp/d3-tsc-prebuild.log 2>&1 \
+  || { say "FAIL — tsc --noEmit : erreurs de type AVANT le build (extrait)"; tail -40 /tmp/d3-tsc-prebuild.log; exit 1; }
+
 # ── 6. build + serveur + smoke API ───────────────────────────────────────────
 say "6. build standalone (next 16.4.6 + sharp 0.35.5 + prisma 6.19.3)"
 rm -f "$DB" "$DB-wal" "$DB-shm"

@@ -1,1 +1,1 @@
-{"users":3,"posts":10010,"postFTS":10010,"bobEcdhPub":"BP0LpeykVcWH…","dmTrap":"raw-ciphertext:secret-plan-intercepted"}
+{"users":3,"posts":10010,"postFTS":10010,"bobEcdhPub":"BFVS_6lsmSMg…","dmTrap":"raw-ciphertext:secret-plan-intercepted"}

@@ -36,6 +36,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# ── 0. tsc --noEmit — gate AVANT le build (Clarification 1, leçon F-17 : un
+#      type faux — ex. TS2345 — bloquait le build, jamais silencieux) ─────────
+say "0. tsc --noEmit (gate avant build — Clarification 1)"
+bunx tsc --noEmit > /tmp/c4-tsc-prebuild.log 2>&1 \
+  || { say "FAIL — tsc --noEmit : erreurs de type AVANT le build (extrait)"; tail -40 /tmp/c4-tsc-prebuild.log; exit 1; }
+
 # ── 1. build production standalone (TOUJOURS — leçon É8) ─────────────────────
 say "1. build standalone"
 NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" NEXT_PUBLIC_SOCKET_URL="$HUB_URL" \

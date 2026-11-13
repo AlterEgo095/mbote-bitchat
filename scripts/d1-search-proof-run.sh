@@ -49,6 +49,12 @@ say "1. sonde FTS5 (prérequis bloquant)"
 rm -f /tmp/fts5-probe.db /tmp/fts5-probe.db-wal /tmp/fts5-probe.db-shm
 bun scripts/d1-fts5-probe.ts > "$ASSETS/d1-fts5-probe.txt"
 
+# ── 1b. tsc --noEmit — gate AVANT le build (Clarification 1, leçon F-17 : un
+#      type faux — ex. TS2345 — bloquait le build, jamais silencieux) ─────────
+say "1b. tsc --noEmit (gate avant build — Clarification 1)"
+bunx tsc --noEmit > /tmp/d1-tsc-prebuild.log 2>&1 \
+  || { say "FAIL — tsc --noEmit : erreurs de type AVANT le build (extrait)"; tail -40 /tmp/d1-tsc-prebuild.log; exit 1; }
+
 # ── 2. build production standalone (TOUJOURS — leçon É8) ─────────────────────
 say "2. build standalone"
 NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" bun run build > /tmp/d1-build.log 2>&1 || { say "build ÉCHOUÉ (F-17 — jamais silencieux) : extrait de /tmp/d1-build.log"; tail -40 /tmp/d1-build.log; exit 1; }

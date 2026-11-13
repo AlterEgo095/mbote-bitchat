@@ -19,6 +19,16 @@ Applying migration `20261110100000_0009_d1_post_fts`
 Applying migration `20261112120000_0010_c4_groups`
 Applying migration `20261113100000_0011_d2_sybil`
 
+┌─────────────────────────────────────────────────────────┐
+│  Update available 6.19.3 -> 8.0.0-rc.33                 │
+│                                                         │
+│  This is a major update - please follow the guide at    │
+│  https://pris.ly/d/major-version-upgrade                │
+│                                                         │
+│  Run the following to update                            │
+│    npm i --save-dev prisma@latest                       │
+│    npm i @prisma/client@latest                          │
+└─────────────────────────────────────────────────────────┘
 The following migration(s) have been applied:
 
 migrations/

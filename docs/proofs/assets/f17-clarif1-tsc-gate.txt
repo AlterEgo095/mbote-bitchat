@@ -1,0 +1,20 @@
+## Clarification 1 — gate tsc --noEmit AVANT build (F-16/F-17 → vague F)
+## Date : 2026-11-13T22:24:25Z · worktree wt-adm @ feat/mbote-v1
+
+── 1. Arbre propre : gate PASSE (root tsconfig, couvre src/ + scripts/) ──
+tsc root : exit 0 (aucune erreur de type)
+
+── 2. Arbre propre : panneau admin (admin/tsconfig) ──
+tsc admin : exit 0
+
+── 3. INJECTION FAUTE (scripts/f17-tsc-fault-demo.ts : type faux TS2345-like) ──
+tsc exit=2 (non-zéro → le gate s'arrête AVANT le build)
+scripts/f17-tsc-fault-demo.ts(1,7): error TS2322: Type 'string' is not assignable to type 'number'.
+
+── 4. Message du runner si tsc échoue (logique du gate, jamais silencieux) ──
+[d1-proof] FAIL — tsc --noEmit : erreurs de type AVANT le build (extrait)
+scripts/f17-tsc-fault-demo.ts(1,7): error TS2322: Type 'string' is not assignable to type 'number'.
+→ runner : exit 1 AVANT le build standalone (leçon F-17 — pas de build, pas de 4 runners bloqués)
+
+── 5. Faute retirée : gate repasse ──
+tsc root : exit 0 (arbre re-devenu propre)

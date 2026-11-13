@@ -86,6 +86,14 @@ for pair in "admin-auth-e2e:adm-e2e-test" "admin-audit-e2e:adm-audit-e2e-test" "
 done
 say "   NON-RÉGRESSION TOTALE : $NR_TOTAL verts"
 
+# ── 1d. tsc --noEmit app + panneau — gate AVANT les builds (Clarification 1,
+#      leçon F-17 : un type faux — ex. TS2345 — bloquait le build) ────────────
+say "1d. tsc --noEmit app + panneau (gate avant builds — Clarification 1)"
+bunx tsc --noEmit > /tmp/step10-tsc-main.log 2>&1 \
+  || { say "FAIL — tsc app principale : erreurs de type (extrait)"; tail -40 /tmp/step10-tsc-main.log; exit 1; }
+(cd admin && bunx tsc --noEmit) > /tmp/step10-tsc-panel.log 2>&1 \
+  || { say "FAIL — tsc panneau admin : erreurs de type (extrait)"; tail -40 /tmp/step10-tsc-panel.log; exit 1; }
+
 # ── 2. builds production (DEV-SETUP §2c) — TOUJOURS (leçon É8) ──────────────
 say "2a. build app principale…"
 rm -f "$DB"

@@ -1,0 +1,27 @@
+## Clarification 1 — re-run complet D1 avec gate tsc visible (runner modifié)
+## bash scripts/d1-search-proof-run.sh — EXIT OK · feat/mbote-v1 · 2026-11-13T22:28:14Z
+
+[d1-proof] 22:26:40 — 1. sonde FTS5 (prérequis bloquant)
+[d1-proof] 22:26:40 — 1b. tsc --noEmit (gate avant build — Clarification 1)
+[d1-proof] 22:26:43 — 2. build standalone
+[d1-proof] 22:27:08 — 3. migrations + seed
+[d1-proof] 22:27:09 —    seed: {"users":3,"posts":10010,"postFTS":10010,"bobEcdhPub":"BFVS_6lsmSMg…","dmTrap":"raw-ciphertext:secret-plan-intercepted"}
+[d1-proof] 22:27:09 — 4. serveur :3163 (run 1)
+[d1-proof] 22:27:11 — 5. tests API (hits, diacritiques, frontière DM, triggers, pagination, benchmark, 429)
+(pass) D1 recherche serveur (FTS5) > T6 — auteur suspendu : dans l'INDEX mais introuvable via l'API (filtre lecture) [6.80ms]
+(pass) D1 recherche serveur (FTS5) > T7 — pagination : limit=2 → nextOffset ; page 2 DISTINCTE ; fin de liste [11.61ms]
+[benchmark FTS 10k] runs=17.1, 14.7, 14.7, 14.3, 14.2 ms — avg=15.0 ms max=17.1 ms
+[benchmark HTTP] round-trip=20.7 ms
+(pass) D1 recherche serveur (FTS5) > T8 — BENCHMARK : 10k posts, recherche FTS < 200 ms (moyenne 5 runs) [98.47ms]
+(pass) D1 recherche serveur (FTS5) > T9 — rate limit 30 req/min : le reste du bucket passe, la suivante → 429 [73.53ms]
+ 9 pass
+ 0 fail
+[d1-proof] 22:27:11 — 6. preuve navigateur (run 2 — rate store frais)
+[d1-browser] B5 — recherche locale « secrete » → navigation + flash
+[d1-browser] capture d1-search-dm.png
+[d1-browser] capture d1-search-dm-focus.png
+[d1-browser] B6 — frontière OK : 2 requêtes /api/search, toutes type=posts (0 type=dms)
+…
+   (exit 2 — conflits listés dans l'asset, règle §8.1 : > 3 = bloquant)
+[d1-proof] 22:27:28 — 9. tsc + lint
+[d1-proof] 22:27:51 — OK — preuve D1 complète (assets dans docs/proofs/assets/d1-*)

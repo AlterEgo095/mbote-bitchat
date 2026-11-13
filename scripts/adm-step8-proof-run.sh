@@ -65,6 +65,14 @@ SUPER_SECRET=$(bun -e "console.log(require('./db/adm-step8-secrets.json').admins
 WARN_ID=$(bun -e "console.log(require('./db/adm-step8-fixtures.json').warnAuditId)")
 WARN_PUBKEY=$(bun -e "console.log(require('./db/adm-step8-fixtures.json').warnTargetPubkey)")
 
+# ── 0b. tsc --noEmit app + panneau — gate AVANT les builds (Clarification 1,
+#      leçon F-17 : un type faux — ex. TS2345 — bloquait le build) ────────────
+say "0b. tsc --noEmit app + panneau (gate avant builds — Clarification 1)"
+bunx tsc --noEmit > /tmp/step8-tsc-main.log 2>&1 \
+  || { say "FAIL — tsc app principale : erreurs de type (extrait)"; tail -40 /tmp/step8-tsc-main.log; exit 1; }
+(cd admin && bunx tsc --noEmit) > /tmp/step8-tsc-panel.log 2>&1 \
+  || { say "FAIL — tsc panneau admin : erreurs de type (extrait)"; tail -40 /tmp/step8-tsc-panel.log; exit 1; }
+
 # ── 1. builds production (DEV-SETUP §2c) — TOUJOURS (le standalone doit
 #      refléter le code courant : un build périmé prouverait une autre étape) ──
 say "1a. build app principale…"

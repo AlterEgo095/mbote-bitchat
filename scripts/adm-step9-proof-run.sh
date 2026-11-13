@@ -69,6 +69,14 @@ CANCEL_PUBKEY=$(bun -e "console.log(require('./db/adm-step9-secrets.json').fixtu
 EXPIRE_PUBKEY=$(bun -e "console.log(require('./db/adm-step9-secrets.json').fixtures.expireTargetPubkey)")
 BROWSER_PUBKEY=$(bun -e "console.log(require('./db/adm-step9-secrets.json').fixtures.browserTargetPubkey)")
 
+# ── 0b. tsc --noEmit app + panneau — gate AVANT les builds (Clarification 1,
+#      leçon F-17 : un type faux — ex. TS2345 — bloquait le build) ────────────
+say "0b. tsc --noEmit app + panneau (gate avant builds — Clarification 1)"
+bunx tsc --noEmit > /tmp/step9-tsc-main.log 2>&1 \
+  || { say "FAIL — tsc app principale : erreurs de type (extrait)"; tail -40 /tmp/step9-tsc-main.log; exit 1; }
+(cd admin && bunx tsc --noEmit) > /tmp/step9-tsc-panel.log 2>&1 \
+  || { say "FAIL — tsc panneau admin : erreurs de type (extrait)"; tail -40 /tmp/step9-tsc-panel.log; exit 1; }
+
 # ── 1. builds production (DEV-SETUP §2c) — TOUJOURS (leçon É8) ──────────────
 say "1a. build app principale…"
 NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" bunx next build > /tmp/step9-build-main.log 2>&1

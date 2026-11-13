@@ -49,6 +49,12 @@ say "1. sonde prérequis (WebCrypto itéré + Web Worker + bench PoW 20 bits ×1
 timeout 180 bun scripts/d2-prereq-probe.ts > "$ASSETS/d2-prereq-run.txt" 2>&1 || {
   tail -20 "$ASSETS/d2-prereq-run.txt"; exit 1; }
 
+# ── 1b. tsc --noEmit — gate AVANT le build (Clarification 1, leçon F-17 : un
+#      type faux — ex. TS2345 — bloquait le build, jamais silencieux) ─────────
+say "1b. tsc --noEmit (gate avant build — Clarification 1)"
+bunx tsc --noEmit > /tmp/d2-tsc-prebuild.log 2>&1 \
+  || { say "FAIL — tsc --noEmit : erreurs de type AVANT le build (extrait)"; tail -40 /tmp/d2-tsc-prebuild.log; exit 1; }
+
 # ── 2. build production standalone (TOUJOURS — leçon É8) ─────────────────────
 say "2. build standalone"
 NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" bun run build > /tmp/d2-build.log 2>&1 || { say "build ÉCHOUÉ (F-17 — jamais silencieux) : extrait de /tmp/d2-build.log"; tail -40 /tmp/d2-build.log; exit 1; }

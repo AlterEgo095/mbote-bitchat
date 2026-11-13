@@ -136,6 +136,10 @@ grep -E "pass|skip|fail" "$ASSETS/hardening-ci-sim.txt" | tail -3
   || fail "P4 la simulation CI contient des fails (F-15 régressé)"
 step "P4-ci-simulation" "ok" "bun test tests/ : 0 fail (avant fix : 31)"
 
+say "P5a. tsc --noEmit — gate AVANT le build (Clarification 1, leçon F-17)"
+bunx tsc --noEmit > /tmp/hardening-tsc.log 2>&1 \
+  || { tail -40 /tmp/hardening-tsc.log; fail "P5a tsc --noEmit"; }
+
 say "P5. D2 non-régression — build standalone + serveur prod :$PORT (exerce le bridge M1)"
 NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$D2_DB" bun run build > /tmp/hardening-build.log 2>&1 \
   || { tail -20 /tmp/hardening-build.log; fail "P5 build"; }

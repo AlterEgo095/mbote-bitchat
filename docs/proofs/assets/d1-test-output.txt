@@ -1,19 +1,19 @@
 bun test v1.3.14 (0d9b296a)
 
 tests/d1-search.test.ts:
-(pass) D1 recherche serveur (FTS5) > T1 — hit FTS5 : payload complet (postId, snippet, rank, authorPubkey) [12.17ms]
-(pass) D1 recherche serveur (FTS5) > T2 — diacritiques : « ecole » trouve « école » (remove_diacritics 2) [4.13ms]
-(pass) D1 recherche serveur (FTS5) > T3 — FRONTIÈRE DM : ciphertext piégé « secret » jamais retourné ; type=dms → 400 [15.85ms]
-(pass) D1 recherche serveur (FTS5) > T4 — TRIGGER hide : hiddenAt → post retiré de PostFTS et introuvable [16.37ms]
-(pass) D1 recherche serveur (FTS5) > T5 — TRIGGER delete : post supprimé → retiré de l'index [12.59ms]
-(pass) D1 recherche serveur (FTS5) > T6 — auteur suspendu : dans l'INDEX mais introuvable via l'API (filtre lecture) [4.38ms]
-(pass) D1 recherche serveur (FTS5) > T7 — pagination : limit=2 → nextOffset ; page 2 DISTINCTE ; fin de liste [15.30ms]
-[benchmark FTS 10k] runs=16.9, 14.9, 14.9, 14.7, 14.6 ms — avg=15.2 ms max=16.9 ms
-[benchmark HTTP] round-trip=21.7 ms
-(pass) D1 recherche serveur (FTS5) > T8 — BENCHMARK : 10k posts, recherche FTS < 200 ms (moyenne 5 runs) [103.21ms]
-(pass) D1 recherche serveur (FTS5) > T9 — rate limit 30 req/min : le reste du bucket passe, la suivante → 429 [71.31ms]
+(pass) D1 recherche serveur (FTS5) > T1 — hit FTS5 : payload complet (postId, snippet, rank, authorPubkey) [12.58ms]
+(pass) D1 recherche serveur (FTS5) > T2 — diacritiques : « ecole » trouve « école » (remove_diacritics 2) [4.68ms]
+(pass) D1 recherche serveur (FTS5) > T3 — FRONTIÈRE DM : ciphertext piégé « secret » jamais retourné ; type=dms → 400 [14.69ms]
+(pass) D1 recherche serveur (FTS5) > T4 — TRIGGER hide : hiddenAt → post retiré de PostFTS et introuvable [17.71ms]
+(pass) D1 recherche serveur (FTS5) > T5 — TRIGGER delete : post supprimé → retiré de l'index [9.71ms]
+(pass) D1 recherche serveur (FTS5) > T6 — auteur suspendu : dans l'INDEX mais introuvable via l'API (filtre lecture) [6.80ms]
+(pass) D1 recherche serveur (FTS5) > T7 — pagination : limit=2 → nextOffset ; page 2 DISTINCTE ; fin de liste [11.61ms]
+[benchmark FTS 10k] runs=17.1, 14.7, 14.7, 14.3, 14.2 ms — avg=15.0 ms max=17.1 ms
+[benchmark HTTP] round-trip=20.7 ms
+(pass) D1 recherche serveur (FTS5) > T8 — BENCHMARK : 10k posts, recherche FTS < 200 ms (moyenne 5 runs) [98.47ms]
+(pass) D1 recherche serveur (FTS5) > T9 — rate limit 30 req/min : le reste du bucket passe, la suivante → 429 [73.53ms]
 
  9 pass
  0 fail
  72 expect() calls
-Ran 9 tests across 1 file. [320.00ms]
+Ran 9 tests across 1 file. [317.00ms]

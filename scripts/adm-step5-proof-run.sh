@@ -66,6 +66,14 @@ assert_contains /tmp/step5-seed.log '"reportsOuverts":2' "seed : 2 reports ouver
 SUPPORT_SECRET=$(bun -e "console.log(require('./db/adm-step5-secrets.json').admins['support@step5.proof'].totpSecret)")
 AUDITOR_SECRET=$(bun -e "console.log(require('./db/adm-step5-secrets.json').admins['auditor@step5.proof'].totpSecret)")
 
+# ── 0b. tsc --noEmit app + panneau — gate AVANT les builds (Clarification 1,
+#      leçon F-17 : un type faux — ex. TS2345 — bloquait le build) ────────────
+say "0b. tsc --noEmit app + panneau (gate avant builds — Clarification 1)"
+bunx tsc --noEmit > /tmp/step5-tsc-main.log 2>&1 \
+  || { say "FAIL — tsc app principale : erreurs de type (extrait)"; tail -40 /tmp/step5-tsc-main.log; exit 1; }
+(cd admin && bunx tsc --noEmit) > /tmp/step5-tsc-panel.log 2>&1 \
+  || { say "FAIL — tsc panneau admin : erreurs de type (extrait)"; tail -40 /tmp/step5-tsc-panel.log; exit 1; }
+
 # ── 1. builds production (DEV-SETUP §2c — jamais next dev pour capturer) ────
 if [ ! -f .next/standalone/server.js ]; then
   say "1a. build app principale…"

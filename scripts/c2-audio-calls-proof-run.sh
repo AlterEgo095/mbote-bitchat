@@ -41,6 +41,12 @@ say "1. sonde prérequis (TURN relay + DTLS-SRTP + fake mic)"
 timeout 150 bun scripts/c2-prereq-probe.ts > /tmp/c2-prereq-run.txt 2>&1 || {
   tail -20 /tmp/c2-prereq-run.txt; exit 1; }
 
+# ── 1b. tsc --noEmit — gate AVANT le build (Clarification 1, leçon F-17 : un
+#      type faux — ex. TS2345 — bloquait le build, jamais silencieux) ─────────
+say "1b. tsc --noEmit (gate avant build — Clarification 1)"
+bunx tsc --noEmit > /tmp/c2-tsc-prebuild.log 2>&1 \
+  || { say "FAIL — tsc --noEmit : erreurs de type AVANT le build (extrait)"; tail -40 /tmp/c2-tsc-prebuild.log; exit 1; }
+
 # ── 2. build production standalone (TOUJOURS — leçon É8) ─────────────────────
 say "2. build standalone"
 # ⚠️ NEXT_PUBLIC_SOCKET_URL est BAKÉ dans le bundle client AU BUILD — le
