@@ -130,7 +130,7 @@ say "5. USER non-root (3 Dockerfiles)"
 # ── 6. build + serveur + smoke API ───────────────────────────────────────────
 say "6. build standalone (next 16.4.6 + sharp 0.35.5 + prisma 6.19.3)"
 rm -f "$DB" "$DB-wal" "$DB-shm"
-NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" bun run build > /tmp/d3-build.log 2>&1
+NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" bun run build > /tmp/d3-build.log 2>&1 || { say "build ÉCHOUÉ (F-17 — jamais silencieux) : extrait de /tmp/d3-build.log"; tail -40 /tmp/d3-build.log; exit 1; }
 
 say "   migrations + serveur :$PORT"
 DATABASE_URL="file:$DB" bunx prisma migrate deploy > "$ASSETS/d3-migrate.txt" 2>&1

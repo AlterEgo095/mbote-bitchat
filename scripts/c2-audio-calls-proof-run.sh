@@ -47,7 +47,8 @@ say "2. build standalone"
 # construire sans lui → le navigateur se connecte à sa propre origine (pas de
 # Caddy en preuve) → hub injoignable → aucune signalisation.
 NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" NEXT_PUBLIC_SOCKET_URL="$HUB_URL" \
-  bun run build > /tmp/c2-build.log 2>&1
+  bun run build > /tmp/c2-build.log 2>&1 || {
+  say "build ÉCHOUÉ (F-17 — jamais silencieux) : extrait de /tmp/c2-build.log"; tail -40 /tmp/c2-build.log; exit 1; }
 
 # ── 3. migrations (APRÈS le build — leçon É10) ───────────────────────────────
 say "3. migrations"

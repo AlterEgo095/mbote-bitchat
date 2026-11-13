@@ -39,7 +39,8 @@ trap cleanup EXIT
 # ── 1. build production standalone (TOUJOURS — leçon É8) ─────────────────────
 say "1. build standalone"
 NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" NEXT_PUBLIC_SOCKET_URL="$HUB_URL" \
-  bun run build > /tmp/c4-build.log 2>&1
+  bun run build > /tmp/c4-build.log 2>&1 || {
+  say "build ÉCHOUÉ (F-17 — jamais silencieux) : extrait de /tmp/c4-build.log"; tail -40 /tmp/c4-build.log; exit 1; }
 
 # ── 2. migrations (APRÈS le build — leçon É10) ───────────────────────────────
 say "2. migrations"

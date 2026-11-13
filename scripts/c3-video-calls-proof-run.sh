@@ -51,7 +51,8 @@ timeout 150 bun scripts/c3-prereq-probe.ts > /tmp/c3-prereq-run.txt 2>&1 || {
 say "2. build standalone"
 # ⚠️ NEXT_PUBLIC_SOCKET_URL est BAKÉ dans le bundle client AU BUILD (leçon C2)
 NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" NEXT_PUBLIC_SOCKET_URL="$HUB_URL" \
-  bun run build > /tmp/c3-build.log 2>&1
+  bun run build > /tmp/c3-build.log 2>&1 || {
+  say "build ÉCHOUÉ (F-17 — jamais silencieux) : extrait de /tmp/c3-build.log"; tail -40 /tmp/c3-build.log; exit 1; }
 
 # ── 3. migrations (APRÈS le build — leçon É10) ───────────────────────────────
 say "3. migrations"

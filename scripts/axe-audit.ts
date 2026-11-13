@@ -66,6 +66,13 @@ async function shot(page: Page, name: string): Promise<void> {
   }
 }
 
+/** Nœud axe-core tel que retourné par window.axe.run (sous-ensemble consommé).
+ *  F-17 : typer ICI (et non sur le callback .map) — `nodes: unknown[]` rendait
+ *  le callback contravariant-incompatible → TS2345 → next build exit 1 en CI
+ *  (weekly-proof-run D1 : « 2. build standalone »), masqué en tests.yml (le
+ *  step bun test échouait avant le typecheck). */
+type AxeNode = { target?: unknown; html?: string; failureSummary?: string };
+
 /** Injecte axe-core, exécute l'audit, écrit le JSON compact de la vue. */
 async function axeView(page: Page, name: string, url: string): Promise<VueResult> {
   const res: VueResult = { name, url, violations: [], passes: 0, incomplete: 0, notes: [] };
@@ -73,7 +80,11 @@ async function axeView(page: Page, name: string, url: string): Promise<VueResult
     await page.addScriptTag({ content: AXE });
     const axe = (await page.evaluate(`
       window.axe.run(document, { resultTypes: ["violations", "passes", "incomplete"] })
-    `)) as { violations: { id: string; impact: string | null; nodes: unknown[]; help: string }[]; passes: { nodes: unknown[] }[]; incomplete: { nodes: unknown[] }[] };
+    `)) as {
+      violations: { id: string; impact: string | null; nodes: AxeNode[]; help: string }[];
+      passes: { nodes: AxeNode[] }[];
+      incomplete: { nodes: AxeNode[] }[];
+    };
     res.violations = axe.violations.map((v) => ({
       id: v.id,
       impact: v.impact,

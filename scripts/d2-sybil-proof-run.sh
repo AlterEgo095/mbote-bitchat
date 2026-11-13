@@ -51,7 +51,7 @@ timeout 180 bun scripts/d2-prereq-probe.ts > "$ASSETS/d2-prereq-run.txt" 2>&1 ||
 
 # ── 2. build production standalone (TOUJOURS — leçon É8) ─────────────────────
 say "2. build standalone"
-NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" bun run build > /tmp/d2-build.log 2>&1
+NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" bun run build > /tmp/d2-build.log 2>&1 || { say "build ÉCHOUÉ (F-17 — jamais silencieux) : extrait de /tmp/d2-build.log"; tail -40 /tmp/d2-build.log; exit 1; }
 
 # ── 3. migrations (leçon É10 : APRÈS le build) ───────────────────────────────
 say "3. migrations"

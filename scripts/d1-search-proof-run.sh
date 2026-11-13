@@ -51,7 +51,7 @@ bun scripts/d1-fts5-probe.ts > "$ASSETS/d1-fts5-probe.txt"
 
 # ── 2. build production standalone (TOUJOURS — leçon É8) ─────────────────────
 say "2. build standalone"
-NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" bun run build > /tmp/d1-build.log 2>&1
+NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" bun run build > /tmp/d1-build.log 2>&1 || { say "build ÉCHOUÉ (F-17 — jamais silencieux) : extrait de /tmp/d1-build.log"; tail -40 /tmp/d1-build.log; exit 1; }
 
 # ── 3. migrations (leçon É10 : APRÈS le build) + seed ────────────────────────
 say "3. migrations + seed"
