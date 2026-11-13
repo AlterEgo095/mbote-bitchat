@@ -1,0 +1,26 @@
+[
+  {
+    "view": "feed",
+    "violations": [],
+    "score": 100,
+    "ok": true
+  },
+  {
+    "view": "groups",
+    "violations": [],
+    "score": 100,
+    "ok": true
+  },
+  {
+    "view": "onboarding",
+    "violations": [],
+    "score": 100,
+    "ok": true
+  },
+  {
+    "view": "admin-pending-actions",
+    "violations": [],
+    "score": 100,
+    "ok": true
+  }
+]
