@@ -278,7 +278,7 @@ export function AuditView({ initial }: { initial: AuditLoadState }) {
         <button
           type="button"
           onClick={() => void fetchPage(filters, null)}
-          className="mt-3 rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100"
+          className="mt-3 rounded-md border border-red-300 bg-white min-h-11 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
         >
           Réessayer
         </button>
@@ -305,7 +305,7 @@ export function AuditView({ initial }: { initial: AuditLoadState }) {
               aria-label="Filtrer par acteur"
               value={filters.actor}
               onChange={(e) => changeFilter({ actor: e.target.value })}
-              className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900"
+              className="mt-1 w-full rounded-md border border-zinc-300 bg-white min-h-11 px-2 py-2 text-sm text-zinc-900"
             >
               <option value="">Tous les acteurs</option>
               {facets.actors.map((a) => (
@@ -321,7 +321,7 @@ export function AuditView({ initial }: { initial: AuditLoadState }) {
               aria-label="Filtrer par action"
               value={filters.action}
               onChange={(e) => changeFilter({ action: e.target.value })}
-              className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900"
+              className="mt-1 w-full rounded-md border border-zinc-300 bg-white min-h-11 px-2 py-2 text-sm text-zinc-900"
             >
               <option value="">Toutes les actions</option>
               {facets.actions.map((a) => (
@@ -337,7 +337,7 @@ export function AuditView({ initial }: { initial: AuditLoadState }) {
               aria-label="Filtrer par type de cible"
               value={filters.targetType}
               onChange={(e) => changeFilter({ targetType: e.target.value })}
-              className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900"
+              className="mt-1 w-full rounded-md border border-zinc-300 bg-white min-h-11 px-2 py-2 text-sm text-zinc-900"
             >
               <option value="">Tous les types</option>
               {facets.targetTypes.map((t) => (
@@ -355,7 +355,7 @@ export function AuditView({ initial }: { initial: AuditLoadState }) {
               onChange={(e) =>
                 changeFilter({ since: e.target.value as AuditFilters["since"], from: "", to: "" })
               }
-              className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900"
+              className="mt-1 w-full rounded-md border border-zinc-300 bg-white min-h-11 px-2 py-2 text-sm text-zinc-900"
             >
               <option value="all">Tout</option>
               <option value="24h">24 h</option>
@@ -370,7 +370,7 @@ export function AuditView({ initial }: { initial: AuditLoadState }) {
                 type="date"
                 value={filters.from}
                 onChange={(e) => changeFilter({ from: e.target.value })}
-                className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm text-zinc-900"
+                className="w-full rounded-md border border-zinc-300 min-h-11 px-2 py-2 text-sm text-zinc-900"
                 aria-label="Date de début"
               />
               <span aria-hidden="true">→</span>
@@ -378,7 +378,7 @@ export function AuditView({ initial }: { initial: AuditLoadState }) {
                 type="date"
                 value={filters.to}
                 onChange={(e) => changeFilter({ to: e.target.value })}
-                className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm text-zinc-900"
+                className="w-full rounded-md border border-zinc-300 min-h-11 px-2 py-2 text-sm text-zinc-900"
                 aria-label="Date de fin"
               />
             </span>
@@ -390,7 +390,7 @@ export function AuditView({ initial }: { initial: AuditLoadState }) {
               value={filters.target}
               placeholder="user:<pubkey> · <cuid>"
               onChange={(e) => changeFilter({ target: e.target.value })}
-              className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 font-mono text-sm text-zinc-900"
+              className="mt-1 w-full rounded-md border border-zinc-300 min-h-11 px-2 py-2 font-mono text-sm text-zinc-900"
             />
           </label>
         </div>
@@ -399,7 +399,7 @@ export function AuditView({ initial }: { initial: AuditLoadState }) {
             type="button"
             onClick={exportCsv}
             disabled={exporting}
-            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white min-h-11 px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
           >
             {exporting ? "Export en cours…" : "Exporter CSV"}
           </button>
@@ -484,7 +484,7 @@ export function AuditView({ initial }: { initial: AuditLoadState }) {
               type="button"
               onClick={() => void loadMore()}
               disabled={loadingMore || refreshing}
-              className="rounded-md border border-zinc-300 bg-white px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-md border border-zinc-300 bg-white min-h-11 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
             >
               {loadingMore ? "Chargement…" : "Charger plus"}
             </button>

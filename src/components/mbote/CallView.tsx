@@ -196,7 +196,7 @@ export function CallView() {
           <Button
             size="icon"
             variant="ghost"
-            className="size-8"
+            className="size-11"
             onClick={() => setExpanded((v) => !v)}
             aria-label={expanded ? "Réduire l'appel" : "Agrandir l'appel en plein écran"}
             aria-pressed={expanded}
@@ -405,7 +405,7 @@ export function CallButton({
     <Button
       size="icon"
       variant="ghost"
-      className="size-8"
+      className="size-11"
       disabled={disabled || busy}
       onClick={onStart}
       aria-label={

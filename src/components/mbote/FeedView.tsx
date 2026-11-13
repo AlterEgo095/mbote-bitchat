@@ -256,7 +256,7 @@ export function FeedView({
               variant={scope === "global" ? "default" : "ghost"}
               aria-pressed={scope === "global"}
               onClick={() => setFeedScope("global")}
-              className="h-7 rounded-md px-3 text-xs"
+              className="min-h-11 rounded-md px-3 text-xs"
             >
               <Globe className="size-3.5" aria-hidden="true" />
               Tous
@@ -271,7 +271,7 @@ export function FeedView({
                     // a11y (2.5.3) : le nom contient le texte visible « Abonnements »
                     aria-label="Abonnements — n'afficher que leurs publications"
                     onClick={() => setFeedScope("following")}
-                    className="h-7 rounded-md px-3 text-xs"
+                    className="min-h-11 rounded-md px-3 text-xs"
                   >
                     <UsersRound className="size-3.5" aria-hidden="true" />
                     Abonnements
@@ -283,7 +283,7 @@ export function FeedView({
                       variant={scope === "following" ? "default" : "ghost"}
                       disabled
                       aria-label="Abonnements : crée ton identité pour suivre des identités"
-                      className="h-7 rounded-md px-3 text-xs"
+                      className="min-h-11 rounded-md px-3 text-xs"
                     >
                       <UsersRound className="size-3.5" aria-hidden="true" />
                       Abonnements

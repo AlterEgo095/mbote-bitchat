@@ -197,7 +197,8 @@ export function AdminAuthPanel({ initial }: { initial: AuthPanelInitial }) {
               <button
                 type="submit"
                 disabled={busy}
-                className="rounded-md bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                // F #54 — cible tactile 44×44
+                className="min-h-11 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
               >
                 Finaliser l&apos;enrôlement
               </button>
@@ -273,7 +274,8 @@ export function AdminAuthPanel({ initial }: { initial: AuthPanelInitial }) {
           type="submit"
           disabled={busy}
           data-testid="login-btn"
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+          // F #54 — cible tactile 44×44 (submit principal)
+          className="min-h-11 rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
         >
           {busy ? "Connexion…" : "Se connecter"}
         </button>
@@ -287,7 +289,9 @@ export function AdminAuthPanel({ initial }: { initial: AuthPanelInitial }) {
           onClick={() => setShowBreakGlass((v) => !v)}
           aria-expanded={showBreakGlass}
           data-testid="breakglass-toggle"
-          className="text-xs font-medium text-zinc-500 underline hover:text-zinc-700"
+          // F #54 — le toggle break-glass était un lien texte de 16px : cible
+          // tactile 44×44 + affordance bouton (le texte visible reste servi).
+          className="inline-flex min-h-11 w-full items-center rounded-md px-2 text-left text-xs font-medium text-zinc-600 underline hover:bg-zinc-100 hover:text-zinc-800"
         >
           Téléphone perdu ? Utiliser un code de secours (break-glass)
         </button>
@@ -325,7 +329,8 @@ export function AdminAuthPanel({ initial }: { initial: AuthPanelInitial }) {
               type="submit"
               disabled={busy}
               data-testid="breakglass-btn"
-              className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+              // F #54 — cible tactile 44×44
+              className="min-h-11 rounded-md border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
             >
               Utiliser le code de secours
             </button>

@@ -550,12 +550,13 @@ function GroupConversation({
             {isCreator && m.userKey !== identity.pubkey && (
               <button
                 type="button"
-                className="ml-1 rounded-full p-0.5 hover:bg-muted"
+                // F #44 — cible 44×44 (l'action est IRRÉVERSIBLE : forward secrecy)
+                className="ml-1 inline-flex size-11 items-center justify-center rounded-full hover:bg-muted"
                 onClick={() => void onRemove(m.userKey, nicknameOf(m.userKey))}
                 aria-label={`Retirer ${nicknameOf(m.userKey)} du groupe`}
                 data-testid={`remove-${shortKey(m.userKey)}`}
               >
-                <UserMinus className="size-3" aria-hidden="true" />
+                <UserMinus className="size-4" aria-hidden="true" />
               </button>
             )}
           </Badge>
@@ -574,12 +575,13 @@ MLS actif
               key={c.pubkey}
               size="sm"
               variant="outline"
-              className="h-7 gap-1 px-2 text-[11px]"
+              // F #45 — cible tactile 44×44
+              className="min-h-11 gap-1 px-3 text-xs"
               disabled={inviting}
               onClick={() => void onInvite(c.pubkey)}
               aria-label={`Inviter ${c.nickname} dans le groupe`}
             >
-              <UserPlus className="size-3" aria-hidden="true" />
+              <UserPlus className="size-4" aria-hidden="true" />
               Inviter {c.nickname}
             </Button>
           ))}
@@ -646,6 +648,7 @@ MLS actif
         />
         <Button
           size="icon"
+          className="size-11"
           onClick={() => void onSend()}
           disabled={sending || !draft.trim()}
           aria-label="Envoyer le message de groupe"
@@ -656,6 +659,7 @@ MLS actif
         <Button
           size="icon"
           variant="ghost"
+          className="size-11"
           onClick={() => void syncAll()}
           aria-label="Rafraîchir les messages du groupe"
           data-testid="group-refresh"

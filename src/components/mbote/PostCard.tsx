@@ -173,7 +173,7 @@ export function PostCard({
                   ? `Retirer mon j'aime · ${likeCount}`
                   : `J'aime · ${likeCount}`
               }
-              className={`h-8 gap-1.5 px-2 text-xs ${
+              className={`min-h-11 gap-1.5 px-2 text-xs ${
                 liked ? "text-amber-500 hover:text-amber-500" : "text-muted-foreground"
               }`}
             >
@@ -195,7 +195,7 @@ export function PostCard({
                 size="sm"
                 onClick={() => setThreadOpen((v) => !v)}
                 aria-expanded={threadOpen}
-                className="h-8 gap-1.5 px-2 text-xs text-muted-foreground"
+                className="min-h-11 gap-1.5 px-2 text-xs text-muted-foreground"
               >
                 <MessageCircle className="size-4" aria-hidden="true" />
                 {post.replyCount > 0 ? post.replyCount : "Répondre"}
@@ -268,7 +268,7 @@ export function PostCard({
           <Button
             variant="ghost"
             size="icon"
-            className="size-6"
+            className="size-11"
             onClick={() => setThreadOpen(false)}
             aria-label="Fermer le fil"
           >
@@ -328,7 +328,7 @@ export function PendingPostCard({
           <Button
             variant="ghost"
             size="icon"
-            className="size-6 shrink-0"
+            className="size-11 shrink-0"
             onClick={onDismiss}
             aria-label="Abandonner ce message en file"
           >
