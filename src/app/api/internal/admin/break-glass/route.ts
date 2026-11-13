@@ -25,14 +25,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { verify as argon2Verify } from "@node-rs/argon2";
 import { db } from "@/lib/db";
 import { trackApiRequest } from "@/lib/mbote/state-store";
-import {
-  createAdminSession,
-  getSystemActor,
-  revokeAllAdminSessions,
-  writeAdminAudit,
-} from "@/lib/mbote/admin-auth";
+import { executeBreakGlass } from "@/lib/mbote/admin-break-glass";
+import { getSystemActor, writeAdminAudit } from "@/lib/mbote/admin-auth";
 import { clientIp, internalTokenOk, loginRateCheck } from "@/lib/mbote/admin-internal";
-import { generateTotpSecret } from "@/lib/mbote/totp";
 
 export const dynamic = "force-dynamic";
 
@@ -80,37 +75,17 @@ export async function POST(req: NextRequest) {
       return denied();
     }
 
-    // ── usage valide : brûler → révoquer → nouveau secret → session ──
-    const burnedAt = new Date();
-    await db.adminRecoveryCode.update({
-      where: { id: matchedId },
-      data: { usedAt: burnedAt, usedIp: ip, usedUserAgent: userAgent },
-    });
-
-    const sessionsRevoked = await revokeAllAdminSessions(user.id, "break-glass");
-
-    const newSecret = generateTotpSecret();
-    await db.adminUser.update({
-      where: { id: user.id },
-      data: { totpSecret: newSecret, totpEnrolled: false, totpLastCounter: null },
-    });
-
-    const session = await createAdminSession(user.id, { ip, userAgent });
-    await writeAdminAudit({
-      actorId: user.id,
-      actorRole: user.role,
-      action: "break-glass",
-      targetType: "AdminUser",
-      targetId: String(user.id),
-      after: {
-        recoveryCodeId: matchedId,
-        sessionsRevoked,
-        newSecretIssued: true,
-        totpEnrolled: false,
-      },
+    // ── usage valide : séquence ATOMIQUE (invariant §4d — burn→revoke→reset
+    //    →session→audit en UNE $transaction ; tout crash = rollback complet,
+    //    le code de secours reste utilisable et le TOTP actuel reste valide) ──
+    const outcome = await executeBreakGlass({
+      adminUserId: user.id,
+      adminRole: user.role,
+      recoveryCodeId: matchedId,
       ip,
       userAgent,
     });
+    const { sessionsRevoked, newSecret, sessionToken, csrfToken, expiresAt } = outcome;
 
     // notification aux autres super-admins actifs — LOG (SMTP : NOT TESTÉ)
     const others = await db.adminUser.findMany({
@@ -126,9 +101,9 @@ export async function POST(req: NextRequest) {
 
     const { buildOtpauthUri } = await import("@/lib/mbote/totp");
     return NextResponse.json({
-      sessionToken: session.sessionToken,
-      csrfToken: session.csrfToken,
-      expiresAt: session.expiresAt.toISOString(),
+      sessionToken,
+      csrfToken,
+      expiresAt: expiresAt.toISOString(),
       adminUser: { id: user.id, email: user.email, role: user.role, totpEnrolled: false },
       totpSecret: newSecret,
       otpauthUrl: buildOtpauthUri(user.email, newSecret),

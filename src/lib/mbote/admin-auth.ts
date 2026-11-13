@@ -202,12 +202,13 @@ export function isDenied(gate: AdminGate): gate is NextResponse {
  */
 export async function createAdminSession(
   adminUserId: number,
-  meta: { ip?: string | null; userAgent?: string | null; ttlMs?: number } = {}
+  meta: { ip?: string | null; userAgent?: string | null; ttlMs?: number } = {},
+  tx?: PrismaTx
 ): Promise<{ sessionId: string; sessionToken: string; csrfToken: string; expiresAt: Date }> {
   const sessionToken = randomBytes(32).toString("base64url");
   const csrfToken = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + (meta.ttlMs ?? SESSION_TTL_MS));
-  const session = await db.adminSession.create({
+  const session = await (tx ?? db).adminSession.create({
     data: {
       adminUserId,
       tokenHash: sha256hex(sessionToken),
@@ -220,6 +221,14 @@ export async function createAdminSession(
   return { sessionId: session.id, sessionToken, csrfToken, expiresAt };
 }
 
+/**
+ * Type du client de transaction Prisma (invariant §4d DEV-SETUP) — les
+ * helpers d'écriture acceptent `tx?` et écrivent via `tx ?? db` : un appelant
+ * dans une `$transaction` DOIT passer son `tx` (jamais le client global dans
+ * une tx ouverte → file lock SQLite → deadlock, occurrence 1 de la classe).
+ */
+export type PrismaTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
 /** Révoque une session (raison tracée) — logout / break-glass / disable. */
 export async function revokeAdminSession(sessionId: string, reason: string): Promise<void> {
   await db.adminSession.updateMany({
@@ -228,9 +237,17 @@ export async function revokeAdminSession(sessionId: string, reason: string): Pro
   });
 }
 
-/** Révoque TOUTES les sessions actives d'un admin (break-glass / disable). */
-export async function revokeAllAdminSessions(adminUserId: number, reason: string): Promise<number> {
-  const res = await db.adminSession.updateMany({
+/**
+ * Révoque TOUTES les sessions actives d'un admin (break-glass / disable).
+ * `tx?` (invariant §4d) : l'appelant dans une `$transaction` DOIT passer son
+ * `tx` (break-glass le fait — séquence atomique burn→revoke→reset).
+ */
+export async function revokeAllAdminSessions(
+  adminUserId: number,
+  reason: string,
+  tx?: PrismaTx
+): Promise<number> {
+  const res = await (tx ?? db).adminSession.updateMany({
     where: { adminUserId, revokedAt: null },
     data: { revokedAt: new Date(), revokedReason: reason },
   });
