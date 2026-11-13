@@ -256,6 +256,29 @@ disputent JAMAIS un verrou ; le S3 doit verrouiller depuis un process enfant.
 Toute future PRAGMA/DDL au boot (ex. PRAGMA synchronous, warmup FTS) doit
 suivre les 4 points ci-dessus et étendre `verifyBootPragmas()`.
 
+### Incident F-16a (CI runner, fix 2026-…) — le harnais DB doit être auto-suffisant
+
+S2/S3 échouaient sur le runner (`tests.yml`) alors que tout passait en local.
+**Cause réelle** (reproduite localement) : `db/` est gitignoré (`/db/`,
+`*.db`) — ABSENT d'un checkout frais ; Prisma crée le FICHIER SQLite mais
+jamais les répertoires parents → SQLITE_CANTOPEN (errno 14). La sonde
+`DATABASE_URL` de tests.yml ne crée pas `./db/` non plus :
+`file:./db/ci-test.db` est résolu **par rapport au schéma** → `prisma/db/`.
+L'hypothèse « FS runner sans WAL » a été écartée : WAL fonctionne sur ext4
+(S2 passe dès que le répertoire existe).
+
+Règles :
+1. **Tout fichier de test qui crée ses propres DB fichiers doit
+   `mkdirSync(dir, { recursive: true })` son répertoire cible** — déjà appliqué
+   dans `admin-dashboard-e2e.test.ts` (même incident, vague précédente) et
+   désormais `db-boot-pragma.test.ts` (F-16a).
+2. **Pas de skip FS-dynamique sur WAL** (option « tolérance » examinée puis
+   rejetée) : un skip quand `PRAGMA journal_mode=WAL` ne persiste pas
+   masquerait un échec de boot réel — exactement la classe de bug que §4b
+   chasse. Si un FS refuse WAL un jour, S2 doit rester ROUGE (signal correct).
+3. Simulation runner rejouable : `rm -rf db` puis `bun test
+   tests/db-boot-pragma.test.ts` → 4 pass / 0 fail.
+
 ---
 
 ## 4c. Recherche D1 : FTS5 = SQL brut versionné, hors schema.prisma — même précédent que 4b
@@ -472,3 +495,42 @@ harnais + preuve navigateur + runner rejouable — une vague sans capture
 navigateur du flux complet n'est pas validée, même si tous les tests passent.
 Les harnais restent nécessaires (logique métier, adversarial, régression) mais
 suffisants JAMAIS.
+
+---
+
+## 8. Preuves navigateur en CI hebdomadaire (`weekly-proof-run.yml`) — prérequis et jamais-silencieux (F-17, 2026-…)
+
+Les preuves navigateur (D1 recherche · C2 audio · C3 vidéo · C4 MLS)
+s'exécutent chaque semaine en CI. **Prérequis** (absence → skip propre
+documenté, pas d'échec silencieux) :
+
+1. bun `1.3.14` (épinglé — lockfile reproductible) + `bun install
+   --frozen-lockfile` ; le `postinstall` du package `prisma` génère le client
+   (cf. §1) — sans lui, `next build` échouerait à la résolution de
+   `@prisma/client`.
+2. Chromium **aligné au lockfile** (`playwright-core` → build
+   `chromium-1200`) : installé par le workflow
+   (`bunx playwright-core install --with-deps chromium`) — même chemin que les
+   scripts de preuve. Échec d'installation → step « SKIP » documenté
+   (`::notice::` + résumé de job), run SUCCESS mais traçable.
+3. Ports locaux libres : les scripts montent serveur prod + hub sur des ports
+   dédiés (31xx) — aucun service externe requis (DB = SQLite fichier, TURN =
+   harnais bun, docker rapporté pour traçabilité seulement).
+4. `DATABASE_URL` fichier : géré par chaque script (build AVANT migrations —
+   leçon É10 ; prerender tolère l'absence du fichier).
+
+**Règle jamais-silencieux (incident F-17)** : le step build de chaque
+proof-run est instrumenté — en cas d'échec, le script affiche l'extrait du
+log (`tail -40 /tmp/X-build.log`) AVANT de sortir 1. Cause réelle de
+l'incident : une erreur TypeScript dans un script livré par la vague E
+(`scripts/axe-audit.ts`, TS2345) cassait `next build` — invisible dans
+`tests.yml` (le step `bun test` échouait avant le typecheck) et silencieux
+dans `weekly-proof-run.yml` (build redirigé vers un log jamais affiché). Les
+7 proof-runs (D1 · D2 · D3 · C2 · C3 · C4 · hardening) sont instrumentés ;
+tout NOUVEAU proof-run doit suivre ce pattern (cf. `hardening-proof-run.sh`).
+
+**B1 MinIO en CI** : le test `tests/media-minio-integration.test.ts` exige
+une pile MinIO utilisable — docker local + compose (hors CI hébergée), ou
+`MEDIA_S3_ENDPOINT` externe provisionné ; sinon skip documenté (gate F-16b).
+Sur ubuntu-latest, docker existe mais la pile n'est pas montée par le test :
+provisionner un endpoint externe pour l'activer en CI.
