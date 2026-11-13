@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MAX_POST_LENGTH } from "@/lib/mbote/constants";
+import { describeApiError } from "@/lib/mbote/api";
 import { precisionLabel } from "@/lib/mbote/geohash";
 
 interface ComposerProps {
@@ -48,7 +49,9 @@ export function Composer({
       // atteint (« … Le score de réputation augmente avec la participation de
       // qualité. »), suspension, etc. Un toast explicite vaut mieux qu'un
       // échec muet (directive D2 : message clair si plafond atteint).
-      toast.error(e instanceof Error ? e.message : "Publication refusée", {
+      // D2 : la CAUSE SERVEUR est conservée si actionnable (FR), sinon le
+      // mapping central du statut (F #23 — plus de « HTTP 429 » brut).
+      toast.error(describeApiError(e), {
         duration: 6000,
       });
     }

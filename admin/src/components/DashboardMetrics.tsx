@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DashboardMetrics — les 4 métriques du pilotage (Étape 5).
@@ -126,6 +126,10 @@ function MetricCard(props: {
 export function DashboardMetrics({ role, initial }: { role: string; initial: DashboardLoadState }) {
   const [state, setState] = useState<DashboardLoadState>(initial);
   const [refreshing, setRefreshing] = useState(false);
+  // F #59 — dégradation honnête : les dernières valeurs connues restent
+  // affichées (grisées + horodatage) au lieu d'une page vide + bandeau seul.
+  const lastDataRef = useRef<DashboardPayload | null>(initial.kind === "ready" ? initial.data : null);
+  const lastFetchedRef = useRef<string | null>(initial.kind === "ready" ? initial.fetchedAt : null);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -153,7 +157,10 @@ export function DashboardMetrics({ role, initial }: { role: string; initial: Das
         setState({ kind: "error", code: "http", httpStatus: res.status });
         return;
       }
-      setState({ kind: "ready", data, fetchedAt: new Date().toISOString() });
+      const fetchedAt = new Date().toISOString();
+      lastDataRef.current = data;
+      lastFetchedRef.current = fetchedAt;
+      setState({ kind: "ready", data, fetchedAt });
     } catch {
       setState({ kind: "error", code: "backend-unreachable" });
     } finally {
@@ -163,6 +170,56 @@ export function DashboardMetrics({ role, initial }: { role: string; initial: Das
 
   return (
     <div className="flex flex-col gap-4">
+      {state.kind === "error" && lastDataRef.current && lastFetchedRef.current && (
+        // F #59 — les cartes restent rendues (grisées, horodatées) au lieu de
+        // disparaître : l'admin garde la dernière valeur connue.
+        <section aria-label="Dernières valeurs connues (figées)">
+          <p className="text-xs font-medium text-zinc-600">
+            Dernières valeurs connues — figées au{" "}
+            <time dateTime={lastFetchedRef.current}>{hhmmss(lastFetchedRef.current)}</time>{" "}
+            jusqu&apos;au retour de l&apos;app principale :
+          </p>
+          <div className="mt-2 grid grid-cols-1 gap-4 opacity-60 grayscale sm:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+              label="Utilisateurs actifs"
+              value={`${lastDataRef.current.activeUsers.h24} / ${lastDataRef.current.activeUsers.d7}`}
+              sub="24 h / 7 j (post ou DM)"
+              status={lastDataRef.current.activeUsers.status}
+              updatedAt={lastDataRef.current.activeUsers.updatedAt}
+              threshold="vert ≥ 5 · orange 1–4 · rouge 0"
+            />
+            <MetricCard
+              label="Reports ouverts"
+              value={String(lastDataRef.current.openReports.value)}
+              sub="non pris en charge (handledById vide)"
+              status={lastDataRef.current.openReports.status}
+              updatedAt={lastDataRef.current.openReports.updatedAt}
+              threshold="vert ≤ 10 · orange 11–50 · rouge > 50"
+            />
+            <MetricCard
+              label="Uptime conteneur"
+              value={formatUptime(lastDataRef.current.uptime.seconds)}
+              sub={`(${lastDataRef.current.uptime.seconds.toLocaleString("fr-FR")} s)`}
+              status={lastDataRef.current.uptime.status}
+              updatedAt={lastDataRef.current.uptime.updatedAt}
+              threshold="vert ≥ 24 h · orange 1–24 h · rouge < 1 h"
+            />
+            <MetricCard
+              label="Dernier backup"
+              value={BACKUP_LABEL[lastDataRef.current.backup.state]}
+              sub={
+                lastDataRef.current.backup.ageHours !== null
+                  ? `il y a ${lastDataRef.current.backup.ageHours} h — ${lastDataRef.current.backup.detail}`
+                  : lastDataRef.current.backup.detail
+              }
+              status={lastDataRef.current.backup.status}
+              updatedAt={lastDataRef.current.backup.updatedAt}
+              threshold="vert < 24 h · orange > 24 h / non configuré · rouge échec"
+            />
+          </div>
+        </section>
+      )}
+
       {state.kind === "error" && (
         <div
           role="alert"

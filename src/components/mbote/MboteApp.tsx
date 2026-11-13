@@ -520,8 +520,14 @@ export function MboteApp() {
           exposePowBenchmark(pow);
           identityPayload.pow = { nonce: pow.nonce };
           setPowProgress(1);
-        } catch {
+        } catch (powError) {
+          // F #3 — l'échec du PoW n'est plus avalé : l'utilisateur comprend la
+          // cause et la conséquence (le serveur refusera la création sans PoW
+          // → l'identité restera dans la file courrier).
           setPowProgress(null);
+          toast.warning("Preuve de travail non calculée — publication refusée probable", {
+            description: `${powError instanceof Error ? powError.message : "calcul PoW indisponible"} — l'identité locale reste utilisable ; le serveur exigera la preuve avant de publier ton profil.`,
+          });
         }
         try {
           await apiUpsertIdentity(identityPayload);

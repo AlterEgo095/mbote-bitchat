@@ -39,7 +39,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { apiFetchFeed, apiGetUser, apiUpsertIdentity } from "@/lib/mbote/api";
+import { apiFetchFeed, apiGetUser, apiUpsertIdentity, describeApiError } from "@/lib/mbote/api";
 // D2 — réputation : libellés des tiers (module pur isomorphe)
 import { REPUTATION_TIER_LABEL } from "@/lib/mbote/sybil";
 import { shortKey, signPayload } from "@/lib/mbote/crypto";
@@ -254,6 +254,20 @@ export function ProfileView({
 
   return (
     <div className="space-y-5">
+      {/* F #35 — échec de chargement du profil distant : honnête (les données
+          locales restent affichées, l'état réseau est dit) */}
+      {me.isError && (
+        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+          Profil distant indisponible — {describeApiError(me.error)} L&apos;affichage continue avec tes données locales.
+        </div>
+      )}
+      {/* F #35 — échec de chargement des avertissements : rendu (avant : jeté
+          en silence — « avertissements indisponibles » jamais affiché) */}
+      {warnings.isError && (
+        <div role="alert" className="rounded-lg border border-red-300 bg-red-50 px-4 py-2.5 text-sm text-red-800">
+          Avertissements de modération indisponibles — {describeApiError(warnings.error)}
+        </div>
+      )}
       {/* ADM Étape 6 — avertissements de modération (visibles du titulaire seul) */}
       {warnings.data && warnings.data.warnings.length > 0 && (
         <Card>
@@ -411,7 +425,21 @@ export function ProfileView({
         <h2 className="mb-2.5 text-sm font-bold uppercase tracking-wide text-muted-foreground">
           Mes publications
         </h2>
-        {myPosts.isLoading ? (
+        {myPosts.isError ? (
+          // F #35 — échec de chargement de l'historique : plus de faux « rien
+          // publié » ; bannière d'erreur + Réessayer (pattern FeedView #15)
+          <Card className="border-red-300 bg-red-50">
+            <CardContent className="flex flex-col items-start gap-3 p-5" role="alert">
+              <p className="text-sm font-semibold text-red-900">
+                Impossible de charger tes publications
+              </p>
+              <p className="text-sm text-red-800">{describeApiError(myPosts.error)}</p>
+              <Button size="sm" className="h-11 bg-red-700 text-white hover:bg-red-800" onClick={() => void myPosts.refetch()}>
+                Réessayer
+              </Button>
+            </CardContent>
+          </Card>
+        ) : myPosts.isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 2 }).map((_, i) => (
               <Card key={i}>

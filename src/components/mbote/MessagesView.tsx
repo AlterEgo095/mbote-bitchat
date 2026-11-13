@@ -56,6 +56,7 @@ import {
   apiListUsers,
   apiSendDm,
   apiVerifyTrust,
+  describeApiError,
 } from "@/lib/mbote/api";
 import { openMessage, sealMessage, shortKey, signPayload } from "@/lib/mbote/crypto";
 import { dm2ProofMessage, dmReadProofMessage, trustVerifyProofMessage } from "@/lib/mbote/proof";
@@ -444,7 +445,7 @@ export function MessagesView({
     } catch (e) {
       voiceRecorderRef.current = null;
       toast.error("Micro indisponible", {
-        description: e instanceof Error ? e.message : undefined,
+        description: describeApiError(e),
       });
     }
   };
@@ -467,7 +468,7 @@ export function MessagesView({
       setPendingVoice(result);
     } catch (e) {
       toast.error("Enregistrement perdu", {
-        description: e instanceof Error ? e.message : undefined,
+        description: describeApiError(e),
       });
     }
   };
@@ -775,7 +776,7 @@ export function MessagesView({
       }
     } catch (e) {
       toast.error("Échec d'envoi", {
-        description: e instanceof Error ? e.message : undefined,
+        description: describeApiError(e),
       });
     } finally {
       setSending(false);
@@ -889,7 +890,7 @@ export function MessagesView({
     } catch (e) {
       setPendingVoice(voice); // échec → preview restaurée (invariant §1.8)
       toast.error("Échec d'envoi vocal", {
-        description: e instanceof Error ? e.message : undefined,
+        description: describeApiError(e),
       });
     } finally {
       setVoiceUploading(false);
@@ -929,7 +930,7 @@ export function MessagesView({
     } catch (e) {
       videoRecorderRef.current = null;
       toast.error("Caméra indisponible", {
-        description: e instanceof Error ? e.message : undefined,
+        description: describeApiError(e),
       });
     }
   };
@@ -949,7 +950,7 @@ export function MessagesView({
       setVideoPreviewUrl(URL.createObjectURL(new Blob([result.bytes as unknown as BlobPart], { type: result.container })));
     } catch (e) {
       toast.error("Enregistrement perdu", {
-        description: e instanceof Error ? e.message : undefined,
+        description: describeApiError(e),
       });
     }
   };
@@ -1029,7 +1030,7 @@ export function MessagesView({
     } catch (e) {
       setPendingVideo(video); // échec → preview restaurée (invariant §1.8)
       toast.error("Échec d'envoi vidéo", {
-        description: e instanceof Error ? e.message : undefined,
+        description: describeApiError(e),
       });
     } finally {
       setVideoUploading(false);
@@ -1049,7 +1050,7 @@ export function MessagesView({
             toast.success("Image envoyée après reprise réseau")
           ).catch((e) =>
             toast.error("Image uploadée mais envoi échoué", {
-              description: e instanceof Error ? e.message : undefined,
+              description: describeApiError(e),
             })
           );
         }
@@ -1120,7 +1121,7 @@ export function MessagesView({
         // le bug setPendingVoice(null) précoce B3.)
         setPendingFile(file);
         toast.error("Échec d'upload", {
-          description: e instanceof Error ? e.message : undefined,
+          description: describeApiError(e),
         });
       }
     } finally {

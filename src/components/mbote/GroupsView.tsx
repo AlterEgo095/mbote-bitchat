@@ -35,6 +35,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { signPayload, shortKey } from "@/lib/mbote/crypto";
+import { describeApiError, describeApiStatus } from "@/lib/mbote/api";
 import { getSocket } from "@/lib/mbote/socket";
 import {
   setMlsIdentity,
@@ -77,6 +78,9 @@ export function GroupsView({ identity }: { identity: StoredIdentity }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [kpPublished, setKpPublished] = useState(false);
+  // F #42 — échec de listing des groupes : plus de catch{} silencieux —
+  // « réseau HS » n'est plus indistinguable d'« aucun groupe ».
+  const [listingError, setListingError] = useState<string | null>(null);
 
   // brancher l'identité MLS + publier les key packages (une fois par session)
   useEffect(() => {
@@ -105,11 +109,21 @@ export function GroupsView({ identity }: { identity: StoredIdentity }) {
     try {
       const q = await authQuery(identity.signPriv, identity.pubkey, `${identity.pubkey}|groups-list`);
       const res = await fetch(`/api/groups?${q}`, { signal: AbortSignal.timeout(15_000) });
-      if (!res.ok) return;
+      if (!res.ok) {
+        // F #42 — échec HTTP rendu (statut FR via le mapping central)
+        setListingError(describeApiStatus(res.status));
+        return;
+      }
       const json = (await res.json()) as { groups: GroupInfo[] };
       setGroups(json.groups);
-    } catch {
-      /* hors ligne — le poll suivant retentera */
+      setListingError(null);
+    } catch (e) {
+      /* hors ligne — le poll suivant retentera ; l'état est dit (F #42) */
+      setListingError(
+        e instanceof DOMException && e.name === "AbortError"
+          ? "Délai dépassé — vérifie ta connexion puis réessaie."
+          : "Réseau injoignable — la liste se rechargera au retour du réseau."
+      );
     }
   }, [identity]);
 
@@ -188,7 +202,18 @@ export function GroupsView({ identity }: { identity: StoredIdentity }) {
         </div>
       </div>
 
-      {groups.length === 0 ? (
+      {listingError ? (
+        // F #42 — échec de listing rendu avec action (réseau HS ≠ aucun groupe)
+        <Card className="border-red-300 bg-red-50" data-testid="groups-listing-error">
+          <CardContent className="flex flex-col items-start gap-3 p-6" role="alert">
+            <p className="text-sm font-semibold text-red-900">Impossible de charger tes groupes</p>
+            <p className="text-sm text-red-800">{listingError}</p>
+            <Button size="sm" className="h-11 bg-red-700 text-white hover:bg-red-800" onClick={() => void refreshGroups()}>
+              Réessayer
+            </Button>
+          </CardContent>
+        </Card>
+      ) : groups.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center gap-2 p-8 text-center text-sm text-muted-foreground">
             <Users className="size-8 text-muted-foreground/50" aria-hidden="true" />
@@ -287,9 +312,7 @@ function CreateGroupDialog({
       setName("");
       setPicked(new Set());
     } catch (e) {
-      toast.error(
-        e instanceof Error ? `Création impossible : ${e.message}` : "Création impossible"
-      );
+      toast.error(`Création impossible — ${describeApiError(e)}`);
     } finally {
       setCreating(false);
     }
@@ -458,7 +481,7 @@ function GroupConversation({
         { id: `self-${Date.now()}`, senderKey: identity.pubkey, text, createdAt: new Date().toISOString(), epoch: 0 },
       ]);
     } catch (e) {
-      toast.error(e instanceof Error ? `Envoi impossible : ${e.message}` : "Envoi impossible");
+      toast.error(`Envoi impossible — ${describeApiError(e)}`);
     } finally {
       setSending(false);
     }
@@ -472,9 +495,7 @@ function GroupConversation({
         toast.success("Membre invité — commit diffusé, welcome envoyé");
         onGroupChanged();
       } catch (e) {
-        toast.error(
-          e instanceof Error ? `Invitation impossible : ${e.message}` : "Invitation impossible"
-        );
+        toast.error(`Invitation impossible — ${describeApiError(e)}`);
       } finally {
         setInviting(false);
       }
@@ -490,9 +511,7 @@ function GroupConversation({
         toast.success("Membre retiré — nouvelle epoch, forward secrecy appliquée");
         onGroupChanged();
       } catch (e) {
-        toast.error(
-          e instanceof Error ? `Retrait impossible : ${e.message}` : "Retrait impossible"
-        );
+        toast.error(`Retrait impossible — ${describeApiError(e)}`);
       }
     },
     [group.id, onGroupChanged]
