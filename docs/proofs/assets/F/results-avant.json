@@ -1,0 +1,36 @@
+{
+  "phase": "avant",
+  "main": "http://127.0.0.1:3128",
+  "panel": "http://127.0.0.1:3129",
+  "startedAt": "2026-11-13T23:06:54.746Z",
+  "p1_wipeImmediate": true,
+  "p2_identityPosts": 2,
+  "p2_persistentBanner": false,
+  "p3_lieVideMensonger": true,
+  "p3_errorState": false,
+  "p3_defaut": true,
+  "p47_bobSeesAtSec": 2,
+  "p47_ok": true,
+  "p39_activeAfterTab": {
+    "testid": "",
+    "role": "",
+    "text": "Mbote Mesh"
+  },
+  "p39_cardRoleButtons": 0,
+  "p39_defaut": true,
+  "p72_modNote": null,
+  "p72_modNoteTestid": false,
+  "p72_saNote": "En attente — vous n'êtes pas l'acteur de cette ligne (demandeur seul annule).",
+  "p72_saMessageFaux": true,
+  "shots": [
+    "p1-menu-ouvert.png",
+    "p1-wipe-immediat-sans-confirmation.png",
+    "p2-echec-publication-invisible.png",
+    "p3-fil-vide-mensonger.png",
+    "p47-groupe-visible-chez-bob.png",
+    "p39-carte-inaccessible-clavier.png",
+    "p72-vue-moderateur.png",
+    "p72-vue-super-admin.png"
+  ],
+  "finishedAt": "2026-11-13T23:07:53.982Z"
+}
