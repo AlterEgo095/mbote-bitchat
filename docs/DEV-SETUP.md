@@ -377,22 +377,23 @@ unique), groupes messages (create unique), audits séquentiels login/logout/
 break-glass `auditFailure`/`totp-enroll` audit (AdminAudit séquentiel, aucune tx
 ouverte), `admin-auth.ts` `lastSeenAt` (single-row par requête).
 
-**ÉCARTS identifiés (multi-écritures hors `$transaction` — à corriger ou
-justifier par commentaire au prochain touch du fichier ; aucun n'écrit via le
-client global DANS une tx ouverte, donc aucun n'est de la classe
-deadlock/P2028, mais tous violent la lettre de l'invariant)** :
+**ÉCARTS identifiés lors de l'audit (grep 2026-11-13) — RÉSOLUTIONS vague
+durcissement (aucun ne disparaît sans trace ; fixés OU acceptés avec
+justification en commentaire sur le site)** :
 
-| Site | Écritures | Risque si crash entre deux | Gravité |
+| Site | Écritures | Résolution (vague durcissement) | Commit |
 |---|---|---|---|
-| `/api/internal/admin/break-glass` | burn code → revoke sessions → reset TOTP (3 writes) | code brûlé sans re-enrollment → admin dégradé (récupérable via 2ᵉ code) | majeur |
-| `/api/internal/admin/totp-enroll` | update TOTP + audit (2 writes) | enrollment sans trace d'audit | mineur |
-| `/api/dms/bot` | create msg user + create réponse bot (2 writes) | message user sans réponse bot | mineur |
-| `/api/mesh/bridge` | marque `meshIngest.create` AVANT post/DM create | paquet marqué ingéré mais contenu non créé (perte silencieuse du paquet — commentaire « marque ingéré AVANT traitement » assumé mais sans justification de perte) | mineur |
-| `/api/mls/keypackages` | create + prune deleteMany | keypackages excédentaires (auto-rattrapage au publish suivant) | mineur |
+| `/api/internal/admin/break-glass` | burn code → revoke sessions → reset TOTP (3 writes) | ✅ **CORRIGÉ — ATOMIQUE** : `executeBreakGlass` (src/lib/mbote/admin-break-glass.ts) = withWriteLock + `$transaction` (burn→revoke→reset→session→audit, `tx` aux 3 helpers via nouvelles signatures `tx?` de createAdminSession/revokeAllAdminSessions). Crash = rollback complet (code réutilisable, sessions actives, TOTP inchangé). Harnais R1/R2 (crash simulé mock.module)/R3 : 3/3 | `640893a` |
+| `/api/internal/admin/totp-enroll` | update TOTP + audit (2 writes) | ✅ **CORRIGÉ — ATOMIQUE** : enrollment + audit dans la même `$transaction` (withWriteLock) | `3a7c073` |
+| `/api/dms/bot` | create msg user + create réponse bot (2 writes) | ✅ **CORRIGÉ — ATOMIQUE** : les 2 creates dans une `$transaction` ; le chiffrement de la réponse est préparé AVANT la tx (jamais de verrou SQLite tenu pendant la crypto) | `83277a5` |
+| `/api/mesh/bridge` | marque `meshIngest.create` AVANT post/DM create | ✅ **CORRIGÉ — ATOMIQUE par paquet** : analyse = le retry idempotent NE fonctionnait pas (marque persistée sans contenu → dédup hash masquait la perte définitivement) → marque + contenu dans la même `$transaction` par paquet ; échec = rollback complet = re-remise possible ; garde anti-rejeu DM dans la tx (`prismaReplayStoreFor(tx)`) ; P2002 course de marque → duplicate propre ; relayNotify APRÈS commit | `16fe0c4` |
+| `/api/mls/keypackages` | create + prune deleteMany | 📄 **ACCEPTÉ — exception documentée en commentaire sur le site** : create = écriture essentielle ; prune = ramassage périodique auto-rattrapé au publish suivant ; état intermédiaire sans risque (keypackages valides, single-use) | `15c0a84` |
 
-Ces écarts sont des **candidats de correction** — leur réparation passe par une
-vague dédiée (même discipline : test d'abord, fix, preuve) ; ils n'ont PAS été
-corrigés dans la vague d'audit.
+Leçon transverse : trois des cinq écarts étaient des séquences multi-écritures
+« brûler/consommer puis régénérer » — la même forme de bug que les 3
+occurrences fondatrices (§4d). Toute NOUVELLE séquence d'écriture passe par le
+pattern `$transaction` + `tx` DÈS L'ÉCRITURE (ce constat est vérifié par le
+runner `scripts/hardening-proof-run.sh` : grep des sites à sites corrigés).
 
 ---
 

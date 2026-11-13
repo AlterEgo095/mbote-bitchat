@@ -216,9 +216,9 @@ Notes de déclenchement :
 
 | ID | Sévérité | Constat | Portée | Recommandation |
 |---|---|---|---|---|
-| **F-1** | **majeur** | deploy-vps non gaté par tests/security — déploie un SHA potentiellement rouge | deploy-vps.yml | branch protection `main` avec required checks, ou passer deploy en `workflow_run` après tests |
-| **F-2** | majeur | les crons (security 06:00, weekly-proof 07:00 lundi) n'exécutent QUE la branche par défaut — pas de cadence hebdo tant que feat/mbote-v1 n'est pas merge | security.yml, weekly-proof-run.yml | accepté (le cron devient réel au merge) — ne pas croire la cadence active avant |
-| **F-3** | moyen | scan-trivy `exit-code: "0"` : findings HIGH/CRITICAL jamais bloquants ; SARIF en artefact non consommé automatiquement | security.yml | ticket de resserrage daté (mode bloquant filtré sur misconfig) + décider code scanning (nécessite `security-events: write`) |
+| **F-1** | **majeur** | deploy-vps non gaté par tests/security — déploie un SHA potentiellement rouge | deploy-vps.yml | ✅ **CORRIGÉ vague durcissement (commit b4f6b97)** — voir §7.1 |
+| **F-2** | majeur | les crons (security 06:00, weekly-proof 07:00 lundi) n'exécutent QUE la branche par défaut — pas de cadence hebdo tant que feat/mbote-v1 n'est pas merge | security.yml, weekly-proof-run.yml | 📄 **DOCUMENTÉ vague durcissement** — voir §7.2 (exécution manuelle en attendant) |
+| **F-3** | moyen | scan-trivy `exit-code: "0"` : findings HIGH/CRITICAL jamais bloquants ; SARIF en artefact non consommé automatiquement | security.yml | 📄 **DOCUMENTÉ vague durcissement** — voir §7.3 (bloquant avant ouverture publique) |
 | **F-4** | moyen | weekly-proof-run skip = job SUCCESS : indistinguishable d'un vert dans l'UI Actions (la preuve vit dans le résumé) | weekly-proof-run.yml | renommer le job (préfixe `SKIP —`) via output de job, ou `::warning::` + annotation distincte |
 | **F-5** | mineur | build-android : `contents: write` au job pour tous les builds (PR inclus), nécessité réelle = Release sur tags | build-android.yml | restreindre (job séparé release, ou condition `startsWith(refs/tags/)`) |
 | **F-6** | mineur | schema-guard absent de `feat/**` — un schéma sans migration passe en feat, n'échoue qu'au merge | schema-guard.yml | conforme au flux merge-local (§4 DEV-SETUP) ; option : étendre à `feat/**` si on veut un retour plus tôt |
@@ -230,6 +230,7 @@ Notes de déclenchement :
 | **F-12** | info | `check-merge-clean.sh` (invariant main ⊆ mbote-v1) est un garde LOCAL, pas un job CI | scripts/ | optionnel : step CI au merge (fetch-depth 0 déjà le cas dans schema-guard) |
 | **F-13** | info | iOS `fail_on_unmatched_files: false` vs Android `true` — asymétrie bénigne (le zip simulateur garantit un fichier) | build-ios.yml | rien |
 | **F-14** | info | bun 1.3.14 épinglé dans les workflows, aligné au sandbox (1.3.14) ; pas de `.bun-version` dans le repo | tous | optionnel : committer `.bun-version` pour aligner les laptops |
+| **F-15** | **majeur** | **DÉCOUVERT vague durcissement (simulation CI)** : `bun test tests/` en conditions CI = **31 fails** — c4-groups throw sans APP_URL (beforeAll hors describe), admin-audit-e2e et admin-auth-e2e seedent sur leur DB dédiée mais leurs tests s'exécutent quand même (fail « absent : admin … ») — le premier push de feat/mbote-v1 aurait été ROUGE (et main aussi : même pattern présent sur main) | tests.yml | ✅ **CORRIGÉ (commit a492c44)** — skip PROPRE documenté (pattern D1/D2) : 225 pass / 231 skip / 0 fail ; les suites restent exécutées par leurs runners dédiés (APP_URL / DB harness) et le harness admin-auth-e2e réel passe 83/83 |
 
 ---
 
@@ -256,3 +257,68 @@ Notes de déclenchement :
 NON TESTÉ (hors périmètre statique) : les runs réels GitHub (opérateur), la
 branch protection effective du repo (Settings non lisibles sans credentials),
 les notifications d'échec (email/watchers), la durée réelle des jobs.
+
+---
+
+## 7. Suivi post-audit — vague durcissement (2026-11-13)
+
+### 7.1 F-1 — CORRIGÉ en code (option (a), commit `b4f6b97`)
+
+Le déploiement est désormais **gâté par la CI en code**, pas en config manuelle :
+
+- **Déclencheur** : `workflow_run` sur « Tests — harness adversarial »
+  (`types: [completed]`, `branches: [main]`) — un déploiement ne part qu'après
+  une run de tests terminée.
+- **Gate de SHA** (step dédié) : le SHA déployé est le **SHA testé**
+  (`workflow_run.head_sha`, jamais le HEAD courant de main) ; `tests.yml`
+  doit être `success` pour ce SHA — sinon `::error::` + REFUS ; `security.yml`
+  doit être `success` SI elle a tourné pour ce SHA (absente = ses paths
+  deps/Docker/CI inchangés → l'audit précédent reste valide — pass-through
+  documenté) ; `workflow_dispatch` passe par le MÊME gate (l'urgence passe par
+  une run de tests d'abord, pas par un contournement).
+- **Sémantique paths-ignore conservée** (mobile/**, docs/**, *.md → skip) :
+  évaluée par `git diff $SHA^ $SHA` dans le gate.
+- **Choix documenté — déclencheur sur tests.yml seul** (et non
+  `workflows: [tests, security]`) : la security.yml schedulée du lundi 06:00
+  déclencherait sinon un redéploiement idempotent mais inutile chaque lundi ;
+  l'exigence security reste ENFORCE par le gate (verte si exécutée).
+- Vérification : inspection YAML automatisée dans
+  `scripts/hardening-proof-run.sh` (workflow_run + gate + head_sha + if).
+
+**NON TESTÉ en conditions réelles** : nécessite un push sur main (workflow_run
+ne s'exécute pas sur les runners locaux) — la logique gate est vérifiée par
+inspection YAML statique et les requêtes `gh api` sont standard.
+
+### 7.2 F-2 — DOCUMENTÉ (exécution manuelle en attendant le merge)
+
+Les crons weekly-proof et security ne s'exécutent que sur la **default branch**.
+Après merge sur main, ils tourneront. En attendant, exécution manuelle via
+`workflow_dispatch` pour les runs critiques :
+
+```bash
+gh workflow run weekly-proof-run.yml --ref feat/mbote-v1
+gh workflow run security.yml --ref feat/mbote-v1
+# suivi :
+gh run list --workflow weekly-proof-run.yml --limit 3
+gh run watch <run-id>   # ou gh run view <run-id> --log
+```
+
+Note : les filtres `paths` du push ne s'appliquent pas à `workflow_dispatch` —
+les deux workflows se déclenchent toujours en manuel.
+
+### 7.3 F-3 — DOCUMENTÉ (bloquant avant ouverture publique)
+
+trivy-action `exit-code: 0` — les findings HIGH/CRITICAL ne rendent pas le job
+rouge. **À corriger avant ouverture publique** : passer à `exit-code: 1` avec
+une allowlist documentée (annotations `# trivy:ignore` par ligne ou `@ref` par
+finding dans SECURITY-TRIAGE.md) pour les exceptions — aucune exception sans
+ligne de triage signée. Le SARIF reste en artefact d'ici là (consultation
+manuelle ; décision code scanning reportée — nécessiterait
+`security-events: write`).
+
+### 7.4 F-15 — CORRIGÉ (commit `a492c44`) — voir la ligne du registre
+
+Leçon : « le job s'exécute-t-il vraiment ? » s'applique aussi aux suites de
+tests — la simulation `bun test tests/` en conditions CI (DATABASE_URL seul,
+sans serveur ni DB harness) fait désormais partie du runner de durcissement
+(`scripts/hardening-proof-run.sh`).
