@@ -48,6 +48,7 @@ import {
   apiUpsertIdentity,
   isDefinitiveApiError,
   ApiError,
+  describeApiError,
 } from "@/lib/mbote/api";
 import {
   AlertDialog,
@@ -155,6 +156,10 @@ export function MboteApp() {
   // F #1 — le panic wipe du header exige une confirmation (même garde que
   // ProfileView) : deux chemins de destruction, deux fois protégés.
   const [panicConfirmOpen, setPanicConfirmOpen] = useState(false);
+  // F #2 — échec de publication de l'identité : état PERSISTANT (le toast
+  // fugace laissait l'utilisateur croire qu'il était publié — constaté en
+  // rendu réel, UI-AUDIT #2/§6.2 : 429 D2 → contacts ne le voient jamais).
+  const [identityPublishError, setIdentityPublishError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   // D2 — progression du PoW de création (0..1), null = pas de calcul en cours
   const [powProgress, setPowProgress] = useState<number | null>(null);
@@ -520,14 +525,20 @@ export function MboteApp() {
         }
         try {
           await apiUpsertIdentity(identityPayload);
+          setIdentityPublishError(null);
           toast.success("Identité créée et publiée", {
             description: "Tes clés privées ne quitteront jamais cet appareil.",
           });
-        } catch {
+        } catch (e) {
           enqueueOutbox({ type: "identity", payload: identityPayload });
           setOutbox(loadOutbox());
-          toast.info("Clés créées localement", {
-            description: "Ton profil sera publié au retour du réseau.",
+          // F #2 — l'échec n'est plus silencieux : état persistant + cause FR
+          // actionnable (mapping central). La clé locale reste utilisable ; le
+          // profil sera publié au retry ou au retour du réseau (outbox).
+          const cause = describeApiError(e);
+          setIdentityPublishError(cause);
+          toast.warning("Profil non publié — tes clés locales restent actives", {
+            description: cause,
           });
         }
         setOnboardingOpen(false);
@@ -959,6 +970,40 @@ export function MboteApp() {
           </div>
         </div>
       </header>
+
+      {/* F #2 — échec de publication de l'identité : bannière PERSISTANTE avec
+          cause FR actionnable + bouton Réessayer (flush de la file courrier) */}
+      {identityPublishError && (
+        <div
+          data-testid="identity-publish-error"
+          role="alert"
+          className="mx-auto mt-4 flex w-full max-w-6xl items-start justify-between gap-4 rounded-lg border border-amber-400 bg-amber-100 px-4 py-3 text-sm text-amber-950"
+        >
+          <div className="min-w-0">
+            <p className="font-semibold">Profil non publié — tes clés locales restent actives</p>
+            <p className="mt-0.5 break-words">{identityPublishError}</p>
+            <p className="mt-0.5 text-xs text-amber-900">
+              Le profil rejoindra le réseau dès la publication réussie (bouton ci-contre ou retour du réseau).
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              size="sm"
+              className="h-11"
+              onClick={() => {
+                void flushOutbox().then(() => {
+                  if (loadOutbox().length === 0) setIdentityPublishError(null);
+                });
+              }}
+            >
+              Réessayer la publication
+            </Button>
+            <Button size="sm" variant="ghost" className="h-11" onClick={() => setIdentityPublishError(null)}>
+              Masquer
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ---------- corps ---------- */}
       <div className="mx-auto flex w-full max-w-6xl flex-1 gap-6 px-4 py-6 pb-24 lg:pb-6">

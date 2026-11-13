@@ -31,6 +31,74 @@ export function isDefinitiveApiError(e: unknown): boolean {
   return e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429;
 }
 
+/**
+ * F (Clarification 3) — mapping central statut → message FR actionnable.
+ * Couvre TOUS les codes réellement émis par les routes (inventaire :
+ * grep 'status: [0-9]+' src/app/api/ admin/src/app/api/ → 400, 401, 403,
+ * 404, 405, 409, 410, 413, 422, 429, 500 (app) + 502, 400 (BFF admin)
+ * + 503 (pile média) — plus des défauts honnêtes pour tout le reste).
+ * Le message serveur (déjà FR sur la plupart des routes) reste prioritaire :
+ * ce mapping n'est le fallback QUE quand body.error est absent ou brut.
+ */
+export function describeApiStatus(status: number): string {
+  switch (status) {
+    case 400:
+      return "Requête invalide — vérifie le contenu envoyé puis réessaie.";
+    case 401:
+      return "Session absente ou expirée — reconnecte-toi (ou recrée ton identité locale).";
+    case 403:
+      return "Action refusée — ton rôle ou la frontière du canal ne le permet pas.";
+    case 404:
+      return "Ressource introuvable — elle a peut-être été supprimée entre-temps.";
+    case 405:
+      return "Action non supportée par le serveur — mets à jour l'application.";
+    case 409:
+      return "Conflit — l'élément existe déjà ou son état a changé depuis l'affichage.";
+    case 410:
+      return "Élément expiré — refais l'action avec un élément neuf (les intentions four-eyes vivent 1 h).";
+    case 413:
+      return "Contenu trop volumineux — réduis la taille du fichier ou du message.";
+    case 422:
+      return "Contenu refusé par la validation — corrige le formulaire (justification, format…) puis renvoie.";
+    case 429:
+      return "Trop de requêtes — patiente un instant avant de réessayer.";
+    case 500:
+      return "Erreur côté serveur — réessaie dans un instant.";
+    case 502:
+      return "Liaison avec le service interrompue — réessaie dans un instant.";
+    case 503:
+      return "Service momentanément indisponible — réessaie plus tard.";
+    default:
+      return status >= 500
+        ? "Erreur côté serveur — réessaie dans un instant."
+        : "Action refusée par le serveur — réessaie.";
+  }
+}
+
+/**
+ * F (groupe « erreurs honnêtes ») — message FR actionnable pour l'affichage :
+ * · ApiError → le message serveur s'il existe et n'est pas brut (« HTTP 429 »),
+ *   sinon le mapping central du statut ;
+ * · AbortError → délai dépassé ;
+ * · transport/réseau → message actionnable hors-ligne ;
+ * · autre Error → son message (erreurs locales déjà FR).
+ */
+export function describeApiError(e: unknown): string {
+  if (e instanceof ApiError) {
+    const raw = e.message ?? "";
+    if (raw.length === 0 || /^HTTP \d{3}/.test(raw)) return describeApiStatus(e.status);
+    return raw;
+  }
+  if (e instanceof DOMException && e.name === "AbortError") {
+    return "Délai dépassé — vérifie ta connexion puis réessaie.";
+  }
+  if (e instanceof TypeError) {
+    return "Réseau injoignable — ton action reste en file locale et partira au retour du réseau.";
+  }
+  if (e instanceof Error && e.message.length > 0) return e.message;
+  return "Une erreur inattendue est survenue — réessaie.";
+}
+
 async function jsonFetch<T>(url: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
   const ctrl = new AbortController();
   const timer = setTimeout(
@@ -45,10 +113,12 @@ async function jsonFetch<T>(url: string, init?: RequestInit, timeoutMs?: number)
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new ApiError(
-        (body as { error?: string }).error ?? `HTTP ${res.status}`,
-        res.status
-      );
+      const serverError = (body as { error?: unknown }).error;
+      const message =
+        typeof serverError === "string" && serverError.length > 0
+          ? serverError
+          : describeApiStatus(res.status);
+      throw new ApiError(message, res.status);
     }
     return res.json() as Promise<T>;
   } finally {
