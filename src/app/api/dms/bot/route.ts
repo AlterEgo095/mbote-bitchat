@@ -160,23 +160,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Enveloppe illisible (mauvaise clé ?)" }, { status: 400 });
     }
 
-    // 2) stocker le message utilisateur → bot
-    await db.directMessage.create({
-      data: { senderKey: meKey, recipientKey: bot.pubkey, iv, ciphertext },
-    });
-
-    // 3) répondre, chiffré vers l'utilisateur
+    // 2) réponse préparée AVANT la transaction — le chiffrement (async) ne
+    //    doit pas tenir le verrou d'écriture SQLite (invariant §4d)
     const reply = botReply(plaintext.slice(0, 400));
     const rIv = new Uint8Array(12);
     globalThis.crypto.getRandomValues(rIv);
     const rCt = await subtle().encrypt({ name: "AES-GCM", iv: rIv }, aesKey, new TextEncoder().encode(reply));
-    const botMessage = await db.directMessage.create({
-      data: {
-        senderKey: bot.pubkey,
-        recipientKey: meKey,
-        iv: bufToB64url(rIv.buffer as ArrayBuffer),
-        ciphertext: bufToB64url(rCt),
-      },
+
+    // 3) ATOMIQUE (invariant §4d, écart corrigé vague durcissement) : message
+    //    utilisateur + réponse bot dans la MÊME $transaction — un crash entre
+    //    les deux ne laisse plus un message user SANS réponse (incohérence de
+    //    conversation).
+    const botMessage = await db.$transaction(async (tx) => {
+      await tx.directMessage.create({
+        data: { senderKey: meKey, recipientKey: bot.pubkey, iv, ciphertext },
+      });
+      return tx.directMessage.create({
+        data: {
+          senderKey: bot.pubkey,
+          recipientKey: meKey,
+          iv: bufToB64url(rIv.buffer as ArrayBuffer),
+          ciphertext: bufToB64url(rCt),
+        },
+      });
     });
 
     const messageDto = {
