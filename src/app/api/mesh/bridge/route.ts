@@ -27,7 +27,7 @@ import {
   trackApiRequest,
 } from "@/lib/mbote/state-store";
 import { checkDmReplay } from "@/lib/mbote/anti-replay";
-import { prismaReplayStore } from "@/lib/mbote/anti-replay-prisma";
+import { prismaReplayStoreFor } from "@/lib/mbote/anti-replay-prisma";
 import { isValidPubkeyFormat } from "@/lib/mbote/proof";
 import { verifyPostSignature } from "@/lib/mbote/verify";
 
@@ -50,6 +50,17 @@ const assembler = getFragmentAssembler();
  *  requête (hash d'entrée) est comptée en hex SHA-256 sur les octets bruts. */
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+/** Détection P2002 par DUCK TYPING ("code" in err) — sous Bun, instanceof
+ *  Prisma est non fiable (convention du repo, cf. anti-replay-prisma.ts). */
+function isP2002(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "P2002"
+  );
 }
 
 /** senderID fixe du serveur (b64url de "serverdownlink") pour les paquets downlink */
@@ -109,6 +120,17 @@ export async function POST(req: NextRequest) {
     let invalid = 0;
     let duplicates = 0;
 
+    /** résultat d'un paquet (sortie de la $transaction — effets de bord APRÈS commit) */
+    type PacketTxOutcome = {
+      status: "accepted" | "duplicate" | "invalid";
+      detail: string;
+      /** incrémente le compteur `duplicates` (dédup hash, course de marque, garde DM) */
+      dupCounter?: boolean;
+      /** post créé — relayNotify exécuté APRÈS commit (jamais d'effet réseau dans la tx) */
+      postDto?: unknown;
+      postGeohash?: string | null;
+    };
+
     for (const raw of packets) {
       let bytes: Uint8Array;
       let hash = "";
@@ -128,197 +150,219 @@ export async function POST(req: NextRequest) {
         const pkt = decodePacket(bytes);
         const hops = Math.max(0, TTL_MAX - pkt.ttl);
 
-        // marque ingéré AVANT traitement (un paquet = une entité, jamais deux)
-        await db.meshIngest.create({
-          data: { hash, gatewayId, type: pkt.type, hops },
-        });
-
-        // payload complet, ou fragment d'un paquet fragmenté (§2 whitepaper) :
-        // le serveur réassemble comme le ferait un pair BitChat (jusqu'à 1 MiB)
-        let event: MeshEvent;
-        try {
-          event = decodeMeshEvent(pkt.payload);
-        } catch {
-          const fragIndex = pkt.payload[2];
-          const fragTotal = pkt.payload[3];
-          if (pkt.payload.length <= 4 || fragTotal < 2) {
-            throw new Error("payload illisible (ni JSON ni fragment valide)");
-          }
-          const full = assembler.push(pkt.payload);
-          if (!full) {
-            results.push({
-              hash,
-              status: "accepted",
-              detail: `fragment ${fragIndex + 1}/${fragTotal} en attente de réassembly`,
-            });
-            continue;
-          }
-          event = decodeMeshEvent(full);
-        }
-
-        if (event.kind === "announce") {
-          // F-01 : un announce mesh n'est PAS signé (protocole v1) → création
-          // seule : jamais d'écrasement d'une identité existante (usurpation
-          // du pseudo/bio/ecdhPub par un tiers). Les identités prouvées
-          // (posts signés, /api/identity) restent les seules voies de mise à jour.
-          if (!isValidPubkeyFormat(event.pubkey)) {
-            throw new Error("clé publique d'émetteur invalide");
-          }
-          const existing = await db.user.findUnique({ where: { pubkey: event.pubkey } });
-          if (!existing) {
-            await db.user.create({
-              data: {
-                pubkey: event.pubkey,
-                nickname: event.nickname.slice(0, 32) || "pair-mesh",
-                ecdhPub: event.ecdhPub ?? null,
-              },
-            });
-          }
-        }
-
-        if (event.kind === "post") {
-          // F-01 : signature ECDSA OBLIGATOIRE et vérifiée pour toute
-          // publication entrant par le pont — sinon rejet du paquet.
-          if (typeof event.signature !== "string" || event.signature.length === 0) {
-            throw new Error("publication non signée (rejetée)");
-          }
-          const sigCheck = await verifyPostSignature({
-            pubkey: event.pubkey,
-            content: String(event.content ?? ""),
-            ts: event.ts,
-            signature: event.signature,
-          });
-          if (!sigCheck.valid) {
-            throw new Error(`signature refusée : ${sigCheck.reason ?? "invalide"}`);
-          }
-
-          const text = String(event.content ?? "").trim();
-          if (!text || text.length > 500) throw new Error("contenu invalide");
-          if (event.geohash && !GEOHASH_RE.test(event.geohash)) {
-            throw new Error("geohash invalide");
-          }
-          // Identité PROUVÉE par la signature ci-dessus → upsert complet autorisé
-          const author = await db.user.upsert({
-            where: { pubkey: event.pubkey },
-            update: {
-              nickname: event.nickname.slice(0, 32),
-              ...(event.ecdhPub ? { ecdhPub: event.ecdhPub } : {}),
-            },
-            create: {
-              pubkey: event.pubkey,
-              nickname: event.nickname.slice(0, 32) || "pair-mesh",
-              ecdhPub: event.ecdhPub ?? null,
-            },
-          });
-
-          // idempotence inter-canaux (D4) : le même événement signé arrivé
-          // à la fois par le web et par une passerelle mesh = UN seul post.
+        // ── ATOMIQUE (invariant §4d, écart corrigé vague durcissement) :
+        //    la marque ingéré + le contenu vivent dans la MÊME $transaction.
+        //    Avant : marque écrite AVANT traitement — un échec après laissait
+        //    le paquet « ingéré » (dédup hash) SANS contenu : la remise de la
+        //    passerelle était refusée pour toujours (contenu perdu, retry NON
+        //    idempotent). Désormais tout échec → ROLLBACK complet → la
+        //    passerelle peut re-remettre le paquet (retry idempotent par hash).
+        const outcome: PacketTxOutcome = await db.$transaction(async (tx) => {
           try {
-            const post = await db.$transaction(async (tx) => {
-              const created = await tx.post.create({
-                data: {
-                  authorId: author.id,
-                  content: text,
-                  geohash: event.geohash ?? null,
-                  precision: event.precision ?? null,
-                  parentId: event.parentId ?? null,
-                  signature: event.signature ?? null,
-                  origin: "mesh",
-                  meshHops: hops,
-                },
-              });
-              if (event.parentId) {
-                await tx.post.update({
-                  where: { id: event.parentId },
-                  data: { replyCount: { increment: 1 } },
+            // marque ingéré — même tx que le contenu qu'elle référence
+            await tx.meshIngest.create({
+              data: { hash, gatewayId, type: pkt.type, hops },
+            });
+
+            // payload complet, ou fragment d'un paquet fragmenté (§2 whitepaper) :
+            // le serveur réassemble comme le ferait un pair BitChat (jusqu'à 1 MiB)
+            let event: MeshEvent;
+            try {
+              event = decodeMeshEvent(pkt.payload);
+            } catch {
+              const fragIndex = pkt.payload[2];
+              const fragTotal = pkt.payload[3];
+              if (pkt.payload.length <= 4 || fragTotal < 2) {
+                throw new Error("payload illisible (ni JSON ni fragment valide)");
+              }
+              const full = assembler.push(pkt.payload); // mémoire — jamais de DB dans la tx
+              if (!full) {
+                return {
+                  status: "accepted",
+                  detail: `fragment ${fragIndex + 1}/${fragTotal} en attente de réassembly`,
+                };
+              }
+              event = decodeMeshEvent(full);
+            }
+
+            if (event.kind === "announce") {
+              // F-01 : un announce mesh n'est PAS signé (protocole v1) → création
+              // seule : jamais d'écrasement d'une identité existante (usurpation
+              // du pseudo/bio/ecdhPub par un tiers). Les identités prouvées
+              // (posts signés, /api/identity) restent les seules voies de mise à jour.
+              if (!isValidPubkeyFormat(event.pubkey)) {
+                throw new Error("clé publique d'émetteur invalide");
+              }
+              const existing = await tx.user.findUnique({ where: { pubkey: event.pubkey } });
+              if (!existing) {
+                await tx.user.create({
+                  data: {
+                    pubkey: event.pubkey,
+                    nickname: event.nickname.slice(0, 32) || "pair-mesh",
+                    ecdhPub: event.ecdhPub ?? null,
+                  },
                 });
               }
-              return created;
-            });
-            const postDto = toPostDto({
-              ...post,
-              author: {
-                ...author,
-                _count: { posts: 0, followers: 0, following: 0 },
-              },
-            });
-            createdPosts.push(postDto);
-            relayNotify(
-              "post:new",
-              { post: postDto },
-              post.geohash ? ["feed", `channel:${post.geohash}`] : ["feed"]
-            );
-            results.push({ hash, status: "accepted", detail: `publication · ${hops} saut(s)` });
+              return { status: "accepted", detail: "présence enregistrée" };
+            }
+
+            if (event.kind === "post") {
+              // F-01 : signature ECDSA OBLIGATOIRE et vérifiée pour toute
+              // publication entrant par le pont — sinon rejet du paquet.
+              if (typeof event.signature !== "string" || event.signature.length === 0) {
+                throw new Error("publication non signée (rejetée)");
+              }
+              const sigCheck = await verifyPostSignature({
+                pubkey: event.pubkey,
+                content: String(event.content ?? ""),
+                ts: event.ts,
+                signature: event.signature,
+              });
+              if (!sigCheck.valid) {
+                throw new Error(`signature refusée : ${sigCheck.reason ?? "invalide"}`);
+              }
+
+              const text = String(event.content ?? "").trim();
+              if (!text || text.length > 500) throw new Error("contenu invalide");
+              if (event.geohash && !GEOHASH_RE.test(event.geohash)) {
+                throw new Error("geohash invalide");
+              }
+              // Identité PROUVÉE par la signature ci-dessus → upsert complet autorisé
+              const author = await tx.user.upsert({
+                where: { pubkey: event.pubkey },
+                update: {
+                  nickname: event.nickname.slice(0, 32),
+                  ...(event.ecdhPub ? { ecdhPub: event.ecdhPub } : {}),
+                },
+                create: {
+                  pubkey: event.pubkey,
+                  nickname: event.nickname.slice(0, 32) || "pair-mesh",
+                  ecdhPub: event.ecdhPub ?? null,
+                },
+              });
+
+              // idempotence inter-canaux (D4) : le même événement signé arrivé
+              // à la fois par le web et par une passerelle mesh = UN seul post.
+              // P2002 sur la signature unique → tx CONTINUE (marque gardée :
+              // les remises futures sont dédupliquées par hash).
+              try {
+                const created = await tx.post.create({
+                  data: {
+                    authorId: author.id,
+                    content: text,
+                    geohash: event.geohash ?? null,
+                    precision: event.precision ?? null,
+                    parentId: event.parentId ?? null,
+                    signature: event.signature ?? null,
+                    origin: "mesh",
+                    meshHops: hops,
+                  },
+                });
+                if (event.parentId) {
+                  await tx.post.update({
+                    where: { id: event.parentId },
+                    data: { replyCount: { increment: 1 } },
+                  });
+                }
+                const postDto = toPostDto({
+                  ...created,
+                  author: {
+                    ...author,
+                    _count: { posts: 0, followers: 0, following: 0 },
+                  },
+                });
+                return {
+                  status: "accepted",
+                  detail: `publication · ${hops} saut(s)`,
+                  postDto,
+                  postGeohash: created.geohash,
+                };
+              } catch (err) {
+                if (isP2002(err)) {
+                  return {
+                    status: "duplicate",
+                    detail: "déjà ingéré via un autre canal (signature identique)",
+                  };
+                }
+                throw err;
+              }
+            }
+
+            if (event.kind === "dm") {
+              // A1 : anti-rejeu UNIFIÉ — la garde est LIÉE AU PAYLOAD
+              // (sender|recipient|iv|ciphertext) : ré-emballer le même DM dans un
+              // nouveau paquet (nouveau TTL/timestamp, msgId/seq forgés — les
+              // événements dm du pont ne sont pas signés, par conception E2EE)
+              // reste un doublon. Ts hors fenêtre (7 j / futur) → invalid.
+              // Garde DANS la tx (prismaReplayStoreFor — garde + message atomiques).
+              const verdict = await checkDmReplay(prismaReplayStoreFor(tx), {
+                senderKey: event.senderPub,
+                recipientKey: event.recipientPub,
+                iv: event.iv,
+                ciphertext: event.ciphertext,
+                ts: event.ts,
+                msgId: event.msgId ?? null,
+                // A1 : seq NON opposable sur le pont — elle n'y est pas couverte par
+                // une signature (événements dm opaques) ; l'imposer permettrait à un
+                // tiers d'empoisonner le compteur de la conversation (DoS). Sur le
+                // pont, la seule barrière est la garde liée au payload. Le seq
+                // transporté reste stocké comme métadonnée.
+                seq: null,
+              });
+              if (!verdict.ok) {
+                if (verdict.outcome === "duplicate") {
+                  return {
+                    status: "duplicate",
+                    detail: `anti-rejeu : ${verdict.reason}`,
+                    dupCounter: true,
+                  };
+                }
+                return { status: "invalid", detail: `anti-rejeu : ${verdict.reason}` };
+              }
+              await tx.directMessage.create({
+                data: {
+                  senderKey: event.senderPub,
+                  recipientKey: event.recipientPub,
+                  iv: event.iv,
+                  ciphertext: event.ciphertext,
+                  ...(event.msgId ? { msgId: event.msgId, seq: event.seq ?? null } : {}),
+                },
+              });
+              return {
+                status: "accepted",
+                detail: "DM scellé déposé (opaque, garde anti-rejeu)",
+              };
+            }
+
+            return { status: "accepted", detail: "gossip comptabilisé" };
           } catch (err) {
-            if (
-              typeof err === "object" &&
-              err !== null &&
-              "code" in err &&
-              (err as { code?: string }).code === "P2002"
-            ) {
-              results.push({
-                hash,
-                status: "duplicate",
-                detail: "déjà ingéré via un autre canal (signature identique)",
-              });
-              continue;
+            // course inter-passerelles sur la marque hash (P2002) → doublon
+            // d'ingestion concurrent : la tx se commite sans nouveau contenu,
+            // la remise suivante est dédupliquée par hash.
+            if (isP2002(err)) {
+              return { status: "duplicate", detail: "déjà ingéré (course concurrente)", dupCounter: true };
             }
-            throw err;
+            throw err; // → ROLLBACK complet (marque + contenu) — retry idempotent
           }
-        } else if (event.kind === "dm") {
-          // A1 : anti-rejeu UNIFIÉ — la garde est LIÉE AU PAYLOAD
-          // (sender|recipient|iv|ciphertext) : ré-emballer le même DM dans un
-          // nouveau paquet (nouveau TTL/timestamp, msgId/seq forgés — les
-          // événements dm du pont ne sont pas signés, par conception E2EE)
-          // reste un doublon. Ts hors fenêtre (7 j / futur) → invalid.
-          const verdict = await checkDmReplay(prismaReplayStore(), {
-            senderKey: event.senderPub,
-            recipientKey: event.recipientPub,
-            iv: event.iv,
-            ciphertext: event.ciphertext,
-            ts: event.ts,
-            msgId: event.msgId ?? null,
-            // A1 : seq NON opposable sur le pont — elle n'y est pas couverte par
-            // une signature (événements dm opaques) ; l'imposer permettrait à un
-            // tiers d'empoisonner le compteur de la conversation (DoS). Sur le
-            // pont, la seule barrière est la garde liée au payload. Le seq
-            // transporté reste stocké comme métadonnée.
-            seq: null,
-          });
-          if (!verdict.ok) {
-            if (verdict.outcome === "duplicate") {
-              duplicates++;
-              results.push({
-                hash,
-                status: "duplicate",
-                detail: `anti-rejeu : ${verdict.reason}`,
-              });
-            } else {
-              invalid++;
-              results.push({
-                hash,
-                status: "invalid",
-                detail: `anti-rejeu : ${verdict.reason}`,
-              });
-            }
-            continue;
-          }
-          await db.directMessage.create({
-            data: {
-              senderKey: event.senderPub,
-              recipientKey: event.recipientPub,
-              iv: event.iv,
-              ciphertext: event.ciphertext,
-              ...(event.msgId ? { msgId: event.msgId, seq: event.seq ?? null } : {}),
-            },
-          });
-          results.push({ hash, status: "accepted", detail: "DM scellé déposé (opaque, garde anti-rejeu)" });
-        } else if (event.kind === "announce") {
-          results.push({ hash, status: "accepted", detail: "présence enregistrée" });
-        } else {
-          results.push({ hash, status: "accepted", detail: "gossip comptabilisé" });
+        });
+
+        // effets de bord APRÈS commit (jamais d'effet réseau dans la tx)
+        if (outcome.status === "duplicate") {
+          if (outcome.dupCounter) duplicates++;
+        } else if (outcome.status === "invalid") {
+          invalid++;
+        } else if (outcome.postDto !== undefined) {
+          createdPosts.push(outcome.postDto);
+          relayNotify(
+            "post:new",
+            { post: outcome.postDto },
+            outcome.postGeohash ? ["feed", `channel:${outcome.postGeohash}`] : ["feed"]
+          );
         }
+        results.push({ hash, status: outcome.status, detail: outcome.detail });
       } catch (e) {
+        // la $transaction a ROLLBACK (marque + contenu) → le paquet est
+        // ré-ingérable : la passerelle peut le re-remettre sans perte.
         invalid++;
         results.push({
           hash: hash || "-",
