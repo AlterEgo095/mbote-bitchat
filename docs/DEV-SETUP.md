@@ -283,6 +283,119 @@ navigateur Chromium → greps frontière → check-merge-clean).
 
 ---
 
+## 4d. INVARIANT SQLite : toute mutation de données dans une route API DOIT être dans une `$transaction` Prisma — `tx` obligatoire pour les appels internes (formalisé vague D2/D3, 3ᵉ occurrence : P2028)
+
+> **INVARIANT NON NÉGOCIABLE** : toute mutation de données dans une route API
+> DOIT être dans une `$transaction` Prisma et utiliser `tx` pour les appels
+> internes. Les écritures hors transaction sur SQLite provoquent des
+> deadlocks/lock timeouts. **Exception documentée** : si l'opération est
+> strictement unique et idempotente (ex. AdminAudit séquentiel), justifier par
+> commentaire.
+
+### Les 3 occurrences de la classe
+
+Classe de bug récurrente : **écriture via le client global `db` (1) hors
+transaction, ou (2) pire — PENDANT qu'une transaction est ouverte**. SQLite
+verrouille le fichier à l'écriture : un `db.*` global pendant une `tx` ouverte
+se bloque lui-même (pool de connexions distinctes) → deadlock 5 s → P2028
+« transaction already closed » ou lock timeout.
+
+1. **Deadlock** — `writeAdminAudit` appelé via le client global DANS une
+   `$transaction` ouverte (cancel d'intention admin, vague Étape 10) :
+   pool bloqué 5 s par cancel, attrapé par le harnais au 2ᵉ run. Fix :
+   `writeAdminAudit({ tx, … })` — commentaire `⚠️ tx OBLIGATOIRE` sur le site
+   (`src/lib/mbote/pending-action.ts`).
+2. **TOCTOU** — deux super-admins créent la même intention concurrente : le
+   `findFirst` de doublon passe des deux côtés. Fix STRUCTUREL : index unique
+   partiel `pending_action_unique_open` (migration 0008) + catch P2002 → 409
+   avec l'intention gagnante. Leçon : le TOCTOU se règle par une contrainte
+   DB, pas par un test préalable (`src/lib/mbote/pending-action.ts`).
+3. **P2028** — `commitUsageIncrement` appelé hors `tx` (vague D2, plafonds
+   Sybil) : l'incrément du compteur partait sur le client global pendant que la
+   tx du post était ouverte → P2028 à l'écriture concurrente. Fix : signature
+   `commitUsageIncrement(userId, verdict, kind, tx?)` + appelants
+   `/api/posts` et `/api/dms` passent leur `tx`.
+
+### Pattern obligatoire
+
+```ts
+// ✅ CORRECT — une seule $transaction, tx passé aux appels internes
+const created = await db.$transaction(async (tx) => {
+  const post = await tx.post.create({ data });
+  await commitUsageIncrement(author.id, quota, "posts", tx); // tx OBLIGATOIRE
+  await writeAdminAudit({ tx, action: "…", … });             // tx OBLIGATOIRE
+  return post;
+});
+```
+
+Règles dérivées :
+1. Tout helper qui écrit (`writeAdminAudit`, `commitUsageIncrement`,
+   `revokeAdminSession`…) accepte un paramètre `tx?` et écrit via `tx ?? db` —
+   **l'appelant dans une `$transaction` DOIT passer son `tx`**.
+2. Pour les sections critiques admin multi-écritures, enchaîner
+   `withWriteLock(() => db.$transaction(...))` (mutex process global,
+   `src/lib/mbote/write-mutex.ts`) — l'ordre global des écritures reste
+   séquentiel et le pool ne s'auto-bloque jamais.
+3. Le TOCTOU se règle par contrainte DB (index unique partiel) + catch P2002,
+   jamais par un seul `findFirst` préalable.
+4. Jamais de `await db.*` (client global) à l'intérieur d'un callback
+   `$transaction` — c'est exactement le deadlock de l'occurrence 1.
+
+### Exception documentée (classe « unique + idempotent »)
+
+Une **écriture unique atomique** (un seul statement) hors toute transaction
+ouverte n'entre pas dans la classe de bug : le statement est son propre
+monde transactionnel. Condition cumulatives : (a) UNE seule écriture, (b)
+idempotente par contrainte (PK/unique) ou par sémantique (`update: {}`,
+`deleteMany` par clé), (c) aucune `$transaction` ouverte au moment de l'appel,
+(d) **justification par commentaire** sur le site. Exemples conformes :
+`consumePowChallenge` (PK unique + fail-closed), `report.create` (P2002 →
+idempotence), `block.upsert` (`update: {}`), read-receipts `updateMany`.
+
+### Constat d'application — grep `writeAdminAudit|commitUsageIncrement|db\.\w+\.(create|update|delete)` (2026-11-13, commit 25aaa56, 25 fichiers src/)
+
+**Conformes en `$transaction` + `tx`** :
+
+| Site | Structure |
+|---|---|
+| `src/app/api/posts/route.ts` | `$transaction` : post.create + replyCount + `commitUsageIncrement(tx)` ✅ |
+| `src/app/api/dms/route.ts` | `$transaction` DM + `commitUsageIncrement(tx)` ✅ |
+| `src/lib/mbote/user-moderation.ts` ×3 | `withWriteLock` + `$transaction` + `writeAdminAudit({ tx })` ✅ |
+| `src/lib/mbote/pending-action.ts` (execute/cancel) | `withWriteLock` + `$transaction` + `writeAdminAudit({ tx })` ✅ |
+| `src/lib/mbote/sybil-server.ts` `sweepPostReputation` | `$transaction` (updateMany + user.update) ✅ |
+| `src/app/api/follows/route.ts` (follow) | `$transaction` (upsert + FollowCredit anti-farm) ✅ |
+| `src/app/api/groups/route.ts` | create nested (membres + enveloppes) = tx implicite Prisma ✅ |
+| `src/app/api/seed/route.ts` (replies/likes) | `$transaction([])` array (create + compteur) ✅ |
+
+**Exception classe « unique + idempotent » (conformes, commentaire présent)** :
+`consumePowChallenge` (PK unique fail-closed), `/api/report` (P2002 idempotent),
+`/api/block` (upsert `update:{}` / deleteMany), `/api/follows` unfollow
+(deleteMany), `/api/media/upload-url` + `/finalize` (machine à états single),
+`/api/push/unsubscribe` (updateMany), `/api/dms` read-receipts (updateMany),
+`state-store.ts` purge (deleteMany), `/api/mls/keypackages/[userKey]` (delete
+unique), groupes messages (create unique), audits séquentiels login/logout/
+break-glass `auditFailure`/`totp-enroll` audit (AdminAudit séquentiel, aucune tx
+ouverte), `admin-auth.ts` `lastSeenAt` (single-row par requête).
+
+**ÉCARTS identifiés (multi-écritures hors `$transaction` — à corriger ou
+justifier par commentaire au prochain touch du fichier ; aucun n'écrit via le
+client global DANS une tx ouverte, donc aucun n'est de la classe
+deadlock/P2028, mais tous violent la lettre de l'invariant)** :
+
+| Site | Écritures | Risque si crash entre deux | Gravité |
+|---|---|---|---|
+| `/api/internal/admin/break-glass` | burn code → revoke sessions → reset TOTP (3 writes) | code brûlé sans re-enrollment → admin dégradé (récupérable via 2ᵉ code) | majeur |
+| `/api/internal/admin/totp-enroll` | update TOTP + audit (2 writes) | enrollment sans trace d'audit | mineur |
+| `/api/dms/bot` | create msg user + create réponse bot (2 writes) | message user sans réponse bot | mineur |
+| `/api/mesh/bridge` | marque `meshIngest.create` AVANT post/DM create | paquet marqué ingéré mais contenu non créé (perte silencieuse du paquet — commentaire « marque ingéré AVANT traitement » assumé mais sans justification de perte) | mineur |
+| `/api/mls/keypackages` | create + prune deleteMany | keypackages excédentaires (auto-rattrapage au publish suivant) | mineur |
+
+Ces écarts sont des **candidats de correction** — leur réparation passe par une
+vague dédiée (même discipline : test d'abord, fix, preuve) ; ils n'ont PAS été
+corrigés dans la vague d'audit.
+
+---
+
 ## 5. `mobile/` : le miroir est synchronisé au VPS — ne pas ré-exclure (incident I-1)
 
 Le rsync du déploiement (`deploy-vps.yml`) synchronise `mobile/` vers le VPS.
