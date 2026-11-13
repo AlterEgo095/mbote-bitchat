@@ -1,0 +1,227 @@
+{
+  "vues": 18,
+  "totalViolations": 6,
+  "totalNodes": 9,
+  "byImpact": {
+    "serious": 9
+  },
+  "parVue": [
+    {
+      "name": "feed",
+      "violations": 0,
+      "nodes": 0,
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 848,
+      "notes": [
+        "post publié via composer — succès rendu dans le fil",
+        "like cliqué — aria-pressed bascule (optimiste)",
+        "hub STOPPED (pid 13440) — pastille statut observée",
+        "responsive 375 : onboarding (dialog) + feed + messages + profile capturés — garde D2 respectée (2 créations/run)"
+      ]
+    },
+    {
+      "name": "messages-vide",
+      "violations": 0,
+      "nodes": 0,
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 282,
+      "notes": [
+        "dialog « Choisir un contact » s'ouvre depuis l'état vide (B2-fix)"
+      ]
+    },
+    {
+      "name": "profile",
+      "violations": 0,
+      "nodes": 0,
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 405,
+      "notes": []
+    },
+    {
+      "name": "groups-vide",
+      "violations": 1,
+      "nodes": 1,
+      "critical": 0,
+      "serious": 1,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 287,
+      "notes": []
+    },
+    {
+      "name": "channels",
+      "violations": 0,
+      "nodes": 0,
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 404,
+      "notes": []
+    },
+    {
+      "name": "network",
+      "violations": 0,
+      "nodes": 0,
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 1044,
+      "notes": []
+    },
+    {
+      "name": "recherche-dialog",
+      "violations": 0,
+      "nodes": 0,
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 940,
+      "notes": []
+    },
+    {
+      "name": "dm-conversation-alice",
+      "violations": 0,
+      "nodes": 0,
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 416,
+      "notes": [
+        "aller-retour DM E2EE réel OK (socket :3040)"
+      ]
+    },
+    {
+      "name": "dm-conversation-bob",
+      "violations": 0,
+      "nodes": 0,
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 423,
+      "notes": []
+    },
+    {
+      "name": "messages-offline",
+      "violations": 1,
+      "nodes": 2,
+      "critical": 0,
+      "serious": 1,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 483,
+      "notes": [
+        "bulle hors-ligne rendue + badge header file locale"
+      ]
+    },
+    {
+      "name": "call-entrant",
+      "violations": 1,
+      "nodes": 1,
+      "critical": 0,
+      "serious": 1,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 335,
+      "notes": []
+    },
+    {
+      "name": "call-actif",
+      "violations": 1,
+      "nodes": 1,
+      "critical": 0,
+      "serious": 1,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 479,
+      "notes": [
+        "appel audio réel actif (WebRTC + TURN harnais) — timer visible"
+      ]
+    },
+    {
+      "name": "groupe-cree",
+      "violations": 1,
+      "nodes": 1,
+      "critical": 0,
+      "serious": 1,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 441,
+      "notes": [
+        "groupe MLS créé avec Bob (commit + welcome diffusés)",
+        "groupe NON visible côté Bob après 25s (welcome/enveloppe — voir UI-AUDIT)"
+      ]
+    },
+    {
+      "name": "admin-dashboard",
+      "violations": 0,
+      "nodes": 0,
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 187,
+      "notes": []
+    },
+    {
+      "name": "admin-queue",
+      "violations": 0,
+      "nodes": 0,
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 216,
+      "notes": [
+        "formulaire justification ouvert (compteur n/20 visible)"
+      ]
+    },
+    {
+      "name": "admin-users",
+      "violations": 0,
+      "nodes": 0,
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 460,
+      "notes": []
+    },
+    {
+      "name": "admin-audit",
+      "violations": 0,
+      "nodes": 0,
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 481,
+      "notes": []
+    },
+    {
+      "name": "admin-pending-actions",
+      "violations": 1,
+      "nodes": 3,
+      "critical": 0,
+      "serious": 1,
+      "moderate": 0,
+      "minor": 0,
+      "passes": 163,
+      "notes": []
+    }
+  ],
+  "bootedAt": "http://127.0.0.1:3110"
+}

@@ -1,0 +1,8 @@
+{
+  "name": "network",
+  "url": "http://127.0.0.1:3110/?view=network",
+  "violations": [],
+  "passes": 1044,
+  "incomplete": 37,
+  "notes": []
+}

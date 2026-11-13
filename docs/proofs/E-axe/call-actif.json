@@ -1,0 +1,24 @@
+{
+  "name": "call-actif",
+  "url": "http://127.0.0.1:3110#call-actif",
+  "violations": [
+    {
+      "id": "label-content-name-mismatch",
+      "impact": "serious",
+      "nodes": 1,
+      "help": "Elements must have their visible text as part of their accessible name",
+      "targets": [
+        {
+          "selector": [
+            ".bg-destructive"
+          ],
+          "html": "<button data-slot=\"button\" class=\"inline-flex items-ce...\" aria-label=\"Terminer l'appel\" data-testid=\"call-hangup\">",
+          "summary": "Fix any of the following:\n  Text inside the element is not included in the accessible name"
+        }
+      ]
+    }
+  ],
+  "passes": 479,
+  "incomplete": 4,
+  "notes": []
+}

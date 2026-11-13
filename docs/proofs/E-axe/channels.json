@@ -1,0 +1,8 @@
+{
+  "name": "channels",
+  "url": "http://127.0.0.1:3110/?view=channels",
+  "violations": [],
+  "passes": 404,
+  "incomplete": 1,
+  "notes": []
+}

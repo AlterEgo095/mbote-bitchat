@@ -1,0 +1,8 @@
+{
+  "name": "messages-vide",
+  "url": "http://127.0.0.1:3110/?view=messages",
+  "violations": [],
+  "passes": 282,
+  "incomplete": 1,
+  "notes": []
+}

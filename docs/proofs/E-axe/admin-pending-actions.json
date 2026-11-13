@@ -1,0 +1,38 @@
+{
+  "name": "admin-pending-actions",
+  "url": "http://127.0.0.1:3104/pending-actions",
+  "violations": [
+    {
+      "id": "color-contrast",
+      "impact": "serious",
+      "nodes": 3,
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "targets": [
+        {
+          "selector": [
+            "li[data-testid=\"pending-item-1\"] > .flex-wrap.items-center.gap-2 > .ml-auto.text-\\[11px\\].text-zinc-400"
+          ],
+          "html": "<span class=\"ml-auto text-[11px] text-zinc-400\">#<!-- -->1</span>",
+          "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.62 (foreground color: #9f9fa9, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast rati"
+        },
+        {
+          "selector": [
+            "li[data-testid=\"pending-item-2\"] > .flex-wrap.items-center.gap-2 > .ml-auto.text-\\[11px\\].text-zinc-400"
+          ],
+          "html": "<span class=\"ml-auto text-[11px] text-zinc-400\">#<!-- -->2</span>",
+          "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.62 (foreground color: #9f9fa9, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast rati"
+        },
+        {
+          "selector": [
+            ".p-2\\.5 > .flex-wrap.items-center.gap-2 > .text-zinc-400"
+          ],
+          "html": "<span class=\"text-zinc-400\">13/11/2026 08:39</span>",
+          "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.51 (foreground color: #9f9fa9, background color: #fafafa, font size: 9.0pt (12px), font weight: normal). Expected contrast rati"
+        }
+      ]
+    }
+  ],
+  "passes": 163,
+  "incomplete": 0,
+  "notes": []
+}

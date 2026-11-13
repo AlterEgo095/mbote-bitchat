@@ -1,0 +1,31 @@
+{
+  "name": "messages-offline",
+  "url": "http://127.0.0.1:3110/?view=messages",
+  "violations": [
+    {
+      "id": "color-contrast",
+      "impact": "serious",
+      "nodes": 2,
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "targets": [
+        {
+          "selector": [
+            ".border-amber-500\\/40.py-0.text-amber-500"
+          ],
+          "html": "<span data-slot=\"badge\" class=\"inline-flex items-ce...\">",
+          "summary": "Fix any of the following:\n  Element has insufficient color contrast of 4.4 (foreground color: #b87207, background color: #161e1b, font size: 6.8pt (9px), font weight: normal). Expected contrast ratio "
+        },
+        {
+          "selector": [
+            ".flex-wrap.mt-1.gap-1\\.5 > .text-\\[10px\\]"
+          ],
+          "html": "<span class=\"text-[10px] text-muted-foreground\">Sera envoyé dès le retour du réseau</span>",
+          "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.79 (foreground color: #777777, background color: #161e1b, font size: 7.5pt (10px), font weight: normal). Expected contrast rati"
+        }
+      ]
+    }
+  ],
+  "passes": 483,
+  "incomplete": 8,
+  "notes": []
+}

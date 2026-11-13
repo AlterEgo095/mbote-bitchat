@@ -1,0 +1,8 @@
+{
+  "name": "admin-queue",
+  "url": "http://127.0.0.1:3104/queue",
+  "violations": [],
+  "passes": 216,
+  "incomplete": 0,
+  "notes": []
+}

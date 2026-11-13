@@ -1,0 +1,8 @@
+{
+  "name": "dm-conversation-bob",
+  "url": "http://127.0.0.1:3110/?view=messages",
+  "violations": [],
+  "passes": 423,
+  "incomplete": 3,
+  "notes": []
+}

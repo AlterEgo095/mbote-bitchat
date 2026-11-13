@@ -1,0 +1,10 @@
+{
+  "main": "http://127.0.0.1:3110",
+  "panel": "http://127.0.0.1:3104",
+  "hub": "http://127.0.0.1:3040",
+  "db": "/home/z/wt-adm/db/ui-audit.db",
+  "adminEmail": "sa@ui-audit.test",
+  "adminModeratorEmail": "mod@ui-audit.test",
+  "adminPassword": "UiAudit-Passw0rd!",
+  "bootedAt": "2026-11-13T08:39:56.242Z"
+}
