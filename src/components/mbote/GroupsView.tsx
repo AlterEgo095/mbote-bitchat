@@ -204,10 +204,23 @@ export function GroupsView({ identity }: { identity: StoredIdentity }) {
           {groups.map((g) => (
             <Card
               key={g.id}
-              className={`cursor-pointer transition-colors hover:bg-muted/40 ${
+              data-testid={`group-card-${g.id}`}
+              // F #39 — sélection de groupe accessible au clavier et au lecteur
+              // d'écran (2.1.1 / 4.1.2) : la Card cliquable était un div sans
+              // rôle, sans tabIndex, sans keydown — impossible au clavier.
+              role="button"
+              tabIndex={0}
+              aria-pressed={g.id === selectedId}
+              className={`cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 g.id === selectedId ? "border-primary/60" : ""
               }`}
               onClick={() => setSelectedId(g.id === selectedId ? null : g.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSelectedId(g.id === selectedId ? null : g.id);
+                }
+              }}
             >
               <CardContent className="flex items-center justify-between p-4">
                 <div className="min-w-0">
