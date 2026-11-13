@@ -81,10 +81,16 @@ const STATUS_BADGE: Record<string, string> = {
 
 export function PendingActionsView({
   role,
+  myEmail,
   csrfToken,
   initial,
 }: {
   role: string;
+  /** F #72 — email de la session courante (donnée serveur vérifiée, passée
+   *  par la page) : la branche « Vous êtes le demandeur » compare désormais
+   *  une identité à une identité (l'ancien code comparait email === rôle —
+   *  branche inatteignable, diagnostic faux). */
+  myEmail: string | null;
   csrfToken: string;
   initial: PendingLoadState;
 }) {
@@ -323,11 +329,16 @@ export function PendingActionsView({
                       Annuler (demandeur)
                     </button>
                   )}
-                  {!item.canApprove && !item.canCancel && (
-                    <span className="text-xs text-zinc-500">
-                      {item.requestedBy.email === role
+                  {!(item.canApprove && isSuperAdmin) && !(item.canCancel && isSuperAdmin) && (
+                    // F #72 — comparaison IDENTITÉ vs IDENTITÉ (email de session)
+                    // au lieu de email === rôle ; le diagnostic est aussi vrai
+                    // pour un moderator (four-eyes réservé aux super-admins).
+                    <span className="text-xs text-zinc-500" data-testid="four-eyes-note">
+                      {myEmail !== null && item.requestedBy.email === myEmail
                         ? "Vous êtes le demandeur — un second admin doit approuver."
-                        : "En attente — vous n'êtes pas l'acteur de cette ligne (demandeur seul annule)."}
+                        : isSuperAdmin
+                          ? "En attente — vous n'êtes pas l'acteur de cette ligne (demandeur seul annule)."
+                          : "En attente — approbation réservée aux super-admins (four-eyes)."}
                     </span>
                   )}
                 </div>

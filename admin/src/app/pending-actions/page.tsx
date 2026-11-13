@@ -120,6 +120,7 @@ export default async function PendingActionsPage() {
         ) : (
           <PendingActionsView
             role={session?.role ?? "inconnu"}
+            myEmail={session?.email ?? null}
             csrfToken={session?.csrfToken ?? ""}
             initial={initial}
           />
