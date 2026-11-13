@@ -230,36 +230,44 @@ export function GroupsView({ identity }: { identity: StoredIdentity }) {
             <Card
               key={g.id}
               data-testid={`group-card-${g.id}`}
-              // F #39 — sélection de groupe accessible au clavier et au lecteur
-              // d'écran (2.1.1 / 4.1.2) : la Card cliquable était un div sans
-              // rôle, sans tabIndex, sans keydown — impossible au clavier.
-              role="button"
-              tabIndex={0}
-              aria-pressed={g.id === selectedId}
-              className={`cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              className={`transition-colors ${
                 g.id === selectedId ? "border-primary/60" : ""
               }`}
-              onClick={() => setSelectedId(g.id === selectedId ? null : g.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setSelectedId(g.id === selectedId ? null : g.id);
-                }
-              }}
             >
-              <CardContent className="flex items-center justify-between p-4">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{g.name}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {g.members.length} membre{g.members.length > 1 ? "s" : ""} ·{" "}
-                    {g.creatorKey === identity.pubkey ? "vous administrez" : `créé par ${shortKey(g.creatorKey)}`}
-                  </p>
-                </div>
-                <Badge variant="outline" className="shrink-0 gap-1 text-[10px] text-primary">
-                  <ShieldCheck className="size-3" aria-hidden="true" />
-                  MLS
-                </Badge>
-              </CardContent>
+              {/* F #39 — sélection de groupe accessible au clavier et au lecteur
+                  d'écran (2.1.1 / 4.1.2) : la zone cliquable devient un bouton
+                  sémantique — porté par l'EN-TÊTE de la carte uniquement (la
+                  conversation ouverte reste HORS du bouton : un bouton ne peut
+                  pas contenir d'interactifs — axe nested-interactive). */}
+              <div
+                role="button"
+                tabIndex={0}
+                aria-pressed={g.id === selectedId}
+                aria-expanded={g.id === selectedId}
+                data-testid={`group-card-btn-${g.id}`}
+                className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => setSelectedId(g.id === selectedId ? null : g.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedId(g.id === selectedId ? null : g.id);
+                  }
+                }}
+              >
+                <CardContent className="flex items-center justify-between p-4">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{g.name}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {g.members.length} membre{g.members.length > 1 ? "s" : ""} ·{" "}
+                      {g.creatorKey === identity.pubkey ? "vous administrez" : `créé par ${shortKey(g.creatorKey)}`}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="shrink-0 gap-1 text-[10px] text-primary">
+                    <ShieldCheck className="size-3" aria-hidden="true" />
+                    MLS
+                  </Badge>
+                </CardContent>
+              </div>
               {g.id === selectedId && (
                 <GroupConversation
                   group={g}

@@ -118,8 +118,8 @@ async function main(): Promise<number> {
 
   // ── identités réelles (A créateur, B invité — réutilisées par P4/P6/axe) ──
   console.log("[f-proof] N1 — onboarding A + B (identités réelles)");
-  const ctxA = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-  const ctxB = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const ctxA = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+  const ctxB = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
   const pageA = await ctxA.newPage();
   const pageB = await ctxB.newPage();
   await onboard(pageA, "F-Alice");
@@ -169,12 +169,36 @@ async function main(): Promise<number> {
   // ══ P2 — Critique #2 : échec de publication d'identité invisible (429) ════
   console.log("[f-proof] P2 — publication identité 429 (#2)");
   {
-    const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
     const page2 = await ctx2.newPage();
     const identityPosts: number[] = [];
     // avant la publication : chaque POST /api/identity → 429 (même corps que le serveur D2)
+    let identityUnblocked = false;
     await page2.route("**/api/identity", async (route) => {
       if (route.request().method() === "POST") {
+        // NB : le garde D2 réel (3/h/IP) saturerait le retry (l'onboarding A
+        // du harnais consomme des créations) — le succès du retry est MOCKÉ
+        // (réponse 200 même forme que le serveur) pour rester déterministe.
+        if (identityUnblocked) {
+          identityPosts.push(200);
+          const body = route.request().postDataJSON() as { pubkey: string; nickname: string; ecdhPub?: string };
+          await route.fulfill({
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user: {
+                id: "f-proof-user-mock",
+                pubkey: body.pubkey,
+                nickname: body.nickname,
+                bio: null,
+                ecdhPub: body.ecdhPub ?? null,
+                isBot: false,
+                createdAt: new Date().toISOString(),
+              },
+            }),
+          });
+          return;
+        }
         identityPosts.push(429);
         await route.fulfill({
           status: 429,
@@ -198,8 +222,9 @@ async function main(): Promise<number> {
         const txt = await page2.locator('[data-testid="identity-publish-error"]').innerText();
         results.p2_bannerMentionsRetry = /réessaie|Réessaie|Trop de créations/.test(txt);
         await snap(page2, "p2-banniere-persistante-429.png");
-        // retry : débloque la route → POST réel → 200 → bannière disparaît
-        await page2.unroute("**/api/identity");
+        // retry : bascule la route vers un succès mocké (200) → POST réel du
+        // point de vue du client → bannière disparaît
+        identityUnblocked = true;
         await page2.getByRole("button", { name: /Réessayer la publication/ }).click();
         await page2.locator('[data-testid="identity-publish-error"]').waitFor({ state: "detached", timeout: 20000 });
         results.p2_retryWorks = true;
@@ -271,20 +296,31 @@ async function main(): Promise<number> {
 
   console.log("[f-proof] P4 — #39 : sélection de groupe au clavier");
   {
-    // focus « Nouveau groupe » puis Tab : la carte doit devenir focusable (fix)
-    // NB : avant le fix #40, le nom accessible est « Créer un groupe »
-    // (aria-label ≠ texte visible) — le regex couvre les deux états.
+    // focus « Nouveau groupe » puis TABS jusqu'à la carte : la carte doit être
+    // atteignable au clavier (fix #39) — boucle bornée (le DOM contient d'autres
+    // focusables entre le header et la liste : nav, composer, recherche…).
     await pageB.getByRole("button", { name: /Nouveau groupe|Créer un groupe/ }).click();
     await pageB.waitForTimeout(300);
     await pageB.keyboard.press("Escape");
     await pageB.waitForTimeout(300);
-    await pageB.keyboard.press("Tab");
-    const active = await pageB.evaluate(() => {
-      const el = document.activeElement as HTMLElement | null;
-      return el ? { testid: el.getAttribute("data-testid") ?? "", role: el.getAttribute("role") ?? "", text: (el.textContent ?? "").slice(0, 40) } : null;
-    });
+    let active: { testid: string; role: string; text: string } | null = null;
+    let tabs = 0;
+    for (let i = 0; i < 80; i++) {
+      await pageB.keyboard.press("Tab");
+      tabs++;
+      active = await pageB.evaluate(() => {
+        const el = document.activeElement as HTMLElement | null;
+        return el
+          ? { testid: el.getAttribute("data-testid") ?? "", role: el.getAttribute("role") ?? "", text: (el.textContent ?? "").slice(0, 40) }
+          : null;
+      });
+      if (active && (active.testid.startsWith("group-card") || (active.role === "button" && active.text.includes("F-Groupe")))) {
+        break;
+      }
+    }
     const cardRoleButtons = await pageB.getByRole("button", { name: /F-Groupe/ }).count();
     results.p39_activeAfterTab = active;
+    results.p39_tabsToCard = tabs;
     results.p39_cardRoleButtons = cardRoleButtons;
     if (PHASE === "apres") {
       results.p39_cardFocusable =
@@ -309,7 +345,7 @@ async function main(): Promise<number> {
       string,
       { email: string; password: string; totpSecret: string; role: string }
     >;
-    const ctxM = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const ctxM = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
     const pageM = await ctxM.newPage();
     await adminLogin(pageM, secrets["mod@f-proof.test"].email, secrets["mod@f-proof.test"].password, secrets["mod@f-proof.test"].totpSecret);
     await pageM.goto(`${PANEL}/pending-actions`, { waitUntil: "domcontentloaded" });
@@ -320,7 +356,7 @@ async function main(): Promise<number> {
     await snap(pageM, "p72-vue-moderateur.png");
     await ctxM.close();
 
-    const ctxS = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const ctxS = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
     const pageS = await ctxS.newPage();
     await adminLogin(pageS, secrets["sa@f-proof.test"].email, secrets["sa@f-proof.test"].password, secrets["sa@f-proof.test"].totpSecret, 1);
     await pageS.goto(`${PANEL}/pending-actions`, { waitUntil: "domcontentloaded" });
@@ -357,19 +393,29 @@ async function main(): Promise<number> {
         }
       }, AXE_SRC);
       const res = (await page.evaluate(() => {
-        const w = window as unknown as { axe: { run: (sel?: string) => Promise<{ violations: { id: string; impact: string | null; nodes: Element[] }[] }> } };
+        const w = window as unknown as { axe: { run: (sel?: string) => Promise<{ violations: { id: string; impact: string | null; nodes: { target: string[]; html: string }[] }[] }> } };
         return w.axe.run();
-      })) as { violations: { id: string; impact: string | null; nodes: Element[] }[] };
-      const violations = res.violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length }));
+      })) as { violations: { id: string; impact: string | null; nodes: { target: string[]; html: string }[] }[] };
+      const violations = res.violations.map((v) => ({
+        id: v.id,
+        impact: v.impact,
+        nodes: v.nodes.length,
+        targets: v.nodes.map((n) => n.target.join(" > ")).slice(0, 5),
+        html: v.nodes.map((n) => n.html.slice(0, 200)).slice(0, 5),
+      }));
       const score = scoreOf(violations);
       axeViews.push({ view, violations, score, ok: score >= 90 });
       console.log(`  [axe] ${view} : score ${score} (${violations.length} types de violation)`);
     };
 
+    // navigation véridique : pageA sur le FEED (le harnais la laisse sur
+    // groups après P4 — le label « feed » d'axe doit auditer le feed réel)
+    await pageA.goto(`${MAIN}/?view=feed`, { waitUntil: "domcontentloaded" });
+    await pageA.waitForTimeout(1500);
     await audit(pageA, "feed");
     await audit(pageB, "groups");
     // onboarding dialog (contexte frais)
-    const ctxO = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const ctxO = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
     const pageO = await ctxO.newPage();
     await pageO.goto(`${MAIN}/`, { waitUntil: "domcontentloaded" });
     await pageO.getByText("Crée ton identité locale").first().waitFor({ timeout: 30000 });
@@ -406,14 +452,21 @@ async function main(): Promise<number> {
       console.log(`  [axe] messages-offline : saut (${e instanceof Error ? e.message.slice(0, 80) : String(e)})`);
     }
 
+    // écriture incrémentale — les scores déjà mesurés survivent à un échec
+    // ultérieur (jamais silencieux)
+    writeFileSync(join(ROOT, "docs", "proofs", "assets", "F", "axe-resume.json"), JSON.stringify(axeViews, null, 2));
+
     // pending-actions admin (mod) — contraste #73
     const secrets = JSON.parse(readFileSync(join(ROOT, "db", "f-secrets.json"), "utf8")) as Record<
       string,
       { email: string; password: string; totpSecret: string; role: string }
     >;
-    const ctxM2 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const ctxM2 = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
     const pageM2 = await ctxM2.newPage();
-    await adminLogin(pageM2, secrets["mod@f-proof.test"].email, secrets["mod@f-proof.test"].password, secrets["mod@f-proof.test"].totpSecret, 2);
+    // offsetWindows=1 : le login P5 de mod a consommé le compteur TOTP courant
+    // (anti-rejeu §É3 — un même compteur ≤ est un rejeu) ; la fenêtre suivante
+    // reste dans la tolérance ±1 de verifyTotp.
+    await adminLogin(pageM2, secrets["mod@f-proof.test"].email, secrets["mod@f-proof.test"].password, secrets["mod@f-proof.test"].totpSecret, 1);
     await pageM2.goto(`${PANEL}/pending-actions`, { waitUntil: "domcontentloaded" });
     await pageM2.waitForTimeout(1500);
     await audit(pageM2, "admin-pending-actions");
@@ -468,9 +521,10 @@ try {
 } catch (e) {
   console.error("[f-proof] ÉCHEC :", e instanceof Error ? e.message : String(e));
   try {
+    // résultats PARTIELS conservés (jamais silencieux — leçon f47)
     writeFileSync(
       join(ROOT, "docs", "proofs", "assets", "F", `results-${PHASE}.json`),
-      JSON.stringify({ phase: PHASE, ok: false, error: e instanceof Error ? e.message : String(e) }, null, 2)
+      JSON.stringify({ ...results, ok: false, error: e instanceof Error ? e.message : String(e) }, null, 2)
     );
   } catch {
     /* asset dir absent */
