@@ -239,6 +239,12 @@ DANS LES PIXELS** (auto-rotation sharp avant ré-encodage).
    *Note de trace : la directive nommait « docs/specs/MEDIA-ENVELOPE-SPEC.md »
    — la spec vit à `docs/MEDIA-ENVELOPE-SPEC.md` depuis B1 ; le présent
    arbitrage y est appliqué à l'identique.*
+11. **Dette de test B1 — MinIO (Clarification 2, vague F)** : Test B1 MinIO
+   s'exécute nulle part (skip en CI par absence de pile, skip en local par
+   absence de docker). À valider au premier environnement avec MinIO réel
+   (VPS ou runner avec `MEDIA_S3_ENDPOINT`). **Dette : le test ne protège
+   actuellement aucune régression.** Tracée aussi dans
+   `docs/proofs/F16-F17-ci-fixes.md` §7.
 
 ---
 
