@@ -362,7 +362,9 @@ export function CallView() {
               variant="destructive"
               className="h-12 rounded-full px-6"
               onClick={onHangup}
-              aria-label="Terminer l'appel"
+              // F #49 — label-in-name (2.5.3, axe call-actif) : le nom
+              // accessible contient le texte visible « Raccrocher ».
+              aria-label="Raccrocher"
               data-testid="call-hangup"
             >
               <PhoneOff className="size-5" aria-hidden="true" />

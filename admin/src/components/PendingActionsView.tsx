@@ -284,7 +284,7 @@ export function PendingActionsView({
                   <span className="text-xs text-zinc-500" data-testid={`pending-expires-${item.id}`}>
                     {expiresIn(item.expiresAt)}
                   </span>
-                  <span className="ml-auto text-[11px] text-zinc-400">#{item.id}</span>
+                  <span className="ml-auto text-[11px] text-zinc-600">#{item.id}</span>
                 </div>
                 <div className="mt-2 grid gap-1 text-xs text-zinc-700">
                   <p>
@@ -366,7 +366,7 @@ export function PendingActionsView({
                     par {item.requestedBy.email}
                     {item.approvedBy ? ` · approuvé par ${item.approvedBy.email}` : ""}
                   </span>
-                  <span className="text-zinc-400">{fmt(item.executedAt ?? item.createdAt)}</span>
+                  <span className="text-zinc-600">{fmt(item.executedAt ?? item.createdAt)}</span>
                 </div>
                 <p className="mt-1 text-zinc-600">{item.justification}</p>
               </li>

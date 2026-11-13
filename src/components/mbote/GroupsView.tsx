@@ -324,7 +324,9 @@ function CreateGroupDialog({
         size="sm"
         onClick={() => setOpen(true)}
         disabled={!kpPublished}
-        aria-label="Créer un groupe"
+        // F #40 — label-in-name (2.5.3, axe sur 3 vues) : le nom accessible
+        // doit CONTENIR le texte visible « Nouveau groupe » — aria-label
+        // divergent supprimé, le texte visible sert de nom accessible.
         data-testid="create-group"
       >
         <UserPlus className="size-4" aria-hidden="true" />

@@ -1438,17 +1438,20 @@ export function MessagesView({
                   {/* F-15 : courriers en attente — bulles « En attente » (opacité réduite) */}
                   {queuedForPeer.map((item) => (
                     <div key={item.clientRef} className="flex justify-end">
-                      <div className="max-w-[85%] rounded-2xl rounded-br-md border border-dashed border-primary/40 bg-primary/5 px-3.5 py-2 text-sm leading-relaxed opacity-70 md:max-w-[75%]">
+                      <div className="max-w-[85%] rounded-2xl rounded-br-md border border-dashed border-primary/40 bg-primary/5 px-3.5 py-2 text-sm leading-relaxed opacity-90 md:max-w-[75%]">
                         <p className="whitespace-pre-wrap break-words">{item.text}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          {/* F #31 — contraste AA (axe 1.4.3 : badge 4.4 / hint
+                              3.79 à cause de l'opacité + tailles 9-10px) : texte
+                              plus lisible et couleurs renforcées */}
                           <Badge
                             variant="outline"
-                            className="gap-1 border-amber-500/40 px-1.5 py-0 text-[9px] text-amber-500"
+                            className="gap-1 border-amber-300/60 px-1.5 py-0 text-[11px] text-amber-300"
                           >
-                            <Clock className="size-2.5" aria-hidden="true" />
+                            <Clock className="size-3" aria-hidden="true" />
                             En attente
                           </Badge>
-                          <span className="text-[10px] text-muted-foreground">
+                          <span className="text-[11px] text-zinc-400">
                             Sera envoyé dès le retour du réseau
                           </span>
                         </div>
