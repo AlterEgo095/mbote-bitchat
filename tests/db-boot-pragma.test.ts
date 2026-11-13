@@ -29,7 +29,7 @@
 import { describe, test, expect, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
 import { PrismaClient } from "@prisma/client";
-import { rmSync } from "fs";
+import { rmSync, mkdirSync } from "fs";
 import { join } from "path";
 import {
   assertBootPragmaResult,
@@ -37,6 +37,16 @@ import {
 } from "../src/lib/db";
 
 const TMP = join(process.cwd(), "db");
+
+// F-16a (échec CI runner) : db/ est gitignoré (/db/ + *.db) — ABSENT d'un
+// checkout frais. Prisma crée le FICHIER SQLite mais jamais les répertoires
+// parents → S2/S3 échouaient SQLITE_CANTOPEN (errno 14) sur le runner
+// alors que tout passait en local (db/ y existait, créé par le serveur dev).
+// Même écart déjà corrigé dans admin-dashboard-e2e.test.ts (« worktree
+// re-créé : db/ non commité ») — la suite doit être auto-suffisante.
+// NB : la sonde DATABASE_URL de tests.yml résout « file:./db/ci-test.db »
+// par rapport au SCHÉMA (prisma/db/) — elle ne crée donc pas ./db/ non plus.
+mkdirSync(TMP, { recursive: true });
 
 /** Enfant qui verrouille la DB en EXCLUSIVE (DELETE mode + write) pendant 12 s.
  *  ⚠️ `bun -e SCRIPT arg` : l'arg arrive en argv[1] (le script n'est PAS dans argv). */
