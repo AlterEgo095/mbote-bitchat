@@ -289,6 +289,13 @@ Le déploiement est désormais **gâté par la CI en code**, pas en config manue
 ne s'exécute pas sur les runners locaux) — la logique gate est vérifiée par
 inspection YAML statique et les requêtes `gh api` sont standard.
 
+**Limitation acceptée MVP : security gate conditionnel.** security.yml ne se
+déclenche que sur ses paths (package.json, bun.lock, Dockerfile, workflows).
+Un changement sécurité-hors-deps (ex. `src/lib/mbote/client-ip.ts`) n'est gaté
+que par tests.yml. À renforcer avant ouverture publique : soit paths élargis
+(`src/lib/mbote/**`), soit security non-conditionnelle (coût +2 min par
+deploy).
+
 ### 7.2 F-2 — DOCUMENTÉ (exécution manuelle en attendant le merge)
 
 Les crons weekly-proof et security ne s'exécutent que sur la **default branch**.
@@ -322,3 +329,9 @@ Leçon : « le job s'exécute-t-il vraiment ? » s'applique aussi aux suites de
 tests — la simulation `bun test tests/` en conditions CI (DATABASE_URL seul,
 sans serveur ni DB harness) fait désormais partie du runner de durcissement
 (`scripts/hardening-proof-run.sh`).
+
+**Même pattern sur main.** Le même pattern (admin-audit-e2e, admin-auth-e2e
+sans skip DB-less) existe sur main. tests.yml échouera au prochain push sur
+main tant que les describe.skipIf ne sont pas appliqués sur main aussi. À
+corriger avant O-A : soit cherry-pick a492c44 sur main, soit fix manuel
+identique. Pas de fix maintenant (on ne touche pas main) — traçabilité seule.
