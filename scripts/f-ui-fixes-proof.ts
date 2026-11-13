@@ -478,11 +478,8 @@ async function main(): Promise<number> {
     writeFileSync(join(ROOT, "docs", "proofs", "assets", "F", "axe-resume.json"), JSON.stringify(axeViews, null, 2));
   }
 
-  results.shots = shots;
-  results.finishedAt = new Date().toISOString();
-  writeFileSync(join(SHOTS, "..", `results-${PHASE}.json`), JSON.stringify(results, null, 2));
-
-  // verdict par phase
+  // verdict AVANT l'écriture : le champ ok doit être dans le JSON (jamais
+  // silencieux — l'exit code seul ne se lit pas a posteriori)
   let ok: boolean;
   if (PHASE === "apres") {
     ok =
@@ -509,6 +506,11 @@ async function main(): Promise<number> {
       results.p47_ok === true &&
       results.p72_saMessageFaux === true;
   }
+  results.ok = ok;
+  results.shots = shots;
+  results.finishedAt = new Date().toISOString();
+  writeFileSync(join(SHOTS, "..", `results-${PHASE}.json`), JSON.stringify(results, null, 2));
+
   console.log(`[f-proof] VERDICT phase ${PHASE} : ${ok ? "TOUTES PREUVES OK" : "ÉCHEC — voir results json"}`);
   console.log(JSON.stringify(results, (k, v) => (k === "axeViews" || k === "axe-resume" ? undefined : v), 1).slice(0, 2400));
   await browser.close();
