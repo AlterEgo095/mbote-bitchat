@@ -2,6 +2,12 @@
 
 > **Vague E — 2026-11-13 · feat/mbote-v1 @ 611c7af+ · PAS DE FIX DANS E (E identifie, F corrigera).**
 >
+> **Mise à jour vague F (2026-11-13, commit `f258a25`+) : 25 écarts corrigés
+> (6 Critiques + 19 Majeurs — sous-ensemble validé par l'opérateur, option a).
+> Le statut de CHAQUE écart (#1 → #78) est tenu dans le registre §9
+> « Statuts vague F » (✅ corrigé / ⏳ mineur reporté / ⏭️ reporté). Preuves :
+> `docs/proofs/F-ui-fixes.md` + captures `docs/proofs/assets/F/`.**
+>
 > Ce document n'est PAS un audit de code : c'est un audit **écran par écran,
 > état par état**, croisant (1) la lecture intégrale des 12 vues et de leur
 > socle, et (2) un **passage rendu réel** automatisé (Playwright + axe-core +
@@ -330,3 +336,95 @@ Le reste du tableau (14,16,18,19,22,25,30,33,34,37,38,46,50,51,65,66,71,75,77,78
   instabilité réseau réelle (uniquement setOffline/SIGSTOP synthétiques).
 - Le diagnostic exact du §6.3 (welcome MLS non consommé) et du §6.1 (stall dev)
   — constatés, causes non isolées.
+
+---
+
+## 9. Statuts vague F (registre de correction — preuves dans `docs/proofs/F-ui-fixes.md`)
+
+Conventions : ✅ Corrigé (vague F, commit + preuve) · ⏳ Mineur reporté post-F ·
+⏭️ Reporté (Majeur hors sous-ensemble validé) · ✓ (positif) = modèle à
+généraliser, rien à corriger.
+
+| # | Sévérité E | Statut F | Détail |
+|---|---|---|---|
+| 1 | Critique | ✅ Corrigé (`0922b0f`) | AlertDialog de confirmation — preuve navigateur avant/après |
+| 2 | Critique | ✅ Corrigé (`6fa7b0d`) | bannière persistante 429 + retry — preuve navigateur |
+| 3 | Majeur | ✅ Corrigé (`3eed519`) | PoW avalé → toast warning cause + conséquence |
+| 4 | Mineur | ⏳ Mineur reporté post-F | bouton onboarding 36px |
+| 5 | Majeur | ⏭️ Reporté | barre mobile 6 items — rendu mobile réel requis |
+| 6 | Majeur | ⏭️ Reporté | recherche inaccessible < 640px |
+| 7 | Majeur | ⏭️ Reporté | pastille relay invisible sur mobile |
+| 8 | Mineur | ⏳ Mineur reporté post-F | bouton thème 36px |
+| 9 | Mineur | ⏳ Mineur reporté post-F | items nav 41px |
+| 10 | Mineur | ⏳ Mineur reporté post-F | aria-live global verbeux |
+| 11 | Majeur | ⏭️ Reporté | focus ring GlobalSearch |
+| 12 | Mineur | ⏳ Mineur reporté post-F | banner erreur e.message brut |
+| 13 | Mineur | ⏳ Mineur reporté post-F | feedback chargement recherche |
+| 14 | Mineur | ⏳ Mineur reporté post-F | troncature message boundary |
+| 15 | Critique | ✅ Corrigé (`b1a13f2`) | état d'erreur feed — preuve navigateur |
+| 16 | Mineur | ⏳ Mineur reporté post-F | like toast + e.message (mapping central déjà appliqué au chemin) |
+| 17 | Majeur | ✅ Corrigé (`11f84f3`) | toggles portée → min-h-11 |
+| 18 | Mineur | ⏳ Mineur reporté post-F | span tabIndex sans rôle |
+| 19 | Mineur | ⏳ Mineur reporté post-F | aria-label sur div sans rôle |
+| 20 | Majeur | ✅ Corrigé (`11f84f3`) | cœur/réponse → min-h-11 |
+| 21 | Majeur | ✅ Corrigé (`11f84f3`) | dismiss 24px → size-11 |
+| 22 | Mineur | ⏳ Mineur reporté post-F | pluriel concaténé (G) |
+| 23 | Majeur | ✅ Corrigé (`3eed519`) | Composer → describeApiError |
+| 24 | Mineur | ⏳ Mineur reporté post-F | Publier 36px |
+| 25 | Mineur | ⏳ Mineur reporté post-F | compteur file locale |
+| 26 | Majeur | ✅ Corrigé (`3eed519`) | toasts MessagesView → describeApiError |
+| 27 | Majeur | ⏭️ Reporté | auto-scroll forcé (2 h) |
+| 28 | Majeur | ⏭️ Reporté | indicateur lu/reçu |
+| 29 | Majeur | ✅ Corrigé (`11f84f3`) | CallButton → size-11 |
+| 30 | Mineur | ⏳ Mineur reporté post-F | aria-live liste messages |
+| 31 | Majeur | ✅ Corrigé (`3d07e12`) | contraste bulle offline — axe 100 |
+| 32 | (positif) | ✓ modèle | erreurs média inline — à généraliser |
+| 33 | Mineur | ⏳ Mineur reporté post-F | annuler upload |
+| 34 | Mineur | ⏳ Mineur reporté post-F | littéraux FR (G) |
+| 35 | Majeur | ✅ Corrigé (`3eed519`) | échecs me/warnings/myPosts rendus |
+| 36 | Mineur | ⏳ Mineur reporté post-F | boutons profil 36px |
+| 37 | (positif) | ✓ modèle | états push inline |
+| 38 | Mineur | ⏳ Mineur reporté post-F | littéraux FR (G) |
+| 39 | Critique | ✅ Corrigé (`c58a13a` + `97e67f3`) | bouton sémantique clavier — preuve navigateur (13 Tabs + Enter) |
+| 40 | Majeur | ✅ Corrigé (`3d07e12`) | label-in-name « Nouveau groupe » |
+| 41 | Majeur | ⏭️ Reporté | window.confirm → AlertDialog |
+| 42 | Majeur | ✅ Corrigé (`3eed519`) | listing erreur rendu + Réessayer |
+| 43 | Majeur | ✅ Corrigé (`3eed519`) | erreurs MLS → describeApiError |
+| 44 | Majeur | ✅ Corrigé (`11f84f3`) | retrait membre → 44×44 |
+| 45 | Majeur | ✅ Corrigé (`11f84f3`) | Inviter/envoyer/refresh → 44px |
+| 46 | Mineur | ⏳ Mineur reporté post-F | skeleton liste groupes |
+| 47 | Critique | ✅ Non-défaut prouvé (`6827add`) | diagnostic live : serveur stocke ✓, B poll ✓, UI rend ✓ (t=+2 s) — artefact harnais E + garde anti-régression rejouable |
+| 48 | Majeur | ⏭️ Reporté | dialog pattern CallView (focus trap, 2 h) |
+| 49 | Majeur | ✅ Corrigé (`3d07e12`) | aria-label « Raccrocher » |
+| 50 | Mineur | ⏳ Mineur reporté post-F | erreurs call actionnables |
+| 51 | Mineur | ⏳ Mineur reporté post-F | timer sonnerie |
+| 52 | (positif) | ✓ modèle | boutons in-call ≥ 48px |
+| 53 | Majeur | ⏭️ Reporté | alerts login admin |
+| 54 | Majeur | ✅ Corrigé (`11f84f3`) | toggle break-glass + submits → min-h-11 |
+| 55 | Majeur | ⏭️ Reporté | gestion client du 429 admin |
+| 56 | Majeur | ⏭️ Reporté | shell admin dupliqué |
+| 57 | Majeur | ⏭️ Reporté | logout/idle-timeout |
+| 58 | Majeur | ⏭️ Reporté | lien bandeau 401 |
+| 59 | Majeur | ✅ Corrigé (`3eed519`) | dégradation honnête dashboard (dernières valeurs grisées) |
+| 60 | Majeur | ⏭️ Reporté | bouton ban dans la file |
+| 61 | Majeur | ⏭️ Reporté | filtre traités/classés |
+| 62 | Majeur | ⏭️ Reporté | focus management queue |
+| 63 | Majeur | ⏭️ Reporté | jargon admin → FR naturel |
+| 64 | Majeur | ⏭️ Reporté | scope="col" users |
+| 65 | Mineur | ⏳ Mineur reporté post-F | contexte recherche users |
+| 66 | Mineur | ⏳ Mineur reporté post-F | filtre bannis vide |
+| 67 | Majeur | ⏭️ Reporté | durées suspension divergentes |
+| 68 | Majeur | ⏭️ Reporté | debounce filtre audit |
+| 69 | Majeur | ⏭️ Reporté | retry parité admin |
+| 70 | Majeur | ✅ Corrigé (`11f84f3`) | filtres + actions audit → min-h-11 |
+| 71 | (positif) | ✓ modèle | pluriel correct audit |
+| 72 | Critique | ✅ Corrigé (`66e6590`) | identité vs identité (myEmail) + diagnostic moderator |
+| 73 | Majeur | ✅ Corrigé (`3d07e12`) | contraste zinc-600 — axe 100 |
+| 74 | Majeur | ⏭️ Reporté | countdown figé |
+| 75 | Mineur | ⏳ Mineur reporté post-F | statuts EN bruts |
+| 76 | Majeur (pour G) | ⏭️ Reporté | extraction i18n = le chantier G lui-même |
+| 77 | Mineur | ⏳ Mineur reporté post-F | formats de dates hétérogènes (G) |
+| 78 | Mineur | ⏳ Mineur reporté post-F | pluriels concaténés (G) |
+
+**Bilan : 25 corrigés (6 C + 19 M) · 23 Majeurs reportés ⏭️ · 26 Mineurs ⏳ ·
+4 lignes ✓ (positif).**
