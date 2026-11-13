@@ -435,7 +435,7 @@ export function FeedView({
             </p>
             <p className="text-sm text-red-800">
               {describeApiError(feed.error)} — le contenu affiché précédemment peut être
-              périmé. Ta connexion ou le serveur est en cause, pas l'absence de messages.
+              périmé. Ta connexion ou le serveur est en cause, pas l&apos;absence de messages.
             </p>
             <Button
               size="sm"
