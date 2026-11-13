@@ -39,7 +39,13 @@ export async function POST(req: NextRequest) {
     await db.mlsKeyPackage.create({
       data: { userKey: me, keyPackage },
     });
-    // prune douce : garder les 3 plus récents de l'utilisateur
+    // prune douce : garder les 3 plus récents de l'utilisateur.
+    // EXCEPTION §4d DOCUMENTÉE (vague durcissement — écart accepté) : create
+    // (l'écriture essentielle) et prune (ramassage périodique) restent hors
+    // transaction — une coupe entre les deux laisse des keypackages
+    // excédentaires, état SANS risque (ils restent valides, single-use) et
+    // AUTO-RATTRAPÉ au publish suivant (prune rejouée). Retrier un échec de
+    // prune dans une tx ne ferait que prolonger la tenue du verrou.
     const extras = await db.mlsKeyPackage.findMany({
       where: { userKey: me },
       orderBy: { createdAt: "desc" },
