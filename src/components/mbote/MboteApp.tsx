@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import {
+  AlertTriangle,
   Flame,
   MapPinned,
   MessageSquare,
@@ -48,6 +49,16 @@ import {
   isDefinitiveApiError,
   ApiError,
 } from "@/lib/mbote/api";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { generateKeyBundle, signPayload } from "@/lib/mbote/crypto";
 import {
   dmReadProofMessage,
@@ -141,6 +152,9 @@ export function MboteApp() {
   const [mounted, setMounted] = useState(false);
   const [identity, setIdentity] = useState<StoredIdentity | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  // F #1 — le panic wipe du header exige une confirmation (même garde que
+  // ProfileView) : deux chemins de destruction, deux fois protégés.
+  const [panicConfirmOpen, setPanicConfirmOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   // D2 — progression du PoW de création (0..1), null = pas de calcul en cours
   const [powProgress, setPowProgress] = useState<number | null>(null);
@@ -929,7 +943,7 @@ export function MboteApp() {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onClick={() => void doPanicWipe()}
+                    onClick={() => setPanicConfirmOpen(true)}
                     className="text-destructive focus:text-destructive"
                   >
                     <Flame className="size-4" aria-hidden="true" />
@@ -1103,6 +1117,33 @@ export function MboteApp() {
       </nav>
 
       {/* ---------- onboarding ---------- */}
+      {/* F #1 — confirmation du panic wipe du header (même garde que ProfileView) */}
+      <AlertDialog open={panicConfirmOpen} onOpenChange={setPanicConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="size-5 text-destructive" aria-hidden="true" />
+              Confirmer le panic wipe ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Clés privées, identité, file « courrier » et préférences locales seront
+              détruites sur cet appareil. Tes publications déjà diffusées sur le serveur
+              resteront (publiques par nature) — mais plus personne ne pourra prouver
+              qu&apos;il détient encore ta clé.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void doPanicWipe()}
+              className="bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive"
+            >
+              <Flame className="size-4" aria-hidden="true" />
+              Effacer définitivement
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* C2 : overlay d'appel audio — au-dessus de toutes les vues */}
       <CallView />
       <OnboardingDialog
