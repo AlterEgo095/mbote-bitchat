@@ -1,0 +1,8 @@
+── check-merge-clean ──────────────────────────────────────────────
+branche courante : feat/mbote-v1
+INVARIANT OK : archive/b1-media-foundation ⊆ feat/mbote-v1 (commits b1 hors mbote-v1 : 0)
+branches de travail actives : 1 (feat/mbote-v1 )
+RÉSULTAT : branche unique — 0 conflit PAR CONSTRUCTION (plus de merge à répétition).
+main a 2 commit(s) exclusif(s) — vérification des 732 fichiers de main...
+fichiers partagés main ↔ feat/mbote-v1 (hors artefacts générés) : 244
+INVARIANT OK : main ⊆ feat/mbote-v1 — 0 divergence sur les fichiers partagés.

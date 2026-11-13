@@ -1,0 +1,7 @@
+{"step":"P1-f1-yaml-gate","result":"ok","detail":"workflow_run + gate + head_sha vérifiés"}
+{"step":"P2-greps-4d","result":"ok","detail":"sites corrigés + exception documentée"}
+{"step":"P3-breakglass-tx","result":"ok","detail":"R1+R2(rollback)+R3 3/3"}
+{"step":"P4-ci-simulation","result":"ok","detail":"bun test tests/ : 0 fail (avant fix : 31)"}
+{"step":"P5-d2-nonregression","result":"ok","detail":"D2 15 pass / 0 fail sur serveur prod (bridge M1 exercé)"}
+{"step":"P6-admin-e2e","result":"ok","detail":"83+ pass / 0 fail (break-glass E-suite réel)"}
+{"step":"P7-merge-clean","result":"ok","detail":"exit 0"}

@@ -1,0 +1,801 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/moderation.test.ts:
+(pass) A3 — garde admin (clé API — CLI uniquement depuis la rupture ADM Étape 0) > U1a · ADMIN_API_KEY absente → aucun accès (le CLI refuse) [0.10ms]
+(pass) A3 — garde admin (clé API — CLI uniquement depuis la rupture ADM Étape 0) > U1b · mauvaise clé → refusé · bonne clé → accepté [0.17ms]
+(pass) A3 — extrait d'audit borné > U2 · contenu court inchangé · contenu long tronqué ≤ 280 [0.11ms]
+(pass) A3 — purge transactionnelle avec trace d'audit > U3 · post supprimé (cascade), trace conservée, reports clôturés, compteur parent [37.94ms]
+(pass) A3 — purge transactionnelle avec trace d'audit > U3b · purge d'un post déjà purgé → POST_NOT_FOUND (pas de double trace) [1.90ms]
+(pass) A3 — idempotence du signalement > U4 · un même signaleur ne peut pas gonfler la file sur une cible (P2002) [6.14ms]
+
+tests/media-b4-video.test.ts:
+(pass) B4 · lib vidéo pure (sniff, validation, guards) > U1 — sniff : webm vidéo OK · webm AUDIO (B3) → null · MP3 → null · MP4 ftyp OK · barrière REFUSE l'audio [16.71ms]
+(pass) B4 · lib vidéo pure (sniff, validation, guards) > U2 — validateVideoForSend : 61 s REFUS · 60 s OK · vide REFUS · audio REFUS · 110 Mo REFUS [7.81ms]
+(pass) B4 · lib vidéo pure (sniff, validation, guards) > U3 — captureVideoThumbnail hors navigateur → erreur propre [0.86ms]
+(pass) B4 · lib vidéo pure (sniff, validation, guards) > U4 — isVideoRecordingSupported() === false sous bun (harness) [0.05ms]
+(pass) B4 · lib vidéo pure (sniff, validation, guards) > U5 — garde client : uploadVideoNote 61 s lève AVANT tout fetch [1.73ms]
+(skip) B4 · E2E header + pipeline vidéo réel > (unnamed)
+(skip) B4 · E2E header + pipeline vidéo réel > H1 — Permissions-Policy servi : camera=(self) + microphone=(self)
+(skip) B4 · E2E header + pipeline vidéo réel > V1 — chaîne complète : webm réel + thumb → finalize → download → SHA-256 identique
+(skip) B4 · E2E header + pipeline vidéo réel > V2 — contentType video/avi → 400 (message clair, convertissez d'abord)
+(skip) B4 · E2E header + pipeline vidéo réel > V3 — 110 Mo → 400 (limite PAR TYPE vidéo 100 Mo)
+(skip) B4 · E2E header + pipeline vidéo réel > V4 — TTL download : vidéo ≈ 1 h · image ≈ 15 min
+(skip) B4 · E2E header + pipeline vidéo réel > V5 — round-trip DEUX appareils : dm2 E2EE (vidéo + thumb) → SHA-256 identiques
+(skip) B4 · E2E header + pipeline vidéo réel > V6 — barrière de rendu : dm2 video/webm portant des OCTETS AUDIO → REFUS
+
+tests/admin-step10-integrated-e2e.test.ts:
+admin-step10-integrated SKIPPÉ — DATABASE_URL n'est pas la DB du harness. Lancer :
+  DATABASE_URL="file:$(pwd)/db/adm-step10-integrated-test.db" bun test tests/admin-step10-integrated-e2e.test.ts
+(pass) L1. bootstrap (CLI réels) → login TOTP réel > bootstrap + 2× admin:create → 3 comptes + 3 lignes d'audit [0.07ms]
+(pass) L1. bootstrap (CLI réels) → login TOTP réel > login super-admin #1 (email+password+TOTP) → session + panneau SSR 200 [0.08ms]
+(pass) L1. bootstrap (CLI réels) → login TOTP réel > login moderator (rôle inférieur) → session valide [0.06ms]
+(pass) L2. dashboard — 4 métriques > BFF /api/dashboard → 200, les 4 métriques présentes [0.06ms]
+(pass) L3. queue → hide post → feed > queue contient le post signalé (poids ≥ 1) [0.05ms]
+(pass) L3. queue → hide post → feed > moderator hide le post → 200 · reports clos · absent du feed [0.08ms]
+(pass) L4. gestion user — warn puis suspend > annuaire trouve auteur-a [0.06ms]
+(pass) L4. gestion user — warn puis suspend > warn par moderator → UserWarning + audit [0.05ms]
+(pass) L4. gestion user — warn puis suspend > suspend 24h → suspendedAt posé · publication → 403 [0.11ms]
+(pass) L5. audit viewer — liste, filtre acteur, fiche > liste 24h contient hide+warn+suspend [0.08ms]
+(pass) L5. audit viewer — liste, filtre acteur, fiche > filtre acteur=moderator → uniquement ses lignes [0.08ms]
+(pass) L5. audit viewer — liste, filtre acteur, fiche > porte EXACTE : moderator → 403 sur l'audit (arbitrage §14.1) [0.05ms]
+(pass) L5. audit viewer — liste, filtre acteur, fiche > page panneau /audit SSR → 200 [0.04ms]
+(pass) L6. four-eyes — ban définitif à deux super-admins > sa1 crée l'intention ban_user (BFF) → 201 pending [0.05ms]
+(pass) L6. four-eyes — ban définitif à deux super-admins > auto-approbation (même session) → 403 [0.07ms]
+(pass) L6. four-eyes — ban définitif à deux super-admins > 2ᵉ approbation sa2 (login réel) → 200 exécuté · user banni · 2 lignes audit [0.26ms]
+(pass) L7. session révoquée → panneau refuse (redirect login) > logout réel (endpoint interne) → BFF 401 · page → redirect / [0.08ms]
+
+tests/c3-video-calls.test.ts:
+(pass) C3 signalisation vidéo (hub réel) > V1 — offer m=video / answer vidéo / ice / hangup relayés intacts [318.91ms]
+(pass) C3 signalisation vidéo (hub réel) > V2 — call:media {videoOn,audioOn} relayé ; champs non booléens → NON relayé [907.28ms]
+(pass) C3 signalisation vidéo (hub réel) > V3 — call:media signature absente/mauvaise ou usurpation → NON relayé [1007.13ms]
+(pass) C3 signalisation vidéo (hub réel) > V4 — bornes : SDP vidéo > 16 Ko NON relayé ; call:media dans le rate limit 60/min [2429.12ms]
+(pass) C3 qualité vidéo adaptative > V5 — descente 480p→360p→240p avec hystérésis ; jamais de remontée ; bornes [0.43ms]
+(pass) C3 qualité vidéo adaptative > V6 — offerHasVideo : m=video port 0 → false (m-line rejetée), port 9 → true [0.25ms]
+(pass) C3 knock vidéo > V7 — la chaîne `…|call-knock|…|video|ts` est vérifiée par la route ; falsification du type → refus [2.20ms]
+
+tests/d2-sybil.test.ts:
+(skip) D2 — PoW de création (serveur réel) > P1 — création valide acceptée : 200, user créé, quota exposé
+(skip) D2 — PoW de création (serveur réel) > P2 — création sans nonce → 403 pow_required
+(skip) D2 — PoW de création (serveur réel) > P3 — nonce invalide (difficulté non atteinte) → 403
+(skip) D2 — PoW de création (serveur réel) > P4 — nonce REJOUÉ (rejeu exact de la création de A) → 409 pow_replayed
+(skip) D2 — réputation et plafonds (serveur réel + DB directe) > Q2 — score −5 (report confirmé simulé) : plafond 3/j → 4ᵉ refusé
+(skip) D2 — réputation et plafonds (serveur réel + DB directe) > Q1 — score 0 : 10 posts OK, 11ᵉ → 429 quota_posts + message directive
+(skip) D2 — réputation et plafonds (serveur réel + DB directe) > Q3 — score 15 : plafonds 50 posts / 200 DMs, tier established
+(skip) D2 — réputation et plafonds (serveur réel + DB directe) > Q4 — DMs score −5 : 10 OK, 11ᵉ → 429 quota_dms
+(skip) D2 — rate-limit durci et T0 mesh > R1 — 4ᵉ création de compte sur la même heure/IP → 429 + Retry-After ≥ 3600
+(skip) D2 — rate-limit durci et T0 mesh > M1 — T0 mesh : clé jamais onboardée publie via la passerelle sans PoW ni plafond
+(pass) D2 — fonctions pures (matrice plafonds, reset UTC, difficulté) > F1a — matrice dailyLimits exacte (directive) [0.12ms]
+(pass) D2 — fonctions pures (matrice plafonds, reset UTC, difficulté) > F1b — quotaVerdict : reset du jour + Retry-After jusqu'à minuit UTC [0.26ms]
+(pass) D2 — fonctions pures (matrice plafonds, reset UTC, difficulté) > F1c — hashMeetsDifficultyHex : cas limites (0 bits, 20 bits, octets zéros) [543.12ms]
+(pass) D2 — fonctions pures (matrice plafonds, reset UTC, difficulté) > F1d — reputationTier : 4 tiers [0.27ms]
+(pass) D2 — fonctions pures (matrice plafonds, reset UTC, difficulté) > F1e — utcDay : borne UTC (pas locale) [0.06ms]
+
+tests/admin-auth-e2e.test.ts:
+admin-auth-e2e SKIPPÉ — DATABASE_URL doit pointer sur la DB du harness :
+  DATABASE_URL="file:$(pwd)/db/adm-e2e-test.db" bun test tests/admin-auth-e2e.test.ts
+ (reçu : file:/home/z/wt-adm/db/hardening-ci.db — piège du DATABASE_URL global du sandbox, DEV-SETUP §2a)
+(skip) ADM 3+4 · A — login (un seul round-trip, échecs uniformes) > A1 · valide → 200 + cookie (HttpOnly, SameSite=Strict, Path=/) + csrfToken, token absent du body
+(skip) ADM 3+4 · A — login (un seul round-trip, échecs uniformes) > A1b · premier login (totpEnrolled=false) → TOTP exigé + totp_enrolled audité
+(skip) ADM 3+4 · A — login (un seul round-trip, échecs uniformes) > A2..A7 · échecs → 401 uniformes « invalid credentials » (email/password/TOTP/expiré/rejoué/disabled)
+(skip) ADM 3+4 · B — rate limit 5 tentatives / 5 min / IP > B1 · 6ᵉ tentative (même IP) → 429, même avec des identifiants valides
+(skip) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C1 · cookie absent → 401 (app principale) / authenticated:false (panneau)
+(skip) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C2 · cookie forgé (token inconnu) → 401
+(skip) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C3 · idle > 30 min → 401 + révocation TRACÉE (revokedReason=idle-timeout)
+(skip) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C4 · TTL absolu 8 h dépassé → 401
+(skip) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C5 · logout → session révoquée (reason=logout) + audit + verify mort
+(skip) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C6 · DB : le token en clair n'existe NULLE part, seul son hash SHA-256
+(skip) ADM 3+4 · D — CSRF (mutations, message uniforme avec 401) > D1 · hide sans header CSRF → 403
+(skip) ADM 3+4 · D — CSRF (mutations, message uniforme avec 401) > D2 · hide avec MAUVAIS csrf → 403, même message que 401 (anti-fuite de couche)
+(skip) ADM 3+4 · D — CSRF (mutations, message uniforme avec 401) > D3 · logout BFF avec session valide mais sans CSRF → 403
+(skip) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E0 · préparation : session active + secret d'origine
+(skip) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E1 · code valide → 200, nouveau secret ≠ ancien, sessions révoquées, code brûlé, audit
+(skip) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E2 · le MÊME code re-soumis → 401 (brûlé, usage unique)
+(skip) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E3 · code invalide → 401 uniforme « invalid credentials »
+(skip) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E4 · ré-enrôlement : code du NOUVEAU secret → totpEnrolled=true, l'ANCIEN secret est mort
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F1 · token SEUL (sans session) → 401 — rien ne peut être fait avec le token seul
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F2 · session seule (sans token interne) → 401
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F3 · mauvais token interne + session valide → 401
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F4 · token + session SANS X-Admin-Actor → 401
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F5 · X-Admin-Actor ne correspondant PAS à la session → 401 (acteur forgé impossible)
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F6 · token + session + actor cohérent → 200
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F7 · chaîne BFF complète : cookie navigateur → proxy → app principale → 200
+(skip) ADM 3+4 · G — sessions indépendantes (2 admins simultanés) > G1 · deux sessions vivantes, csrfTokens distincts, actions tracées séparément
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > (unnamed)
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × anonymous
+(skip) ADM 3+4 · I — preuve anti-fuite + relecture matrice > 55 cellules de matrice exécutées, toutes PASS
+(skip) ADM 3+4 · I — preuve anti-fuite + relecture matrice > aucun password / secret TOTP / code de secours / token de session dans les réponses
+
+tests/push-c1.test.ts:
+prisma:query PRAGMA journal_mode=WAL
+push-c1 E2E SKIPPÉ — lancer via le runner (PUSH_C1_E2E=1 + BASE_URL + DB dédiée).
+Les UNITAIRES (format payload + helpers client) tournent toujours.
+(pass) C1 · unitaires (toujours) > C1g — urlBase64ToUint8Array : décodage SANS Buffer (règle §6) [0.16ms]
+(pass) C1 · subscribe / unsubscribe > S8 — /api/push/config → 200 + publicKey VAPID [0.08ms]
+(pass) C1 · subscribe / unsubscribe > S1 — subscribe signé → 200/201 + active [0.08ms]
+(pass) C1 · subscribe / unsubscribe > S2 — signature invalide → 401 · S3 — champs manquants → 400 [0.08ms]
+(pass) C1 · subscribe / unsubscribe > S4 — UPSERT : 2 appels même endpoint → 1 ligne (réactivé) [0.13ms]
+(pass) C1 · subscribe / unsubscribe > S6 — user inconnu → 404 [0.14ms]
+(pass) C1 · subscribe / unsubscribe > S5 — rate limit subscribe : 11ᵉ / heure → 429 (user DÉDIÉ) [0.10ms]
+(pass) C1 · subscribe / unsubscribe > S7 — unsubscribe : disabledAt + idempotent + anti-énumération [0.12ms]
+(pass) C1 · knock réel (fil capté) > P1 — DM → KNOCK knock-only : { type, fromLabel }, AUCUN contenu [0.17ms]
+(pass) C1 · knock réel (fil capté) > P2 — rate limit OUTBOUND : 2 DM en < 30 s → 1 SEUL push [0.11ms]
+(pass) C1 · knock réel (fil capté) > P3 — 410 Gone → disabledAt posé (purge douce) [0.10ms]
+(pass) C1 · knock réel (fil capté) > P4 — 429 du push service → backoff passif (pas de crash) [0.04ms]
+
+tests/admin-break-glass-tx.test.ts:
+prisma:query INSERT INTO `main`.`AdminUser` (`email`, `passwordHash`, `totpEnrolled`, `role`, `createdAt`) VALUES (?,?,?,?,?) RETURNING `id` AS `id`, `email` AS `email`, `passwordHash` AS `passwordHash`, `totpSecret` AS `totpSecret`, `totpEnrolled` AS `totpEnrolled`, `totpLastCounter` AS `totpLastCounter`, `role` AS `role`, `createdAt` AS `createdAt`, `disabledAt` AS `disabledAt`
+prisma:query UPDATE `main`.`AdminUser` SET `email` = ? WHERE (`main`.`AdminUser`.`id` = ? AND 1=1) RETURNING `id` AS `id`, `email` AS `email`, `passwordHash` AS `passwordHash`, `totpSecret` AS `totpSecret`, `totpEnrolled` AS `totpEnrolled`, `totpLastCounter` AS `totpLastCounter`, `role` AS `role`, `createdAt` AS `createdAt`, `disabledAt` AS `disabledAt`
+prisma:query INSERT INTO `main`.`AdminRecoveryCode` (`adminUserId`, `codeHash`, `createdAt`) VALUES (?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `codeHash` AS `codeHash`, `usedAt` AS `usedAt`, `usedIp` AS `usedIp`, `usedUserAgent` AS `usedUserAgent`, `createdAt` AS `createdAt`
+prisma:query INSERT INTO `main`.`AdminRecoveryCode` (`adminUserId`, `codeHash`, `createdAt`) VALUES (?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `codeHash` AS `codeHash`, `usedAt` AS `usedAt`, `usedIp` AS `usedIp`, `usedUserAgent` AS `usedUserAgent`, `createdAt` AS `createdAt`
+prisma:query UPDATE `main`.`AdminUser` SET `totpSecret` = ?, `totpEnrolled` = ?, `totpLastCounter` = ? WHERE (`main`.`AdminUser`.`id` = ? AND 1=1) RETURNING `id` AS `id`, `email` AS `email`, `passwordHash` AS `passwordHash`, `totpSecret` AS `totpSecret`, `totpEnrolled` AS `totpEnrolled`, `totpLastCounter` AS `totpLastCounter`, `role` AS `role`, `createdAt` AS `createdAt`, `disabledAt` AS `disabledAt`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`AdminSession`.`id` FROM `main`.`AdminSession` WHERE (`main`.`AdminSession`.`adminUserId` = ? AND `main`.`AdminSession`.`revokedAt` IS NULL) LIMIT ? OFFSET ?) AS `sub`
+prisma:query BEGIN IMMEDIATE
+prisma:query UPDATE `main`.`AdminRecoveryCode` SET `usedAt` = ?, `usedIp` = ?, `usedUserAgent` = ? WHERE (`main`.`AdminRecoveryCode`.`id` = ? AND 1=1) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `codeHash` AS `codeHash`, `usedAt` AS `usedAt`, `usedIp` AS `usedIp`, `usedUserAgent` AS `usedUserAgent`, `createdAt` AS `createdAt`
+prisma:query UPDATE `main`.`AdminSession` SET `revokedAt` = ?, `revokedReason` = ? WHERE (`main`.`AdminSession`.`adminUserId` = ? AND `main`.`AdminSession`.`revokedAt` IS NULL)
+prisma:query UPDATE `main`.`AdminUser` SET `totpSecret` = ?, `totpEnrolled` = ?, `totpLastCounter` = ? WHERE (`main`.`AdminUser`.`id` = ? AND 1=1) RETURNING `id` AS `id`, `email` AS `email`, `passwordHash` AS `passwordHash`, `totpSecret` AS `totpSecret`, `totpEnrolled` AS `totpEnrolled`, `totpLastCounter` AS `totpLastCounter`, `role` AS `role`, `createdAt` AS `createdAt`, `disabledAt` AS `disabledAt`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query INSERT INTO `main`.`AdminAudit` (`actorId`, `actorRole`, `action`, `targetType`, `targetId`, `beforeJson`, `afterJson`, `ip`, `userAgent`, `justification`, `createdAt`) VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `actorId` AS `actorId`, `actorRole` AS `actorRole`, `action` AS `action`, `targetType` AS `targetType`, `targetId` AS `targetId`, `beforeJson` AS `beforeJson`, `afterJson` AS `afterJson`, `ip` AS `ip`, `userAgent` AS `userAgent`, `justification` AS `justification`, `createdAt` AS `createdAt`
+prisma:query COMMIT
+prisma:query SELECT `main`.`AdminRecoveryCode`.`id`, `main`.`AdminRecoveryCode`.`adminUserId`, `main`.`AdminRecoveryCode`.`codeHash`, `main`.`AdminRecoveryCode`.`usedAt`, `main`.`AdminRecoveryCode`.`usedIp`, `main`.`AdminRecoveryCode`.`usedUserAgent`, `main`.`AdminRecoveryCode`.`createdAt` FROM `main`.`AdminRecoveryCode` WHERE (`main`.`AdminRecoveryCode`.`id` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`AdminUser`.`id`, `main`.`AdminUser`.`email`, `main`.`AdminUser`.`passwordHash`, `main`.`AdminUser`.`totpSecret`, `main`.`AdminUser`.`totpEnrolled`, `main`.`AdminUser`.`totpLastCounter`, `main`.`AdminUser`.`role`, `main`.`AdminUser`.`createdAt`, `main`.`AdminUser`.`disabledAt` FROM `main`.`AdminUser` WHERE (`main`.`AdminUser`.`id` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`AdminAudit`.`id`, `main`.`AdminAudit`.`actorId`, `main`.`AdminAudit`.`actorRole`, `main`.`AdminAudit`.`action`, `main`.`AdminAudit`.`targetType`, `main`.`AdminAudit`.`targetId`, `main`.`AdminAudit`.`beforeJson`, `main`.`AdminAudit`.`afterJson`, `main`.`AdminAudit`.`ip`, `main`.`AdminAudit`.`userAgent`, `main`.`AdminAudit`.`justification`, `main`.`AdminAudit`.`createdAt` FROM `main`.`AdminAudit` WHERE (`main`.`AdminAudit`.`actorId` = ? AND `main`.`AdminAudit`.`action` = ?) ORDER BY `main`.`AdminAudit`.`id` DESC LIMIT ? OFFSET ?
+(pass) break-glass atomique (invariant §4d) > R1 — happy path : burn + revoke + reset + session + audit atomiques [7.94ms]
+prisma:query UPDATE `main`.`AdminUser` SET `totpEnrolled` = ?, `totpLastCounter` = ? WHERE (`main`.`AdminUser`.`id` = ? AND 1=1) RETURNING `id` AS `id`, `email` AS `email`, `passwordHash` AS `passwordHash`, `totpSecret` AS `totpSecret`, `totpEnrolled` AS `totpEnrolled`, `totpLastCounter` AS `totpLastCounter`, `role` AS `role`, `createdAt` AS `createdAt`, `disabledAt` AS `disabledAt`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`AdminSession`.`id` FROM `main`.`AdminSession` WHERE (`main`.`AdminSession`.`adminUserId` = ? AND `main`.`AdminSession`.`revokedAt` IS NULL) LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT `main`.`AdminUser`.`id`, `main`.`AdminUser`.`email`, `main`.`AdminUser`.`passwordHash`, `main`.`AdminUser`.`totpSecret`, `main`.`AdminUser`.`totpEnrolled`, `main`.`AdminUser`.`totpLastCounter`, `main`.`AdminUser`.`role`, `main`.`AdminUser`.`createdAt`, `main`.`AdminUser`.`disabledAt` FROM `main`.`AdminUser` WHERE (`main`.`AdminUser`.`id` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query BEGIN IMMEDIATE
+prisma:query UPDATE `main`.`AdminRecoveryCode` SET `usedAt` = ?, `usedIp` = ?, `usedUserAgent` = ? WHERE (`main`.`AdminRecoveryCode`.`id` = ? AND 1=1) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `codeHash` AS `codeHash`, `usedAt` AS `usedAt`, `usedIp` AS `usedIp`, `usedUserAgent` AS `usedUserAgent`, `createdAt` AS `createdAt`
+prisma:query ROLLBACK
+prisma:query SELECT `main`.`AdminRecoveryCode`.`id`, `main`.`AdminRecoveryCode`.`adminUserId`, `main`.`AdminRecoveryCode`.`codeHash`, `main`.`AdminRecoveryCode`.`usedAt`, `main`.`AdminRecoveryCode`.`usedIp`, `main`.`AdminRecoveryCode`.`usedUserAgent`, `main`.`AdminRecoveryCode`.`createdAt` FROM `main`.`AdminRecoveryCode` WHERE (`main`.`AdminRecoveryCode`.`id` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`AdminUser`.`id`, `main`.`AdminUser`.`email`, `main`.`AdminUser`.`passwordHash`, `main`.`AdminUser`.`totpSecret`, `main`.`AdminUser`.`totpEnrolled`, `main`.`AdminUser`.`totpLastCounter`, `main`.`AdminUser`.`role`, `main`.`AdminUser`.`createdAt`, `main`.`AdminUser`.`disabledAt` FROM `main`.`AdminUser` WHERE (`main`.`AdminUser`.`id` = ? AND 1=1) LIMIT ? OFFSET ?
+prisma:query SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`AdminSession`.`id` FROM `main`.`AdminSession` WHERE (`main`.`AdminSession`.`adminUserId` = ? AND `main`.`AdminSession`.`revokedAt` IS NULL) LIMIT ? OFFSET ?) AS `sub`
+prisma:query SELECT `main`.`AdminAudit`.`id`, `main`.`AdminAudit`.`actorId`, `main`.`AdminAudit`.`actorRole`, `main`.`AdminAudit`.`action`, `main`.`AdminAudit`.`targetType`, `main`.`AdminAudit`.`targetId`, `main`.`AdminAudit`.`beforeJson`, `main`.`AdminAudit`.`afterJson`, `main`.`AdminAudit`.`ip`, `main`.`AdminAudit`.`userAgent`, `main`.`AdminAudit`.`justification`, `main`.`AdminAudit`.`createdAt` FROM `main`.`AdminAudit` WHERE (`main`.`AdminAudit`.`actorId` = ? AND `main`.`AdminAudit`.`action` = ?) ORDER BY `main`.`AdminAudit`.`id` DESC LIMIT ? OFFSET ?
+(pass) break-glass atomique (invariant §4d) > R2 — crash simulé entre burn et revoke → ROLLBACK COMPLET [7.85ms]
+(pass) break-glass atomique (invariant §4d) > R3 — structure : withWriteLock + $transaction + tx aux helpers [0.11ms]
+
+tests/safety-number.test.ts:
+(pass) A2 — numéro de sécurité (Signal fingerprint) > 1. déterminisme : mêmes entrées → même numéro [279.44ms]
+(pass) A2 — numéro de sécurité (Signal fingerprint) > 2. symétrie : (A,B) = (B,A) — les deux appareils affichent l'identique [305.09ms]
+(pass) A2 — numéro de sécurité (Signal fingerprint) > 4. format : 12 groupes de 5 chiffres = 60 chiffres [129.65ms]
+(pass) A2 — numéro de sécurité (Signal fingerprint) > 3. avalanche : changer 1 BIT d'une clé change le numéro (substitution détectable) [334.46ms]
+(pass) A2 — numéro de sécurité (Signal fingerprint) > 5. performance : 5200 itérations SHA-512 en < 2 s (usable en UI) [168.88ms]
+(pass) A2 — numéro de sécurité (Signal fingerprint) > clés malformées → erreur (pas de numéro silencieusement faux) [2.33ms]
+
+tests/d1-search.test.ts:
+(skip) D1 recherche serveur (FTS5) > T1 — hit FTS5 : payload complet (postId, snippet, rank, authorPubkey)
+(skip) D1 recherche serveur (FTS5) > T2 — diacritiques : « ecole » trouve « école » (remove_diacritics 2)
+(skip) D1 recherche serveur (FTS5) > T3 — FRONTIÈRE DM : ciphertext piégé « secret » jamais retourné ; type=dms → 400
+(skip) D1 recherche serveur (FTS5) > T4 — TRIGGER hide : hiddenAt → post retiré de PostFTS et introuvable
+(skip) D1 recherche serveur (FTS5) > T5 — TRIGGER delete : post supprimé → retiré de l'index
+(skip) D1 recherche serveur (FTS5) > T6 — auteur suspendu : dans l'INDEX mais introuvable via l'API (filtre lecture)
+(skip) D1 recherche serveur (FTS5) > T7 — pagination : limit=2 → nextOffset ; page 2 DISTINCTE ; fin de liste
+(skip) D1 recherche serveur (FTS5) > T8 — BENCHMARK : 10k posts, recherche FTS < 200 ms (moyenne 5 runs)
+(skip) D1 recherche serveur (FTS5) > T9 — rate limit 30 req/min : le reste du bucket passe, la suivante → 429
+(skip) D1 recherche serveur (FTS5) > (unnamed)
+
+tests/media-foundation.test.ts:
+(pass) B1 · A — enveloppe v1 : round-trip (directive : 10 Ko, 1 Mo, 5 Mo) > round-trip 10 Ko → octets identiques [1.14ms]
+(pass) B1 · A — enveloppe v1 : round-trip (directive : 10 Ko, 1 Mo, 5 Mo) > round-trip 1 Mo → octets identiques [27.33ms]
+(pass) B1 · A — enveloppe v1 : round-trip (directive : 10 Ko, 1 Mo, 5 Mo) > round-trip 5 Mo → octets identiques [114.97ms]
+(pass) B1 · A — enveloppe v1 : round-trip (directive : 10 Ko, 1 Mo, 5 Mo) > format v1:iv:ciphertext:tag — 4 segments, IV 12 o, tag 16 o, base64url [0.49ms]
+(pass) B1 · A — enveloppe v1 : round-trip (directive : 10 Ko, 1 Mo, 5 Mo) > generateCek : 32 octets, deux appels distincts [0.05ms]
+(pass) B1 · A — enveloppe v1 : round-trip (directive : 10 Ko, 1 Mo, 5 Mo) > mauvais CEK au déchiffrement → auth-failed (échec propre) [0.29ms]
+(pass) B1 · B — altération → échec PROPRE (jamais de crash) > ciphertext altéré → MediaCryptoError auth-failed [0.15ms]
+(pass) B1 · B — altération → échec PROPRE (jamais de crash) > tag altéré → MediaCryptoError auth-failed [0.07ms]
+(pass) B1 · B — altération → échec PROPRE (jamais de crash) > IV altéré → échec propre (auth-failed) [0.06ms]
+(pass) B1 · B — altération → échec PROPRE (jamais de crash) > enveloppes malformées → bad-envelope (préfixe, segments, longueurs, vide) [0.21ms]
+(pass) B1 · B — altération → échec PROPRE (jamais de crash) > CEK de mauvaise taille → bad-cek (chiffrement et déchiffrement) [0.11ms]
+(pass) B1 · C — IV réutilisé → REFUS EXPLICITE (garde process-wide) > sealWithIv deux fois avec le MÊME IV → MediaCryptoError iv-reused [0.10ms]
+(pass) B1 · C — IV réutilisé → REFUS EXPLICITE (garde process-wide) > même IV + CEKs différents → refus aussi (la garde porte sur l'IV enregistré) [0.05ms]
+(pass) B1 · C — IV réutilisé → REFUS EXPLICITE (garde process-wide) > 1000 scellés aléatoires → 1000 IV distincts (jamais de collision) [4.74ms]
+(pass) B1 · D — strip EXIF (directive : GPS absent, taille ≤, orientation tranchée) > fixture GPS (EXIF complet, orientation 6) → EXIF ABSENT après strip [6.72ms]
+(pass) B1 · D — strip EXIF (directive : GPS absent, taille ≤, orientation tranchée) > orientation CUITE dans les pixels : 4×3 stocké + orientation 6 → 3×4 en sortie [1.84ms]
+(pass) B1 · D — strip EXIF (directive : GPS absent, taille ≤, orientation tranchée) > taille post-strip ≤ taille originale (fixture GPS) [2.01ms]
+(pass) B1 · D — strip EXIF (directive : GPS absent, taille ≤, orientation tranchée) > image photo-like 1200×800 → EXIF absent + taille post-strip ≤ originale [95.23ms]
+(pass) B1 · D — strip EXIF (directive : GPS absent, taille ≤, orientation tranchée) > PNG → strip OK, EXIF absent, format conservé [3.08ms]
+(pass) B1 · D — strip EXIF (directive : GPS absent, taille ≤, orientation tranchée) > entrée non-image → MediaExifError bad-image (pas de crash) [0.60ms]
+(pass) B1 · D — strip EXIF (directive : GPS absent, taille ≤, orientation tranchée) > image > 5 Mo → MediaExifError too-large AVANT sharp (limite spec §2) [2.39ms]
+(pass) B1 · E — URLs présignées (TTL 15 min, méthode, expiration) > PUT présigné — structure sigv4, TTL par défaut 900 s (15 min, directive) [1.16ms]
+(pass) B1 · E — URLs présignées (TTL 15 min, méthode, expiration) > verifyPresignedUrl (fraîche) → ok + objectKey round-trip [0.86ms]
+(pass) B1 · E — URLs présignées (TTL 15 min, méthode, expiration) > URL expirée → REFUS (MediaStorageError expired) [0.88ms]
+(pass) B1 · E — URLs présignées (TTL 15 min, méthode, expiration) > URL encore valide à la LIMITE (900 s exactement) → ok [0.29ms]
+(pass) B1 · E — URLs présignées (TTL 15 min, méthode, expiration) > méthode respectée : URL PUT vérifiée en GET → refus (signed headers ≠) [0.38ms]
+(pass) B1 · E — URLs présignées (TTL 15 min, méthode, expiration) > signature altérée → bad-signature ; objectKey altéré → bad-signature [0.75ms]
+(pass) B1 · E — URLs présignées (TTL 15 min, méthode, expiration) > TTL borné 60…3600 s (30 s et 4000 s → refus), GET sans contentLength OK [0.38ms]
+(pass) B1 · E — URLs présignées (TTL 15 min, méthode, expiration) > PUT sans contentLength → refus (taille imposée, spec §4.3) [0.07ms]
+(pass) B1 · E — URLs présignées (TTL 15 min, méthode, expiration) > driver r2 (région auto) → présignature + vérification OK [0.32ms]
+(pass) B1 · E — URLs présignées (TTL 15 min, méthode, expiration) > config depuis l'env : variable manquante → not-configured [0.25ms]
+(pass) B1 · F — limites par type + whitelist clés (spec §2, §4.2) > MEDIA_LIMITS : image 5 Mo, audio 10 Mo, vidéo 100 Mo (directive) [0.02ms]
+(pass) B1 · F — limites par type + whitelist clés (spec §2, §4.2) > assertMediaLimit : dépassement → too-large, type hors whitelist → refus [0.14ms]
+(pass) B1 · F — limites par type + whitelist clés (spec §2, §4.2) > assertObjectKey : uuid v4 OK — traversée de chemin / clé exotique → refus [0.06ms]
+(pass) B1 · F — limites par type + whitelist clés (spec §2, §4.2) > newObjectKey : aucune identité utilisateur dans la clé [0.03ms]
+
+tests/db-boot-pragma.test.ts:
+(pass) db boot pragmas (Clarification 1) > S1 — assertBootPragmaResult : mode inattendu → throw (jamais silencieux) [0.13ms]
+(pass) db boot pragmas (Clarification 1) > S2 — happy path : DB fraîche → WAL posé et persistant [5.26ms]
+(pass) db boot pragmas (Clarification 1) > S3 — DB verrouillée EXCLUSIVE par un PROCESS TIERS → verifyBootPragmas REJETE (fail-fast) [5822.94ms]
+(pass) db boot pragmas (Clarification 1) > S4 — fichier DB illisible (répertoire absent) → rejet immédiat [5.34ms]
+
+tests/c4-groups.test.ts:
+(skip) C4 groupes MLS — système (serveur réel) > (unnamed)
+(skip) C4 groupes MLS — système (serveur réel) > W1 — flux complet : création, jointures, M1 lu par les trois
+(skip) C4 groupes MLS — système (serveur réel) > W3 — epoch rotation visible puis retrait de Bob (epoch++)
+(skip) C4 groupes MLS — système (serveur réel) > W2 — forward secrecy : Bob exclu ne déchiffre PAS M2, Carol oui
+(skip) C4 groupes MLS — système (serveur réel) > W4 — replay : M1 rejoué par Carol → REFUS (ratchet)
+(skip) C4 groupes MLS — système (serveur réel) > W5 — collusion : l'état exfiltré de Bob (pré-retrait) ne déchiffre pas M3
+(skip) C4 groupes MLS — système (serveur réel) > W6 — invariants serveur : preuve absente → 401, non-créateur → 403, ciphertext géant → 400, ciphertext opaque
+(skip) C4 groupes MLS — système (serveur réel) > BENCH — établissement groupe (création + invitation 2 membres) < 2 s · envoi message < 500 ms
+(skip) C4 groupes MLS — système (serveur réel) > W7 — key package single-use : 2ᵉ consommation → 404
+
+tests/admin-users-e2e.test.ts:
+admin-users-e2e SKIPPÉ — DATABASE_URL n'est pas la DB du harness. Lancer :
+  DATABASE_URL="file:$(pwd)/db/adm-users-e2e-test.db" bun test tests/admin-users-e2e.test.ts
+(pass) A. auth/RBAC annuaire + fiche > token interne SEUL → 401 [0.06ms]
+(pass) A. auth/RBAC annuaire + fiche > session SANS token interne → 401 [0.04ms]
+(pass) A. auth/RBAC annuaire + fiche > anonymous → 401 [0.03ms]
+(pass) A. auth/RBAC annuaire + fiche > auditor → 403 sur l'annuaire ET la fiche (arbitrage §13.1) [0.06ms]
+(pass) A. auth/RBAC annuaire + fiche > support → 200 en lecture (annuaire + fiche) [0.05ms]
+(pass) A. auth/RBAC annuaire + fiche > support → 403 sur POST warn (lecture seule mutations, directive) [0.04ms]
+(pass) B. recherche par pseudo (LIKE, limite 20) > q=alice → ≥ 1 résultat exact [0.07ms]
+(pass) B. recherche par pseudo (LIKE, limite 20) > q=zzzz-inexistant → 0 résultat [0.05ms]
+(pass) B. recherche par pseudo (LIKE, limite 20) > q vide → 400 (directive) [0.03ms]
+(pass) B. recherche par pseudo (LIKE, limite 20) > LIKE échappé : « 100% » matche « 100%_pur », PAS « 100x5pur » [0.04ms]
+(pass) B. recherche par pseudo (LIKE, limite 20) > limite 20 résultats (21 pseudos limit-mate-*) [0.03ms]
+(pass) C. pagination cursor + tri + filtres > cursor malformé → 400 [0.05ms]
+(pass) C. pagination cursor + tri + filtres > page 1 = 20 items + nextCursor · page 2 = items DISTINCTS [0.11ms]
+(pass) C. pagination cursor + tri + filtres > curseur d'un AUTRE tri → 400 (k du curseur = garde anti-rejeu de vue) [0.05ms]
+(pass) C. pagination cursor + tri + filtres > tri reports : poids 3 en tête (badge visuel côté UI) [0.05ms]
+(pass) C. pagination cursor + tri + filtres > filtre status=suspendu : exclut les actifs · status=banni → 0 (§13.7) [0.13ms]
+(pass) C. pagination cursor + tri + filtres > filtre période 24h : exclut le compte inscrit à 48 h [0.04ms]
+(pass) D. fiche utilisateur > 200 + format complet (pubkey, bio, compteurs, audit, reports) [0.07ms]
+(pass) D. fiche utilisateur > pubkey inconnue → 404 [0.03ms]
+(pass) D. fiche utilisateur > ANTI-FUITE : ni email, ni password, ni IP dans annuaire et fiche (§1) [0.14ms]
+(pass) E. warn (moderator) — UserWarning + audit + notification profil > moderator → 200, UserWarning en DB, AdminAudit « SPAM: … » [0.11ms]
+(pass) E. warn (moderator) — UserWarning + audit + notification profil > le TITULAIRE lit son avertissement via preuve de possession (profil) [0.09ms]
+(pass) E. warn (moderator) — UserWarning + audit + notification profil > texte < 20 chars → 422 · catégorie invalide → 422 [0.06ms]
+(pass) E. warn (moderator) — UserWarning + audit + notification profil > sans CSRF → 403 (mutation, double contrôle Étape 4) [0.06ms]
+(pass) E. warn (moderator) — UserWarning + audit + notification profil > fiche : l'historique admin liste le warn [0.05ms]
+(pass) F. suspend — publication bloquée, DM possible, expiration > avant suspension : posts → 200 (témoin) [0.03ms]
+(pass) F. suspend — publication bloquée, DM possible, expiration > suspend 24h → 200, suspendedUntil ≈ +24 h, sessionsRevoked=0 (§13.4) [0.07ms]
+(pass) F. suspend — publication bloquée, DM possible, expiration > suspendu : POST /api/posts → 403 (A3 — publication bloquée) [0.03ms]
+(pass) F. suspend — publication bloquée, DM possible, expiration > suspendu : POST /api/dms → 200 (DM POSSIBLE — E2EE préservée, directive) [0.03ms]
+(pass) F. suspend — publication bloquée, DM possible, expiration > duration invalide (48h) → 400 · indefinite → 400 (arbitrage §13.3) [0.06ms]
+(pass) F. suspend — publication bloquée, DM possible, expiration > suspend 30d → suspendedUntil ≈ +30 j (dropdown Étape 7) [0.07ms]
+(pass) F. suspend — publication bloquée, DM possible, expiration > EXPIRATION (mock temporel : backdate DB) → posts redevient 200 + statut actif [0.07ms]
+(pass) F. suspend — publication bloquée, DM possible, expiration > unsuspend (arbitrage §13.5) → 200, suspendedAt/until cleared [0.08ms]
+(pass) F. suspend — publication bloquée, DM possible, expiration > suspend d'un pubkey inconnu → 404 [0.04ms]
+(pass) G. ban — AUCUNE route (four-eyes Étape 9) > POST interne /ban → 404 (route inexistante) [0.04ms]
+(pass) G. ban — AUCUNE route (four-eyes Étape 9) > POST BFF /ban → 404 (le panneau n'expose rien non plus) [0.04ms]
+(pass) H. BFF /api/users — proxy authentifié > support : liste 200 via le panneau [0.05ms]
+(pass) H. BFF /api/users — proxy authentifié > auditor → 403 propagé [0.03ms]
+(pass) H. BFF /api/users — proxy authentifié > q vide → 400 propagé (validation métier du backend) [0.06ms]
+(pass) H. BFF /api/users — proxy authentifié > fiche via BFF → 200 · inconnue → 404 [0.06ms]
+(pass) H. BFF /api/users — proxy authentifié > warn via BFF (moderator + CSRF) → 200 · sans CSRF → 403 [0.06ms]
+(pass) H. BFF /api/users — proxy authentifié > anonymous sur le BFF → 401 [0.03ms]
+
+tests/anti-replay.test.ts:
+(pass) A1 — matrice unitaire (MemoryReplayStore) > 1. rejeu à 1 s → duplicate [0.51ms]
+(pass) A1 — matrice unitaire (MemoryReplayStore) > 2. rejeu à 1 h → duplicate [0.11ms]
+(pass) A1 — matrice unitaire (MemoryReplayStore) > 3. rejeu à 24 h → duplicate (garde 7 j vivante) [0.07ms]
+(pass) A1 — matrice unitaire (MemoryReplayStore) > 6. ré-emballage hostile : même payload, msgId/seq forgés → duplicate [0.06ms]
+(pass) A1 — matrice unitaire (MemoryReplayStore) > 5. compteur manipulé : seq égale puis inférieure → seq_regression [0.14ms]
+(pass) A1 — matrice unitaire (MemoryReplayStore) > 7. nouvelle époque (+7 h) → compteur neuf, seq redémarre [0.12ms]
+(pass) A1 — matrice unitaire (MemoryReplayStore) > 8. fenêtres : > 7 j → stale ; futur > 60 s → stale ; ts invalide → stale [0.11ms]
+(pass) A1 — matrice unitaire (MemoryReplayStore) > 10. enveloppe legacy (sans msgId/seq) → acceptée, rejeu → duplicate [0.12ms]
+(pass) A1 — matrice unitaire (MemoryReplayStore) > 9. purge : les gardes expirées partent, les vivantes restent [0.16ms]
+(pass) A1 — matrice unitaire (MemoryReplayStore) > déterminisme de la garde : le tuple canonique fixe l'empreinte [0.06ms]
+(pass) A1 — persistance (PrismaReplayStore, SQLite fichier) > 4. rejeu après redémarrage (disconnect → nouveau client → même fichier) → duplicate [11.71ms]
+(pass) A1 — persistance (PrismaReplayStore, SQLite fichier) > 4b. atomicité transactionnelle : refus → RIEN n'est écrit (rollback) [5.24ms]
+(pass) A1 — contrat commun Memory/Prisma > même verdict sur les mêmes entrées [916.04ms]
+
+tests/trust-flows.test.ts:
+(pass) A2 — flux de confiance (Prisma, SQLite fichier) > T0. premier contact → épinglage initial non vérifié (jaune, non bloquant) [388.46ms]
+(pass) A2 — flux de confiance (Prisma, SQLite fichier) > T1. substitution au premier contact → deux numéros différents (détectable) [280.59ms]
+(pass) A2 — flux de confiance (Prisma, SQLite fichier) > T2. substitution APRÈS établissement → `changed` + ROUGE bloquant [527.20ms]
+(pass) A2 — flux de confiance (Prisma, SQLite fichier) > T3. nouvel appareil légitime → re-vérification → `verified` sur la nouvelle clé [422.65ms]
+
+tests/media-b2-flow.test.ts:
+(skip) B2 — chaîne complète upload → finalize → lecture (weed réel + proxy) > U1+U2 — 500 Ko GPS : SHA-256 identique, EXIF/GPS absent après le voyage complet
+(skip) B2 — chaîne complète upload → finalize → lecture (weed réel + proxy) > U3 — interop : decryptMedia socle B1 lit EXACTEMENT une enveloppe encryptBytes client
+(skip) B2 — refus d'entrée (serveur) > R1 — application/pdf → 400
+(skip) B2 — refus d'entrée (serveur) > R2 — 6 Mo → 400
+(skip) B2 — refus d'entrée (serveur) > R3 — preuve invalide (signée par une AUTRE clé) → 401
+(skip) B2 — refus d'entrée (serveur) > R10 — download-url sans preuve → 401 · média inconnu → 404
+(skip) B2 — finalize : contrôles serveur (aveugle) > R6 — finalize SANS PUT → 400 objet absent
+(skip) B2 — finalize : contrôles serveur (aveugle) > R7 — enveloppe garbage (taille exacte liée) → finalize 422
+(skip) B2 — finalize : contrôles serveur (aveugle) > R8 — fenêtre finalize > 20 min → 410
+(skip) B2 — MIME spoofing (arbitrage §6.7 : barrière AU RENDU) > R9 — PDF chiffré déclaré image/jpeg : finalize 200 puis RENDU REFUSÉ
+(skip) B2 — rate limit + quota > R4 — 21e upload de l'heure → 429 (20/h/utilisateur)
+(skip) B2 — rate limit + quota > R5 — quota : owner à 501 Mo finalized → 429
+(skip) B2 — proxy média (anti open-proxy) > P1 — chemin hors whitelist (bucket fantôme / clé non uuid) → 404 · routes API NON captées
+(skip) B2 — E2E deux appareils simulés (émetteur → serveur → destinataire) > U4 — A upload + dm2 E2EE → B reçoit, déchiffre le dm2 ET l'image, SHA-256 identique
+(skip) B2 — file hors-ligne (re-orchestration) > R11 — queue : flush rejoue (re-strip/re-chiffre/re-signe) → upload réussi ; item invalide → failed
+
+tests/admin-audit-e2e.test.ts:
+admin-audit-e2e SKIPPÉ — DATABASE_URL n'est pas la DB du harness. Lancer :
+  DATABASE_URL="file:$(pwd)/db/adm-audit-e2e-test.db" bun test tests/admin-audit-e2e.test.ts
+(skip) Étape 8 — audit viewer > A1. auditor → 200 (accès total lecture)
+(skip) Étape 8 — audit viewer > A2. support → 403 (porte EXACTE — pas une hiérarchie, arbitrage §14.1)
+(skip) Étape 8 — audit viewer > A3. moderator → 403 (directive à la lettre)
+(skip) Étape 8 — audit viewer > A4. super-admin → 200 (règle structurelle : rôle sommet jamais exclu)
+(skip) Étape 8 — audit viewer > A5. sans session → 401 · sans token interne → 401
+(skip) Étape 8 — audit viewer > B1. cursor malformé → 400
+(skip) Étape 8 — audit viewer > B2. cursor JSON valide mais champs absents → 400
+(skip) Étape 8 — audit viewer > B3. tri createdAt DESC + page 2 distincte
+(skip) Étape 8 — audit viewer > C1. action=warn exclut les autres actions
+(skip) Étape 8 — audit viewer > C2. since=24h exclut l'entrée backdatée 48 h
+(skip) Étape 8 — audit viewer > C3. from/to custom : prime sur since · mutuellement exclusifs → 400
+(skip) Étape 8 — audit viewer > C4. filtre actor : seulement les entrées du moderator
+(skip) Étape 8 — audit viewer > C5. actor non entier → 400
+(skip) Étape 8 — audit viewer > D1. target=user:<pubkey> → ≥ 1 (égalité double type:id)
+(skip) Étape 8 — audit viewer > D2. sous-chaîne de targetId → retrouvée
+(skip) Étape 8 — audit viewer > E1. détail : TOUS les champs présents (before/after bruts, ip, UA)
+(skip) Étape 8 — audit viewer > E2. id non entier → 400 · inconnu → 404
+(skip) Étape 8 — audit viewer > F1. export → Content-Disposition attachment + text/csv + parsable
+(skip) Étape 8 — audit viewer > F2. échappement RFC 4180 : guillemets doublés
+(skip) Étape 8 — audit viewer > F3. limite 10 000 : export sans filtre → 422 avec message clair
+(skip) Étape 8 — audit viewer > F4. export filtré sous la limite → 200 (même DB)
+(skip) Étape 8 — audit viewer > F5. export : même porte RBAC (support → 403)
+(skip) Étape 8 — audit viewer > G1. UPDATE AdminAudit via Prisma → erreur trigger SQLite
+(skip) Étape 8 — audit viewer > G2. DELETE AdminAudit via Prisma → erreur trigger SQLite
+(skip) Étape 8 — audit viewer > G3. aucune écriture HTTP : POST sur les endpoints → 405
+(skip) Étape 8 — audit viewer > H1. BFF /api/audit : auditor → 200 · sans cookie → 401 · support → 403
+(skip) Étape 8 — audit viewer > H2. BFF /api/audit/[id] : détail propagé · 404 propagée
+(skip) Étape 8 — audit viewer > H3. BFF export.csv : auditor → CSV réel (attachment) · support → 403
+(skip) Étape 8 — audit viewer > H4. BFF 502 backend-unreachable ≠ 401/403 (panel sans backend)
+(skip) Étape 8 — audit viewer > I1. facets : acteurs (email+rôle), actions, targetTypes
+
+tests/admin-four-eyes-e2e.test.ts:
+admin-four-eyes-e2e SKIPPÉ — DATABASE_URL n'est pas la DB du harness. Lancer :
+  DATABASE_URL="file:$(pwd)/db/adm-four-eyes-e2e-test.db" bun test tests/admin-four-eyes-e2e.test.ts
+(pass) A. création d'intention (RBAC + validation) > moderator → 403 (super-admin requis, arbitrage §15.1) [0.05ms]
+(pass) A. création d'intention (RBAC + validation) > support → 403 · auditor → 403 [0.08ms]
+(pass) A. création d'intention (RBAC + validation) > super-admin → 201 avec expiresAt ≈ +1 h [0.07ms]
+(pass) A. création d'intention (RBAC + validation) > actionType non-destructif (warn) → 400 — four-eyes réservé à l'irréversible [0.04ms]
+(pass) A. création d'intention (RBAC + validation) > justification < 20 chars → 422 [0.04ms]
+(pass) A. création d'intention (RBAC + validation) > cible inconnue → 404 (aucune ligne créée) [0.05ms]
+(pass) A. création d'intention (RBAC + validation) > doublon : 2ᵉ intention OUVERTE sur la même cible → 409 [0.04ms]
+(pass) B. liste des intentions > super-admin → 200, items ≥ 2, payload figé (nickname) [0.08ms]
+(pass) B. liste des intentions > moderator → 200 (lecture de la file) · support → 403 · auditor → 403 [0.07ms]
+(pass) C. auto-approbation impossible > le DEMANDEUR (même admin, 2ᵉ session) → 403 [0.11ms]
+(pass) D. ban exécuté par four-eyes > approbation par un 2ᵉ super-admin → 200 · bannedAt + posts masqués [0.26ms]
+(pass) D. ban exécuté par four-eyes > EXACTEMENT 2 lignes AdminAudit (request + execute) avec requestedBy/approvedBy [0.11ms]
+(pass) D. ban exécuté par four-eyes > publication du banni → 403 « banni définitivement » [0.03ms]
+(pass) D. ban exécuté par four-eyes > feed public : les posts du banni sont absents [0.05ms]
+(pass) D. ban exécuté par four-eyes > filtre annuaire status=banni → contient la cible · fiche → « banni » [0.08ms]
+(pass) D. ban exécuté par four-eyes > ban d'un utilisateur DÉJÀ banni → 409 [0.04ms]
+(pass) E. expiration (1 h, paresseuse) > intention expirée → 410 Gone (ne peut plus être approuvée) [0.15ms]
+(pass) E. expiration (1 h, paresseuse) > annulation d'une intention expirée → 410 (jamais « cancelled ») [0.06ms]
+(pass) F. annulation par le demandeur > autre admin → 403 (seul le demandeur annule) [0.06ms]
+(pass) F. annulation par le demandeur > demandeur annule → 200 · status cancelled · AUCUNE mutation [0.12ms]
+(pass) G. purge exécutée par four-eyes > create + approve → post SUPPRIMÉ · 2 lignes (created + purge) · beforeJson conservé [0.20ms]
+(pass) G. purge exécutée par four-eyes > re-demande de purge sur un post purgé → 404 (cible disparue) [0.04ms]
+(pass) H. notification à la création > log serveur [pending-action:notify] avec les autres super-admins (fichier stdout) [0.14ms]
+(pass) I. RBAC approbation > moderator → 403 sur approve (super-admin requis) [0.11ms]
+(pass) J. zéro route ban directe (scénario G É7 — toujours vrai) > POST /api/internal/admin/users/<pubkey>/ban → 404 · BFF idem [0.06ms]
+(pass) K. BFF /api/pending-actions (panneau) > GET super-admin → 200 · auditor → 403 [0.06ms]
+(pass) K. BFF /api/pending-actions (panneau) > POST 201 → approve par le 2ᵉ admin 200 (cycle complet via BFF) [0.10ms]
+(pass) K. BFF /api/pending-actions (panneau) > POST sans CSRF → 403 [0.04ms]
+(pass) K. BFF /api/pending-actions (panneau) > page SSR /pending-actions : 200 HTML pour moderator · refus pour auditor [0.06ms]
+
+tests/admin-bootstrap.test.ts:
+(pass) ADM Étape 3 — CLI admin:bootstrap > B1 · premier run → super-admin créé, QR ASCII + 2 codes + mot de passe affichés UNE fois [207.99ms]
+(pass) ADM Étape 3 — CLI admin:bootstrap > B2 · second run → REFUSÉ (un AdminUser existe déjà) [98.22ms]
+(pass) ADM Étape 3 — CLI admin:bootstrap > B3 · --allow-prod sans NODE_ENV=production → REFUSÉ (flag sans objet) [96.02ms]
+(pass) ADM Étape 3 — CLI admin:bootstrap > B4 · NODE_ENV=production sans --allow-prod → REFUSÉ (double confirmation) [98.66ms]
+(pass) ADM Étape 3 — CLI admin:bootstrap > B5 · aucun secret en clair en DB (password / codes / secret TOTP hachés ou absents) [2.76ms]
+
+tests/admin-audit-stress.test.ts:
+admin-audit-stress SKIPPÉ — DATABASE_URL n'est pas la DB du harness. Lancer :
+  DATABASE_URL="file:$(pwd)/db/adm-audit-stress-test.db" bun test tests/admin-audit-stress.test.ts
+(pass) S1. warn + suspend simultanés (même user) — zéro deadlock > 2 admins distincts en Promise.all → 200+200, 2 lignes AdminAudit [0.23ms]
+(pass) S2. hide + hide simultanés (même post) — zéro deadlock > 2 moderators en Promise.all → 200+200, 2 lignes AdminAudit `hide` [0.18ms]
+(pass) S3. cancel vs approve concurrents — exactement un gagnant, zéro deadlock > paire 1 : approve gagne → ban exécuté · cancel → 409 [0.13ms]
+(pass) S3. cancel vs approve concurrents — exactement un gagnant, zéro deadlock > paire 2 : cancel gagne → intention cancelled · approve → 409 [0.12ms]
+(pass) S3. cancel vs approve concurrents — exactement un gagnant, zéro deadlock > paire 3+4 : 4 requêtes simultanées (2 cancels + 2 approves) — résolues proprement [0.31ms]
+(pass) S4. 2 super-admins créent la même intention — une seule 201 > Promise.all → exactement une 201, l'autre 409 [0.12ms]
+(pass) S5. dismiss + dismiss simultanés (même report) — un 200, un 409 > 2 moderators en Promise.all → [200, 409], 1 ligne AdminAudit [0.10ms]
+
+tests/c2-calls.test.ts:
+(pass) C2 signalisation (hub réel) > S1 — offer/answer/ice/hangup relayés entre identités prouvées [310.95ms]
+(pass) C2 signalisation (hub réel) > S2a — offre avec signature absente/invalide → NON relayée [1006.11ms]
+(pass) C2 signalisation (hub réel) > S2b — usurpation (from ≠ identité prouvée) → NON relayée [1005.82ms]
+(pass) C2 signalisation (hub réel) > S2c — socket sans hello (aucune preuve) → NON relayée [758.32ms]
+(pass) C2 signalisation (hub réel) > S2d — SDP surdimensionné (> 16 Ko) → NON relayé [905.85ms]
+(pass) C2 signalisation (hub réel) > S2e — rate limit 60 événements/min → excès NON relayés [1525.49ms]
+(pass) C2 TURN > S3a — buildRestTurnCredentials : format REST coturn exact [0.39ms]
+(pass) C2 fallback > S5 — 2 échecs < 30 s → notice notes vocales ; succès → reset [0.23ms]
+
+tests/admin-dashboard-e2e.test.ts:
+admin-dashboard-e2e SKIPPÉ — DATABASE_URL n'est pas la DB du harness. Lancer :
+  DATABASE_URL="file:$(pwd)/db/adm-dashboard-e2e-test.db" bun test tests/admin-dashboard-e2e.test.ts
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > (unnamed)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A1 · token SEUL (sans session) → 401 — le token interne ne peut rien faire
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A2 · session SANS token interne → 401 (double contrôle obligatoire)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A3 · token + session + acteur (support) → 200 avec les 4 clés + generatedAt
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A4 · VALEURS conformes aux fixtures : h24=2, d7=4, reports ouverts=2, backup ok
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A5 · auditor → 403 (lecture limitée à l'audit — directive Étape 5)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A6 · acteur mismatch (X-Admin-Actor ≠ session) → 401
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A7 · ANTI-FUITE : aucun email, ciphertext DM, pubkey, ni clé email/ip/password dans la réponse
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · B — backup-status (fs.readFile, pas de cache) > B1 · backup frais (1 h) → state ok, vert
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · B — backup-status (fs.readFile, pas de cache) > B2 · backup ancien (48 h > seuil 24 h) → stale orange — relit le FICHIER (pas de cache)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · B — backup-status (fs.readFile, pas de cache) > B3 · backup failed → rouge
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · B — backup-status (fs.readFile, pas de cache) > B4 · fichier absent → « not-configured » orange (fallback directive)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · C — BFF /api/dashboard (panneau, chaîne complète) > C1 · sans cookie → 401 uniforme
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · C — BFF /api/dashboard (panneau, chaîne complète) > C2 · session support → 200 avec les 4 clés
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · C — BFF /api/dashboard (panneau, chaîne complète) > C3 · session moderator → 200 (≥ support)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · C — BFF /api/dashboard (panneau, chaîne complète) > C4 · session auditor → 403 (propagé par l'app principale)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · C — BFF /api/dashboard (panneau, chaîne complète) > C5 · 401 et 403 → MÊME message « unauthorized » (aucune fuite sur la couche qui refuse)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · D — page UI /dashboard (rendu serveur) > D1 · anonyme → redirection vers / (pas de fuite de contenu)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · D — page UI /dashboard (rendu serveur) > D2 · session support → 200 HTML avec les 4 métriques SERVIES (valeurs SSR, sans attendre l'hydratation)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · D — page UI /dashboard (rendu serveur) > D3 · session auditor → carte « Accès refusé » rendue serveur (sans appel réseau)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · E — dégradation (kill backend) > E1 · app principale killée → BFF 502 { backend-unreachable } (ni 500, ni 401 mensonger)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · E — dégradation (kill backend) > E1b · page /dashboard pendant la panne → reste sur place, bandeau « Backend injoignable » (PAS de redirection mensongère)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · E — dégradation (kill backend) > E2 · respawn de l'app principale → dashboard de nouveau 200 (résilience)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > (unnamed)
+
+tests/admin-totp.test.ts:
+(pass) ADM Étape 3 — TOTP RFC 6238 (SHA-1, 6 chiffres, 30 s) > vecteur base32 de référence (RFC 4648) — encodeur sans padding, décodeur tolérant [0.24ms]
+(pass) ADM Étape 3 — TOTP RFC 6238 (SHA-1, 6 chiffres, 30 s) > RFC 6238 App. B — T=59s → 94287082 → 6 chiffres 287082 [0.17ms]
+(pass) ADM Étape 3 — TOTP RFC 6238 (SHA-1, 6 chiffres, 30 s) > RFC 6238 App. B — T=1111111109s → 07081804 → 6 chiffres 081804 [0.02ms]
+(pass) ADM Étape 3 — TOTP RFC 6238 (SHA-1, 6 chiffres, 30 s) > RFC 6238 App. B — T=1111111111s → 14050471 → 6 chiffres 050471 [0.02ms]
+(pass) ADM Étape 3 — TOTP RFC 6238 (SHA-1, 6 chiffres, 30 s) > RFC 6238 App. B — T=1234567890s → 89005924 → 6 chiffres 005924
+(pass) ADM Étape 3 — TOTP RFC 6238 (SHA-1, 6 chiffres, 30 s) > RFC 6238 App. B — T=2000000000s → 69279037 → 6 chiffres 279037 [0.01ms]
+(pass) ADM Étape 3 — TOTP RFC 6238 (SHA-1, 6 chiffres, 30 s) > RFC 6238 App. B — T=20000000000s → 65353130 → 6 chiffres 353130
+(pass) ADM Étape 3 — TOTP RFC 6238 (SHA-1, 6 chiffres, 30 s) > génération de secret : 20 octets → 32 chars base32, unique [0.06ms]
+(pass) ADM Étape 3 — TOTP RFC 6238 (SHA-1, 6 chiffres, 30 s) > fenêtre ±1 : code du compteur −1 et +1 acceptés (±30 s, pas plus) [0.50ms]
+(pass) ADM Étape 3 — TOTP RFC 6238 (SHA-1, 6 chiffres, 30 s) > anti-rejeu : un compteur déjà VALIDÉ (≤ lastCounter) est refusé [0.11ms]
+(pass) ADM Étape 3 — TOTP RFC 6238 (SHA-1, 6 chiffres, 30 s) > entrées invalides : code non numérique / vide / secret vide → refus [0.08ms]
+
+tests/media-minio-integration.test.ts:
+media-minio-integration SKIPPÉ — docker absent du sandbox (NON TESTÉ, B1). Rejouable : docker compose -f deploy/docker-compose.minio.yml up -d puis bun test tests/media-minio-integration.test.ts
+(skip) B1 · G — intégration MinIO locale (upload → check → delete) > (unnamed)
+(skip) B1 · G — intégration MinIO locale (upload → check → delete) > upload (presign PUT) → download (presign GET) → bytes identiques → delete (mc)
+
+tests/admin-queue-e2e.test.ts:
+admin-queue-e2e SKIPPÉ — DATABASE_URL n'est pas la DB du harness. Lancer :
+  DATABASE_URL="file:$(pwd)/db/adm-queue-e2e-test.db" bun test tests/admin-queue-e2e.test.ts
+(skip) ADM 6 · A — endpoint interne queue (auth + RBAC §12.17) > A1 · token interne SEUL → 401
+(skip) ADM 6 · A — endpoint interne queue (auth + RBAC §12.17) > A2 · session SANS token interne → 401
+(skip) ADM 6 · A — endpoint interne queue (auth + RBAC §12.17) > A3 · anonymous → 401
+(skip) ADM 6 · A — endpoint interne queue (auth + RBAC §12.17) > A4 · support → 200 (items + openTotal + page)
+(skip) ADM 6 · A — endpoint interne queue (auth + RBAC §12.17) > A5 · auditor → 403 (STRICT — lecture seule AdminAudit, §12.17)
+(skip) ADM 6 · A — endpoint interne queue (auth + RBAC §12.17) > A6 · paramètre period invalide → 400 · type invalide → 400
+(skip) ADM 6 · B — tri poids décroissant puis ancienneté croissante > B1 · 3 reports sur postA + 1 sur postB → A en premier, weight=3
+(skip) ADM 6 · C — pagination cursor-based (20/page) > C1 · page 1 = 20 items + nextCursor
+(skip) ADM 6 · C — pagination cursor-based (20/page) > C2 · page 2 → items DISTINCTS de la page 1 (aucun chevauchement)
+(skip) ADM 6 · C — pagination cursor-based (20/page) > C3 · cursor malformé → 400 (jamais de restart silencieux)
+(skip) ADM 6 · C — pagination cursor-based (20/page) > C4 · cursor expiré (cible fermée entre deux pages) → restart page 1 + cursorReset
+(skip) ADM 6 · D — filtres période / type / statut > D1 · période 24h exclut le report de 48h ; all le inclut
+(skip) ADM 6 · D — filtres période / type / statut > D2 · période 7d inclut le report de 48h (fenêtre correcte)
+(skip) ADM 6 · D — filtres période / type / statut > D3 · type=comment ne liste QUE les commentaires ; type=post les posts seuls
+(skip) ADM 6 · D — filtres période / type / statut > D4 · status=open (handledById IS NULL) exclut les reports traités
+(skip) ADM 6 · E — actions (justification §6 obligatoire) > E1 · justification < 20 chars → 422 (validation SERVEUR)
+(skip) ADM 6 · E — actions (justification §6 obligatoire) > E2 · catégorie invalide → 422 · sans catégorie → 422
+(skip) ADM 6 · E — actions (justification §6 obligatoire) > E3 · hide (moderator) → 200 + AdminAudit « SPAM: … » + report ne réapparaît pas
+(skip) ADM 6 · E — actions (justification §6 obligatoire) > E4 · dismiss (support) → 200 + status=dismissed · re-dismiss → 409
+(skip) ADM 6 · E — actions (justification §6 obligatoire) > E5 · dismiss × auditor → 403 (lecture seule stricte)
+(skip) ADM 6 · F — warn (notification profil, pas de DM) > F1 · warn (support) → 200 + UserWarning en DB (catégorie + note)
+(skip) ADM 6 · F — warn (notification profil, pas de DM) > F2 · lecture SANS preuve → 401 (même pour une pubkey bien formée)
+(skip) ADM 6 · F — warn (notification profil, pas de DM) > F3 · lecture AVEC preuve valide → les avertissements du titulaire
+(skip) ADM 6 · F — warn (notification profil, pas de DM) > F4 · signature d'une AUTRE clé (usurpation) → 401
+(skip) ADM 6 · G — suspension temporaire et expiration paresseuse > (unnamed)
+(skip) ADM 6 · G — suspension temporaire et expiration paresseuse > G1 · suspend 24h → suspendedUntil ≈ now+24h · publication refusée 403 · feed exclut
+(skip) ADM 6 · G — suspension temporaire et expiration paresseuse > G2 · suspend 7d → suspendedUntil ≈ now+7j · duration invalide → 400
+(skip) ADM 6 · G — suspension temporaire et expiration paresseuse > G3 · suspension EXPIRÉE (backdatée) → publication OK + post de retour au fil
+(skip) ADM 6 · G — suspension temporaire et expiration paresseuse > G4 · unsuspend → suspendedAt/until/by cleared
+(skip) ADM 6 · H — four-eyes ban/purge : hors surface (Étape 9) > H1 · action ban → 400 (hors MODERATION_ACTIONS — four-eyes arrive en Étape 9)
+(skip) ADM 6 · I — anti-fuite (payload queue) > I1 · aucun email / IP / password / mot de passe dans le payload
+
+tests/media-real-s3.test.ts:
+(skip) B2 · prérequis — SigV4 B1 contre S3 réel indépendant (SeaweedFS) > G1+G2+G3 — PUT présigné → objet existe → GET intégrité SHA-256
+(skip) B2 · prérequis — SigV4 B1 contre S3 réel indépendant (SeaweedFS) > G4 — signature falsifiée → 403 (le serveur S3 valide VRAIMENT SigV4)
+(skip) B2 · prérequis — SigV4 B1 contre S3 réel indépendant (SeaweedFS) > G5 — flux B1 complet : stripExif → CEK → PUT → GET → décryptage → hash
+(skip) B2 · prérequis — SigV4 B1 contre S3 réel indépendant (SeaweedFS) > G6 — expiration : TTL 60 s + 61 s → GET et PUT refusés 403, objet non écrit
+
+tests/media-b3-voice.test.ts:
+(pass) B3 · lib opus pure (sniff, validation, waveform) > S1 — sniff conteneurs : ogg/opus + webm/opus OK · MP3 → null · spoof REFUSÉ [0.66ms]
+(pass) B3 · lib opus pure (sniff, validation, waveform) > S2 — validateVoiceForSend : 61 s REFUS · 60 s OK · vide REFUS · MP3 REFUS [0.53ms]
+(pass) B3 · lib opus pure (sniff, validation, waveform) > S3 — waveform : 100 peaks, bornés, zone forte > silence (algorithme partagé) [1.84ms]
+(pass) B3 · lib opus pure (sniff, validation, waveform) > S4 — isOpusRecordingSupported() === false sous bun (harness) [0.05ms]
+(pass) B3 · lib opus pure (sniff, validation, waveform) > V5 — garde client 61 s : uploadVoiceNote lève AVANT TOUT fetch [0.61ms]
+(pass) B3 · lib opus pure (sniff, validation, waveform) > S5 — round-trip crypto : encryptBytes(A) → decryptBytes(B) SHA-256 identique [4.47ms]
+(skip) B3 · E2E voix (pipeline B2, audio/opus) > V1 — chaîne complète : uploadVoiceNote → presign → PUT → finalize → downloadVoiceNote → SHA-256 identique
+(skip) B3 · E2E voix (pipeline B2, audio/opus) > V2 — contentType audio/mpeg → 400 (whitelist)
+(skip) B3 · E2E voix (pipeline B2, audio/opus) > V3 — 11 Mo audio/opus → 400 (limite PAR TYPE, image reste 5 Mo)
+(skip) B3 · E2E voix (pipeline B2, audio/opus) > V4 — DEUX appareils : A enregistre → dm2 E2EE (durée+peaks chiffrés) → B reçoit → SHA-256 identique
+
+231 tests skipped:
+(skip) B4 · E2E header + pipeline vidéo réel > (unnamed)
+(skip) B4 · E2E header + pipeline vidéo réel > H1 — Permissions-Policy servi : camera=(self) + microphone=(self)
+(skip) B4 · E2E header + pipeline vidéo réel > V1 — chaîne complète : webm réel + thumb → finalize → download → SHA-256 identique
+(skip) B4 · E2E header + pipeline vidéo réel > V2 — contentType video/avi → 400 (message clair, convertissez d'abord)
+(skip) B4 · E2E header + pipeline vidéo réel > V3 — 110 Mo → 400 (limite PAR TYPE vidéo 100 Mo)
+(skip) B4 · E2E header + pipeline vidéo réel > V4 — TTL download : vidéo ≈ 1 h · image ≈ 15 min
+(skip) B4 · E2E header + pipeline vidéo réel > V5 — round-trip DEUX appareils : dm2 E2EE (vidéo + thumb) → SHA-256 identiques
+(skip) B4 · E2E header + pipeline vidéo réel > V6 — barrière de rendu : dm2 video/webm portant des OCTETS AUDIO → REFUS
+(skip) D2 — PoW de création (serveur réel) > P1 — création valide acceptée : 200, user créé, quota exposé
+(skip) D2 — PoW de création (serveur réel) > P2 — création sans nonce → 403 pow_required
+(skip) D2 — PoW de création (serveur réel) > P3 — nonce invalide (difficulté non atteinte) → 403
+(skip) D2 — PoW de création (serveur réel) > P4 — nonce REJOUÉ (rejeu exact de la création de A) → 409 pow_replayed
+(skip) D2 — réputation et plafonds (serveur réel + DB directe) > Q2 — score −5 (report confirmé simulé) : plafond 3/j → 4ᵉ refusé
+(skip) D2 — réputation et plafonds (serveur réel + DB directe) > Q1 — score 0 : 10 posts OK, 11ᵉ → 429 quota_posts + message directive
+(skip) D2 — réputation et plafonds (serveur réel + DB directe) > Q3 — score 15 : plafonds 50 posts / 200 DMs, tier established
+(skip) D2 — réputation et plafonds (serveur réel + DB directe) > Q4 — DMs score −5 : 10 OK, 11ᵉ → 429 quota_dms
+(skip) D2 — rate-limit durci et T0 mesh > R1 — 4ᵉ création de compte sur la même heure/IP → 429 + Retry-After ≥ 3600
+(skip) D2 — rate-limit durci et T0 mesh > M1 — T0 mesh : clé jamais onboardée publie via la passerelle sans PoW ni plafond
+(skip) ADM 3+4 · A — login (un seul round-trip, échecs uniformes) > A1 · valide → 200 + cookie (HttpOnly, SameSite=Strict, Path=/) + csrfToken, token absent du body
+(skip) ADM 3+4 · A — login (un seul round-trip, échecs uniformes) > A1b · premier login (totpEnrolled=false) → TOTP exigé + totp_enrolled audité
+(skip) ADM 3+4 · A — login (un seul round-trip, échecs uniformes) > A2..A7 · échecs → 401 uniformes « invalid credentials » (email/password/TOTP/expiré/rejoué/disabled)
+(skip) ADM 3+4 · B — rate limit 5 tentatives / 5 min / IP > B1 · 6ᵉ tentative (même IP) → 429, même avec des identifiants valides
+(skip) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C1 · cookie absent → 401 (app principale) / authenticated:false (panneau)
+(skip) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C2 · cookie forgé (token inconnu) → 401
+(skip) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C3 · idle > 30 min → 401 + révocation TRACÉE (revokedReason=idle-timeout)
+(skip) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C4 · TTL absolu 8 h dépassé → 401
+(skip) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C5 · logout → session révoquée (reason=logout) + audit + verify mort
+(skip) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C6 · DB : le token en clair n'existe NULLE part, seul son hash SHA-256
+(skip) ADM 3+4 · D — CSRF (mutations, message uniforme avec 401) > D1 · hide sans header CSRF → 403
+(skip) ADM 3+4 · D — CSRF (mutations, message uniforme avec 401) > D2 · hide avec MAUVAIS csrf → 403, même message que 401 (anti-fuite de couche)
+(skip) ADM 3+4 · D — CSRF (mutations, message uniforme avec 401) > D3 · logout BFF avec session valide mais sans CSRF → 403
+(skip) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E0 · préparation : session active + secret d'origine
+(skip) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E1 · code valide → 200, nouveau secret ≠ ancien, sessions révoquées, code brûlé, audit
+(skip) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E2 · le MÊME code re-soumis → 401 (brûlé, usage unique)
+(skip) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E3 · code invalide → 401 uniforme « invalid credentials »
+(skip) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E4 · ré-enrôlement : code du NOUVEAU secret → totpEnrolled=true, l'ANCIEN secret est mort
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F1 · token SEUL (sans session) → 401 — rien ne peut être fait avec le token seul
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F2 · session seule (sans token interne) → 401
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F3 · mauvais token interne + session valide → 401
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F4 · token + session SANS X-Admin-Actor → 401
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F5 · X-Admin-Actor ne correspondant PAS à la session → 401 (acteur forgé impossible)
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F6 · token + session + actor cohérent → 200
+(skip) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F7 · chaîne BFF complète : cookie navigateur → proxy → app principale → 200
+(skip) ADM 3+4 · G — sessions indépendantes (2 admins simultanés) > G1 · deux sessions vivantes, csrfTokens distincts, actions tracées séparément
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > (unnamed)
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × anonymous
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × super-admin
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × moderator
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × support
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × auditor
+(skip) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × anonymous
+(skip) ADM 3+4 · I — preuve anti-fuite + relecture matrice > 55 cellules de matrice exécutées, toutes PASS
+(skip) ADM 3+4 · I — preuve anti-fuite + relecture matrice > aucun password / secret TOTP / code de secours / token de session dans les réponses
+(skip) D1 recherche serveur (FTS5) > T1 — hit FTS5 : payload complet (postId, snippet, rank, authorPubkey)
+(skip) D1 recherche serveur (FTS5) > T2 — diacritiques : « ecole » trouve « école » (remove_diacritics 2)
+(skip) D1 recherche serveur (FTS5) > T3 — FRONTIÈRE DM : ciphertext piégé « secret » jamais retourné ; type=dms → 400
+(skip) D1 recherche serveur (FTS5) > T4 — TRIGGER hide : hiddenAt → post retiré de PostFTS et introuvable
+(skip) D1 recherche serveur (FTS5) > T5 — TRIGGER delete : post supprimé → retiré de l'index
+(skip) D1 recherche serveur (FTS5) > T6 — auteur suspendu : dans l'INDEX mais introuvable via l'API (filtre lecture)
+(skip) D1 recherche serveur (FTS5) > T7 — pagination : limit=2 → nextOffset ; page 2 DISTINCTE ; fin de liste
+(skip) D1 recherche serveur (FTS5) > T8 — BENCHMARK : 10k posts, recherche FTS < 200 ms (moyenne 5 runs)
+(skip) D1 recherche serveur (FTS5) > T9 — rate limit 30 req/min : le reste du bucket passe, la suivante → 429
+(skip) D1 recherche serveur (FTS5) > (unnamed)
+(skip) C4 groupes MLS — système (serveur réel) > (unnamed)
+(skip) C4 groupes MLS — système (serveur réel) > W1 — flux complet : création, jointures, M1 lu par les trois
+(skip) C4 groupes MLS — système (serveur réel) > W3 — epoch rotation visible puis retrait de Bob (epoch++)
+(skip) C4 groupes MLS — système (serveur réel) > W2 — forward secrecy : Bob exclu ne déchiffre PAS M2, Carol oui
+(skip) C4 groupes MLS — système (serveur réel) > W4 — replay : M1 rejoué par Carol → REFUS (ratchet)
+(skip) C4 groupes MLS — système (serveur réel) > W5 — collusion : l'état exfiltré de Bob (pré-retrait) ne déchiffre pas M3
+(skip) C4 groupes MLS — système (serveur réel) > W6 — invariants serveur : preuve absente → 401, non-créateur → 403, ciphertext géant → 400, ciphertext opaque
+(skip) C4 groupes MLS — système (serveur réel) > BENCH — établissement groupe (création + invitation 2 membres) < 2 s · envoi message < 500 ms
+(skip) C4 groupes MLS — système (serveur réel) > W7 — key package single-use : 2ᵉ consommation → 404
+(skip) B2 — chaîne complète upload → finalize → lecture (weed réel + proxy) > U1+U2 — 500 Ko GPS : SHA-256 identique, EXIF/GPS absent après le voyage complet
+(skip) B2 — chaîne complète upload → finalize → lecture (weed réel + proxy) > U3 — interop : decryptMedia socle B1 lit EXACTEMENT une enveloppe encryptBytes client
+(skip) B2 — refus d'entrée (serveur) > R1 — application/pdf → 400
+(skip) B2 — refus d'entrée (serveur) > R2 — 6 Mo → 400
+(skip) B2 — refus d'entrée (serveur) > R3 — preuve invalide (signée par une AUTRE clé) → 401
+(skip) B2 — refus d'entrée (serveur) > R10 — download-url sans preuve → 401 · média inconnu → 404
+(skip) B2 — finalize : contrôles serveur (aveugle) > R6 — finalize SANS PUT → 400 objet absent
+(skip) B2 — finalize : contrôles serveur (aveugle) > R7 — enveloppe garbage (taille exacte liée) → finalize 422
+(skip) B2 — finalize : contrôles serveur (aveugle) > R8 — fenêtre finalize > 20 min → 410
+(skip) B2 — MIME spoofing (arbitrage §6.7 : barrière AU RENDU) > R9 — PDF chiffré déclaré image/jpeg : finalize 200 puis RENDU REFUSÉ
+(skip) B2 — rate limit + quota > R4 — 21e upload de l'heure → 429 (20/h/utilisateur)
+(skip) B2 — rate limit + quota > R5 — quota : owner à 501 Mo finalized → 429
+(skip) B2 — proxy média (anti open-proxy) > P1 — chemin hors whitelist (bucket fantôme / clé non uuid) → 404 · routes API NON captées
+(skip) B2 — E2E deux appareils simulés (émetteur → serveur → destinataire) > U4 — A upload + dm2 E2EE → B reçoit, déchiffre le dm2 ET l'image, SHA-256 identique
+(skip) B2 — file hors-ligne (re-orchestration) > R11 — queue : flush rejoue (re-strip/re-chiffre/re-signe) → upload réussi ; item invalide → failed
+(skip) Étape 8 — audit viewer > A1. auditor → 200 (accès total lecture)
+(skip) Étape 8 — audit viewer > A2. support → 403 (porte EXACTE — pas une hiérarchie, arbitrage §14.1)
+(skip) Étape 8 — audit viewer > A3. moderator → 403 (directive à la lettre)
+(skip) Étape 8 — audit viewer > A4. super-admin → 200 (règle structurelle : rôle sommet jamais exclu)
+(skip) Étape 8 — audit viewer > A5. sans session → 401 · sans token interne → 401
+(skip) Étape 8 — audit viewer > B1. cursor malformé → 400
+(skip) Étape 8 — audit viewer > B2. cursor JSON valide mais champs absents → 400
+(skip) Étape 8 — audit viewer > B3. tri createdAt DESC + page 2 distincte
+(skip) Étape 8 — audit viewer > C1. action=warn exclut les autres actions
+(skip) Étape 8 — audit viewer > C2. since=24h exclut l'entrée backdatée 48 h
+(skip) Étape 8 — audit viewer > C3. from/to custom : prime sur since · mutuellement exclusifs → 400
+(skip) Étape 8 — audit viewer > C4. filtre actor : seulement les entrées du moderator
+(skip) Étape 8 — audit viewer > C5. actor non entier → 400
+(skip) Étape 8 — audit viewer > D1. target=user:<pubkey> → ≥ 1 (égalité double type:id)
+(skip) Étape 8 — audit viewer > D2. sous-chaîne de targetId → retrouvée
+(skip) Étape 8 — audit viewer > E1. détail : TOUS les champs présents (before/after bruts, ip, UA)
+(skip) Étape 8 — audit viewer > E2. id non entier → 400 · inconnu → 404
+(skip) Étape 8 — audit viewer > F1. export → Content-Disposition attachment + text/csv + parsable
+(skip) Étape 8 — audit viewer > F2. échappement RFC 4180 : guillemets doublés
+(skip) Étape 8 — audit viewer > F3. limite 10 000 : export sans filtre → 422 avec message clair
+(skip) Étape 8 — audit viewer > F4. export filtré sous la limite → 200 (même DB)
+(skip) Étape 8 — audit viewer > F5. export : même porte RBAC (support → 403)
+(skip) Étape 8 — audit viewer > G1. UPDATE AdminAudit via Prisma → erreur trigger SQLite
+(skip) Étape 8 — audit viewer > G2. DELETE AdminAudit via Prisma → erreur trigger SQLite
+(skip) Étape 8 — audit viewer > G3. aucune écriture HTTP : POST sur les endpoints → 405
+(skip) Étape 8 — audit viewer > H1. BFF /api/audit : auditor → 200 · sans cookie → 401 · support → 403
+(skip) Étape 8 — audit viewer > H2. BFF /api/audit/[id] : détail propagé · 404 propagée
+(skip) Étape 8 — audit viewer > H3. BFF export.csv : auditor → CSV réel (attachment) · support → 403
+(skip) Étape 8 — audit viewer > H4. BFF 502 backend-unreachable ≠ 401/403 (panel sans backend)
+(skip) Étape 8 — audit viewer > I1. facets : acteurs (email+rôle), actions, targetTypes
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > (unnamed)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A1 · token SEUL (sans session) → 401 — le token interne ne peut rien faire
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A2 · session SANS token interne → 401 (double contrôle obligatoire)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A3 · token + session + acteur (support) → 200 avec les 4 clés + generatedAt
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A4 · VALEURS conformes aux fixtures : h24=2, d7=4, reports ouverts=2, backup ok
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A5 · auditor → 403 (lecture limitée à l'audit — directive Étape 5)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A6 · acteur mismatch (X-Admin-Actor ≠ session) → 401
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · A — endpoint interne /api/internal/admin/stats > A7 · ANTI-FUITE : aucun email, ciphertext DM, pubkey, ni clé email/ip/password dans la réponse
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · B — backup-status (fs.readFile, pas de cache) > B1 · backup frais (1 h) → state ok, vert
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · B — backup-status (fs.readFile, pas de cache) > B2 · backup ancien (48 h > seuil 24 h) → stale orange — relit le FICHIER (pas de cache)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · B — backup-status (fs.readFile, pas de cache) > B3 · backup failed → rouge
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · B — backup-status (fs.readFile, pas de cache) > B4 · fichier absent → « not-configured » orange (fallback directive)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · C — BFF /api/dashboard (panneau, chaîne complète) > C1 · sans cookie → 401 uniforme
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · C — BFF /api/dashboard (panneau, chaîne complète) > C2 · session support → 200 avec les 4 clés
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · C — BFF /api/dashboard (panneau, chaîne complète) > C3 · session moderator → 200 (≥ support)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · C — BFF /api/dashboard (panneau, chaîne complète) > C4 · session auditor → 403 (propagé par l'app principale)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · C — BFF /api/dashboard (panneau, chaîne complète) > C5 · 401 et 403 → MÊME message « unauthorized » (aucune fuite sur la couche qui refuse)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · D — page UI /dashboard (rendu serveur) > D1 · anonyme → redirection vers / (pas de fuite de contenu)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · D — page UI /dashboard (rendu serveur) > D2 · session support → 200 HTML avec les 4 métriques SERVIES (valeurs SSR, sans attendre l'hydratation)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · D — page UI /dashboard (rendu serveur) > D3 · session auditor → carte « Accès refusé » rendue serveur (sans appel réseau)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · E — dégradation (kill backend) > E1 · app principale killée → BFF 502 { backend-unreachable } (ni 500, ni 401 mensonger)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · E — dégradation (kill backend) > E1b · page /dashboard pendant la panne → reste sur place, bandeau « Backend injoignable » (PAS de redirection mensongère)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > ADM 5 · E — dégradation (kill backend) > E2 · respawn de l'app principale → dashboard de nouveau 200 (résilience)
+(skip) ADM 5 — dashboard e2e (auto-hébergé, DB dédiée) > (unnamed)
+(skip) B1 · G — intégration MinIO locale (upload → check → delete) > (unnamed)
+(skip) B1 · G — intégration MinIO locale (upload → check → delete) > upload (presign PUT) → download (presign GET) → bytes identiques → delete (mc)
+(skip) ADM 6 · A — endpoint interne queue (auth + RBAC §12.17) > A1 · token interne SEUL → 401
+(skip) ADM 6 · A — endpoint interne queue (auth + RBAC §12.17) > A2 · session SANS token interne → 401
+(skip) ADM 6 · A — endpoint interne queue (auth + RBAC §12.17) > A3 · anonymous → 401
+(skip) ADM 6 · A — endpoint interne queue (auth + RBAC §12.17) > A4 · support → 200 (items + openTotal + page)
+(skip) ADM 6 · A — endpoint interne queue (auth + RBAC §12.17) > A5 · auditor → 403 (STRICT — lecture seule AdminAudit, §12.17)
+(skip) ADM 6 · A — endpoint interne queue (auth + RBAC §12.17) > A6 · paramètre period invalide → 400 · type invalide → 400
+(skip) ADM 6 · B — tri poids décroissant puis ancienneté croissante > B1 · 3 reports sur postA + 1 sur postB → A en premier, weight=3
+(skip) ADM 6 · C — pagination cursor-based (20/page) > C1 · page 1 = 20 items + nextCursor
+(skip) ADM 6 · C — pagination cursor-based (20/page) > C2 · page 2 → items DISTINCTS de la page 1 (aucun chevauchement)
+(skip) ADM 6 · C — pagination cursor-based (20/page) > C3 · cursor malformé → 400 (jamais de restart silencieux)
+(skip) ADM 6 · C — pagination cursor-based (20/page) > C4 · cursor expiré (cible fermée entre deux pages) → restart page 1 + cursorReset
+(skip) ADM 6 · D — filtres période / type / statut > D1 · période 24h exclut le report de 48h ; all le inclut
+(skip) ADM 6 · D — filtres période / type / statut > D2 · période 7d inclut le report de 48h (fenêtre correcte)
+(skip) ADM 6 · D — filtres période / type / statut > D3 · type=comment ne liste QUE les commentaires ; type=post les posts seuls
+(skip) ADM 6 · D — filtres période / type / statut > D4 · status=open (handledById IS NULL) exclut les reports traités
+(skip) ADM 6 · E — actions (justification §6 obligatoire) > E1 · justification < 20 chars → 422 (validation SERVEUR)
+(skip) ADM 6 · E — actions (justification §6 obligatoire) > E2 · catégorie invalide → 422 · sans catégorie → 422
+(skip) ADM 6 · E — actions (justification §6 obligatoire) > E3 · hide (moderator) → 200 + AdminAudit « SPAM: … » + report ne réapparaît pas
+(skip) ADM 6 · E — actions (justification §6 obligatoire) > E4 · dismiss (support) → 200 + status=dismissed · re-dismiss → 409
+(skip) ADM 6 · E — actions (justification §6 obligatoire) > E5 · dismiss × auditor → 403 (lecture seule stricte)
+(skip) ADM 6 · F — warn (notification profil, pas de DM) > F1 · warn (support) → 200 + UserWarning en DB (catégorie + note)
+(skip) ADM 6 · F — warn (notification profil, pas de DM) > F2 · lecture SANS preuve → 401 (même pour une pubkey bien formée)
+(skip) ADM 6 · F — warn (notification profil, pas de DM) > F3 · lecture AVEC preuve valide → les avertissements du titulaire
+(skip) ADM 6 · F — warn (notification profil, pas de DM) > F4 · signature d'une AUTRE clé (usurpation) → 401
+(skip) ADM 6 · G — suspension temporaire et expiration paresseuse > (unnamed)
+(skip) ADM 6 · G — suspension temporaire et expiration paresseuse > G1 · suspend 24h → suspendedUntil ≈ now+24h · publication refusée 403 · feed exclut
+(skip) ADM 6 · G — suspension temporaire et expiration paresseuse > G2 · suspend 7d → suspendedUntil ≈ now+7j · duration invalide → 400
+(skip) ADM 6 · G — suspension temporaire et expiration paresseuse > G3 · suspension EXPIRÉE (backdatée) → publication OK + post de retour au fil
+(skip) ADM 6 · G — suspension temporaire et expiration paresseuse > G4 · unsuspend → suspendedAt/until/by cleared
+(skip) ADM 6 · H — four-eyes ban/purge : hors surface (Étape 9) > H1 · action ban → 400 (hors MODERATION_ACTIONS — four-eyes arrive en Étape 9)
+(skip) ADM 6 · I — anti-fuite (payload queue) > I1 · aucun email / IP / password / mot de passe dans le payload
+(skip) B2 · prérequis — SigV4 B1 contre S3 réel indépendant (SeaweedFS) > G1+G2+G3 — PUT présigné → objet existe → GET intégrité SHA-256
+(skip) B2 · prérequis — SigV4 B1 contre S3 réel indépendant (SeaweedFS) > G4 — signature falsifiée → 403 (le serveur S3 valide VRAIMENT SigV4)
+(skip) B2 · prérequis — SigV4 B1 contre S3 réel indépendant (SeaweedFS) > G5 — flux B1 complet : stripExif → CEK → PUT → GET → décryptage → hash
+(skip) B2 · prérequis — SigV4 B1 contre S3 réel indépendant (SeaweedFS) > G6 — expiration : TTL 60 s + 61 s → GET et PUT refusés 403, objet non écrit
+(skip) B3 · E2E voix (pipeline B2, audio/opus) > V1 — chaîne complète : uploadVoiceNote → presign → PUT → finalize → downloadVoiceNote → SHA-256 identique
+(skip) B3 · E2E voix (pipeline B2, audio/opus) > V2 — contentType audio/mpeg → 400 (whitelist)
+(skip) B3 · E2E voix (pipeline B2, audio/opus) > V3 — 11 Mo audio/opus → 400 (limite PAR TYPE, image reste 5 Mo)
+(skip) B3 · E2E voix (pipeline B2, audio/opus) > V4 — DEUX appareils : A enregistre → dm2 E2EE (durée+peaks chiffrés) → B reçoit → SHA-256 identique
+
+ 225 pass
+ 231 skip
+ 0 fail
+ 1662 expect() calls
+Ran 456 tests across 28 files. [25.22s]

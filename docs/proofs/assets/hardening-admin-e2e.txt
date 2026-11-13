@@ -1,0 +1,107 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/admin-auth-e2e.test.ts:
+(pass) ADM 3+4 · A — login (un seul round-trip, échecs uniformes) > A1 · valide → 200 + cookie (HttpOnly, SameSite=Strict, Path=/) + csrfToken, token absent du body [341.44ms]
+(pass) ADM 3+4 · A — login (un seul round-trip, échecs uniformes) > A1b · premier login (totpEnrolled=false) → TOTP exigé + totp_enrolled audité [127.32ms]
+(pass) ADM 3+4 · A — login (un seul round-trip, échecs uniformes) > A2..A7 · échecs → 401 uniformes « invalid credentials » (email/password/TOTP/expiré/rejoué/disabled) [384.71ms]
+(pass) ADM 3+4 · B — rate limit 5 tentatives / 5 min / IP > B1 · 6ᵉ tentative (même IP) → 429, même avec des identifiants valides [243.61ms]
+(pass) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C1 · cookie absent → 401 (app principale) / authenticated:false (panneau) [296.48ms]
+(pass) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C2 · cookie forgé (token inconnu) → 401 [10.69ms]
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+(pass) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C3 · idle > 30 min → 401 + révocation TRACÉE (revokedReason=idle-timeout) [57.19ms]
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+(pass) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C4 · TTL absolu 8 h dépassé → 401 [6.68ms]
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+(pass) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C5 · logout → session révoquée (reason=logout) + audit + verify mort [262.09ms]
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+(pass) ADM 3+4 · C — sessions (hash seul en DB, idle 30 min, absolu 8 h, révocation) > C6 · DB : le token en clair n'existe NULLE part, seul son hash SHA-256 [2.53ms]
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+(pass) ADM 3+4 · D — CSRF (mutations, message uniforme avec 401) > D1 · hide sans header CSRF → 403 [211.86ms]
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+(pass) ADM 3+4 · D — CSRF (mutations, message uniforme avec 401) > D2 · hide avec MAUVAIS csrf → 403, même message que 401 (anti-fuite de couche) [64.34ms]
+(pass) ADM 3+4 · D — CSRF (mutations, message uniforme avec 401) > D3 · logout BFF avec session valide mais sans CSRF → 403 [207.87ms]
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+(pass) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E0 · préparation : session active + secret d'origine [2.07ms]
+(pass) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E1 · code valide → 200, nouveau secret ≠ ancien, sessions révoquées, code brûlé, audit [345.71ms]
+(pass) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E2 · le MÊME code re-soumis → 401 (brûlé, usage unique) [78.68ms]
+(pass) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E3 · code invalide → 401 uniforme « invalid credentials » [27.82ms]
+(pass) ADM 3+4 · E — break-glass (bypass TOTP, burn, ré-enrôlement forcé) > E4 · ré-enrôlement : code du NOUVEAU secret → totpEnrolled=true, l'ANCIEN secret est mort [322.65ms]
+(pass) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F1 · token SEUL (sans session) → 401 — rien ne peut être fait avec le token seul [6.81ms]
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+(pass) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F2 · session seule (sans token interne) → 401 [5.83ms]
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+(pass) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F3 · mauvais token interne + session valide → 401 [5.73ms]
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+(pass) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F4 · token + session SANS X-Admin-Actor → 401 [7.24ms]
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+(pass) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F5 · X-Admin-Actor ne correspondant PAS à la session → 401 (acteur forgé impossible) [6.39ms]
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+(pass) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F6 · token + session + actor cohérent → 200 [8.99ms]
+(pass) ADM 3+4 · F — token interne (double contrôle /api/moderation/*) > F7 · chaîne BFF complète : cookie navigateur → proxy → app principale → 200 [252.72ms]
+(pass) ADM 3+4 · G — sessions indépendantes (2 admins simultanés) > G1 · deux sessions vivantes, csrfTokens distincts, actions tracées séparément [123.35ms]
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+prisma:query INSERT INTO `main`.`AdminSession` (`id`, `adminUserId`, `tokenHash`, `csrfToken`, `ip`, `userAgent`, `createdAt`, `lastSeenAt`, `expiresAt`) VALUES (?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `adminUserId` AS `adminUserId`, `tokenHash` AS `tokenHash`, `csrfToken` AS `csrfToken`, `ip` AS `ip`, `userAgent` AS `userAgent`, `createdAt` AS `createdAt`, `lastSeenAt` AS `lastSeenAt`, `expiresAt` AS `expiresAt`, `revokedAt` AS `revokedAt`, `revokedReason` AS `revokedReason`
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × super-admin [8.57ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × moderator [7.72ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × support [8.73ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × auditor [29.04ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · queue.view × anonymous [88.65ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × super-admin [10.88ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × moderator [46.60ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × support [8.96ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × auditor [6.57ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.warn × anonymous [5.26ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × super-admin [10.55ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × moderator [46.74ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × support [7.92ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × auditor [6.06ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.hide × anonymous [4.13ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × super-admin [9.21ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × moderator [10.97ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × support [45.94ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × auditor [5.98ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.unhide × anonymous [4.04ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × super-admin [8.91ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × moderator [9.04ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × support [5.49ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × auditor [5.67ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.suspend × anonymous [4.50ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × super-admin [10.44ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × moderator [45.76ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × support [6.20ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × auditor [5.89ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · user.unsuspend × anonymous [4.36ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × super-admin [11.36ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × moderator [73.53ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × support [6.20ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × auditor [6.44ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · post.purge × anonymous [4.19ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × super-admin [32.68ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × moderator [70.50ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × support [30.21ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × auditor [68.41ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.login × anonymous [26.59ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × super-admin [45.60ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × moderator [6.61ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × support [6.51ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × auditor [6.87ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · internal.verify × anonymous [4.91ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × super-admin [11.97ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × moderator [53.89ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × support [7.20ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × auditor [10.41ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.logout × anonymous [47.12ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × super-admin [49.76ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × moderator [82.52ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × support [44.56ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × auditor [83.08ms]
+(pass) ADM 3+4 · H — MATRICE RBAC (11 actions × 5 rôles = 55 cellules) > H · auth.break-glass × anonymous [13.31ms]
+(pass) ADM 3+4 · I — preuve anti-fuite + relecture matrice > 55 cellules de matrice exécutées, toutes PASS [0.15ms]
+(pass) ADM 3+4 · I — preuve anti-fuite + relecture matrice > aucun password / secret TOTP / code de secours / token de session dans les réponses [1.12ms]
+
+ 83 pass
+ 0 fail
+ 150 expect() calls
+Ran 83 tests across 1 file. [10.60s]

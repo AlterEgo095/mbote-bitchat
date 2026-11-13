@@ -1,0 +1,18 @@
+## break-glass : route → executeBreakGlass atomique
+2
+## executeBreakGlass : withWriteLock + $transaction + tx aux 3 helpers
+3
+1
+1
+## totp-enroll : $transaction + audit dans la tx
+1
+1
+## dms/bot : les 2 creates dans une tx
+1
+## mesh/bridge : marque+contenu atomiques, garde DM dans la tx
+1
+1
+## mls/prune : exception §4d documentée en commentaire
+1
+## helpers tx? (admin-auth)
+2
