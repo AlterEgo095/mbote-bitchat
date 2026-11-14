@@ -297,13 +297,100 @@ La 6ᵉ occurrence en G est structurellement bloquée : toute future vue ajouté
 aux audits DOIT figer son bloc auto-contenu (contexte jetable + cible garantie)
 et entrer dans `EXPECTED_AXE_VIEWS` — sinon verdict ÉCHEC.
 
+### Ajouts post-validation (demande opérateur, 2026-11-14) — garde SYBIL_BYPASS + preuve visuelle des 5 vues
+
+#### Ajout 1 — SYBIL_BYPASS : garde-fou production
+
+1. **Garde à l'exécution** (`src/app/api/identity/route.ts`) : `SYBIL_BYPASS=1`
+   + `NODE_ENV=production` → `throw new Error("SYBIL_BYPASS ne doit JAMAIS
+   être activé en production")` — fail-closed, le serveur refuse de démarrer.
+   **Écart documenté à contresigner** : le `server.js` standalone de Next
+   force `process.env.NODE_ENV = 'production'` À L'EXÉCUTION — même en local
+   (`node_modules/next/dist/build/utils.js:1201`) — donc le garde EXACT de la
+   consigne aurait tué le runner F lui-même (il exerce justement ce build
+   production, leçon É8, avec le bypass). Désamorceur : `SYBIL_BYPASS_TEST=1`,
+   marqueur EXPLICITE posé uniquement par le runner F ; le grep de sécurité
+   (ci-dessous) couvre les deux variables (la sous-chaîne `SYBIL_BYPASS` les
+   matche toutes deux).
+2. **Documentation** (DEV-SETUP §7b.3) : « SYBIL_BYPASS ne doit apparaître que
+   dans les runners de test locaux/CI. Audit de sécurité : grep SYBIL_BYPASS
+   .github/workflows/*.yml deploy/*.yml → doit renvoyer 0 occurrence dans les
+   workflows de déploiement » — + le marqueur TEST + la règle d'extension
+   explicite du gate si un workflow de test devait un jour le porter.
+3. **Preuve mécanisée** (runner F, step 1b) : échec immédiat si
+   `SYBIL_BYPASS` apparaît dans `.env.example`, `deploy-vps.yml`,
+   `deploy/*.yml` ou tout `.github/workflows/*.yml` — sortie du run final :
+   `ok — deploy-vps.yml, deploy/*.yml, .env.example, workflows : 0 occurrence`.
+   État vérifié : 0 occurrence partout (la variable n'est référencée que dans
+   les scripts de harnais locaux).
+
+#### Ajout 2 — preuve visuelle des vues auditées (les 4 autres captures)
+
+Constat préalable : **3 des 4 captures demandées n'existaient pas** — les
+audits feed/groups/onboarding ne PHOTOGRAPHIAIENT pas le DOM audité (même
+aveuglement que f258a25 : un score sans image ne prouve pas l'état audité).
+Le harnais capture désormais les 5 vues APRÈS audit, avec marqueur de vue
+AVANT audit.
+
+**La vérification a CONFIRMÉ la 6ᵉ occurrence — corrigée comme
+messages-offline (consigne : « si une des 4 est fausse → STOP, corriger ») :**
+
+1. **Diagnostic du reload post-MLS** : la navigation de secours de pageB vers
+   groups a ÉCHOUÉ (marqueur non vu en 20 s) — DIAG console + capture
+   `debug-axe-groups-etat.png` : le reload de B après les flux MLS (P4) +
+   conversation ouverte (P39-Enter) PERD l'identité locale (dialog « Crée ton
+   identité locale » au reload, `createGroupCount: 0`, feed « 0 publications »).
+   NB : P3/P4 re-naviguaient pageA AVANT MLS sans perte — le trigger exact
+   (MLS ? logins P5 ? temps ?) est à investiguer, **décision opérateur
+   post-STOP** (observation documentée, pas de fix opportuniste hors
+   périmètre).
+2. **L'audit feed était l'état déconnecté** : la capture `axe-feed.png` du run
+   de mise au point (préservée : `debug-axe-feed-etat-perdu.png`) montre le
+   feed VISITEUR + le dialog d'onboarding de pageA déconnectée (header « Créer
+   mon identité », « 0 publications ») — le `goto ?view=feed` préexistant du
+   bloc axe perdait l'identité de pageA après MLS/P5 : le « feed 100 » des 5
+   runs acquis auditait cet état trop pauvre (pas de composer identifié, pas
+   de PostCard → les cibles #17/#20 n'étaient PAS exercées par axe ; leurs
+   preuves unitaires + captures §5 restent valables — indépendantes de l'audit
+   axe).
+3. **Correction selon le modèle messages-offline** : le bloc feed est
+   AUTO-CONTENU (contexte jetable + identité fraîche « F-Feed » + publication
+   RÉELLE « Post preuve axe feed F » garantie dans le DOM avant l'audit) —
+   le PostCard, le composer identifié et les toggles de portée sont DANS le
+   DOM audité (visibles sur la capture finale).
+
+**Tableau de vérification visuelle (run final EXIT 0 du 2026-11-14 15:18,
+chaque capture relue image par image) :**
+
+| Capture | Vue attendue | Vue observée (analyse visuelle) | Verdict |
+|---|---|---|---|
+| `axe-feed.png` | Feed identifié (composer + PostCard — cibles #17/#20) | Header avatar « F- » (pas de « Créer mon identité »), toast « Publication diffusée — Signée ECDSA », composer actif, toggles Tous/Abonnements, PostCard « F-Feed · Post preuve axe feed F » avec cœur/Répondre | ✅ bonne vue (après correction de la 6ᵉ occurrence) |
+| `axe-groups.png` | Vue Groups de B (identité + groupe) | Avatar « F- », H1 « Groupes privés », bouton « Nouveau groupe », carte « F-Groupe » (2 membres, badge MLS), conversation ouverte — sous-état post-P39 documenté, présent dans les 5 runs acquis | ✅ bonne vue |
+| `axe-onboarding.png` | Dialog d'onboarding (contexte frais — volontairement la cible) | Dialog « Crée ton identité locale » complet au-dessus du feed visiteur | ✅ bonne vue |
+| `axe-messages-offline.png` | Messages hors-ligne (cible #31) | Badge « Mesh — file locale 1 », conversation F-Bob (E2E actif), bulle « Message hors-ligne preuve F » + badge « En attente », composer « Hors-ligne — ton courrier partira au retour du réseau » | ✅ bonne vue |
+| `axe-admin-pending-actions.png` | File four-eyes du panneau (cible #73) | « Intentions four-eyes · mod@f-proof.test · moderator », 1 intention pending PURGE DE POST (n° d'intention et dates en zinc-600) | ✅ bonne vue |
+
+Preuve du run final : EXIT 0 — 5 vues × score 100, violations [] (`axe-resume.json`),
+`axeAllOk: true`, P4 simule tests.yml 247 pass / 231 skip / 0 fail, gate 1b
+« 0 occurrence ». Les captures d'état dégradé (`debug-axe-groups-etat.png`,
+`debug-axe-feed-etat-perdu.png`, `debug-messages-offline-saut.png`) restent
+commitées comme preuves du diagnostic.
+
 ## 9. Verdict
 
 **SUCCESS local** — 25/25 écarts du sous-ensemble validé sont corrigés avec la
 preuve de la bonne sévérité (navigateur pour les 6 Critiques, unitaire/axe pour
-les Majeurs) ; 0 régression détectée (P4 247/0, tsc, lint, axe 100×5 — désormais
-**100×5 dans chacun des 5 runs consécutifs post-Clarification-1**, skip non
-toléré mécaniquement). Le statut restera « PARTIEL tant que CI live non
-confirmée » (push opérateur) — même convention que F-16/F-17. SUITE : STOP —
-démarrage de G uniquement après push opérateur + CI verte confirmée
-(Clarification 2 post-F).
+les Majeurs) ; 0 régression détectée (P4 247/0, tsc, lint, axe 100×5). Les 2
+ajouts post-validation sont livrés (garde SYBIL_BYPASS production + preuve
+visuelle des 5 vues — §8b). **Nuance honnête post-vérification** : la 6ᵉ
+occurrence de la famille #47 a été CONFIRMÉE par la vérification visuelle
+demandée — l'audit « feed 100 » des 5 runs acquis tournait sur l'état
+déconnecté (feed visiteur + dialog d'onboarding, capture
+`debug-axe-feed-etat-perdu.png`) ; corrigée selon le modèle messages-offline,
+la preuve axe feed est désormais RÉELLE (feed identifié + PostCard dans le DOM
+audité) et les 4 autres vues sont les bonnes (tableau §8b). Le statut restera
+« PARTIEL tant que CI live non confirmée » (push opérateur) — même convention
+que F-16/F-17. SUITE : STOP — démarrage de G uniquement après push opérateur +
+CI verte confirmée (Clarification 2 post-F). Observation reportée à décision
+opérateur : le trigger exact de la perte d'identité au reload post-MLS
+(§8b.2 — diagnostic capturé, non investigué hors périmètre).

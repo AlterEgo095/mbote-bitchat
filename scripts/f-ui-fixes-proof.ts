@@ -410,18 +410,56 @@ async function main(): Promise<number> {
       console.log(`  [axe] ${view} : score ${score} (${violations.length} types de violation)`);
     };
 
-    // navigation véridique : pageA sur le FEED (le harnais la laisse sur
-    // groups après P4 — le label « feed » d'axe doit auditer le feed réel)
-    await pageA.goto(`${MAIN}/?view=feed`, { waitUntil: "domcontentloaded" });
-    await pageA.waitForTimeout(1500);
-    await audit(pageA, "feed");
+    // feed (#17/#20 — toggles de portée + PostCard) :
+    // C1-ajout 2 — 6ᵉ occurrence CORRIGÉE comme messages-offline : le bloc est
+    // AUTO-CONTENU dans un contexte JETABLE avec sa propre identité. L'ancienne
+    // version re-naviguait pageA (goto ?view=feed préexistant) : après les flux
+    // MLS (P4) et les logins admin (P5), le reload PERD l'identité locale
+    // (DIAG du run en échec + capture axe-feed.png : dialog d'onboarding + feed
+    // visiteur « 0 publications » + header « Créer mon identité ») — l'audit
+    // « feed » tournait sur l'état déconnecté, pas sur le feed identifié
+    // attendu. Famille #47 (NB : P3/P4 re-naviguaient pageA AVANT MLS sans
+    // perte — le trigger reste à investiguer, décision opérateur post-STOP).
+    // Flux déterministe : identité fraîche (SYBIL_BYPASS=1), publication
+    // réelle au fil — le PostCard est GARANTI dans le DOM avant l'audit.
+    {
+      const ctxF = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+      const pageF = await ctxF.newPage();
+      await onboard(pageF, "F-Feed");
+      await pageF.goto(`${MAIN}/?view=feed`, { waitUntil: "domcontentloaded" });
+      await pageF.locator('[aria-label="Portée du fil"]').first().waitFor({ timeout: 20000 });
+      await pageF.locator('[aria-label="Message à publier"]').fill("Post preuve axe feed F");
+      await pageF.getByRole("button", { name: "Publier" }).click();
+      await pageF.getByText("Post preuve axe feed F").first().waitFor({ timeout: 20000 });
+      await audit(pageF, "feed");
+      await snap(pageF, "axe-feed.png");
+      await ctxF.close();
+    }
+    // Ajout 2 : le marqueur PROUVE la vue avant audit, la capture APRÈS audit
+    // documente l'état EXACT audité (preuve visuelle de l'audit — la classe
+    // « audit fantôme » de f258a25 est fermée pour les 5 vues).
+    // NB — pageB est audité sur son état résiduel (vue groups depuis P4, la
+    // conversation du groupe est ouverte depuis P39-Enter : sous-état de la
+    // vue Groups, présent dans les 5 runs EXIT 0 ×5 acquis). Un goto de
+    // secours ici serait FAUX : diagnostic 15:09 — le reload de B après les
+    // flux MLS + conversation ouverte PERD l'identité locale (dialog
+    // d'onboarding au reload, createGroupCount 0 — DIAG console + capture
+    // debug-axe-groups-etat.png du run en échec). Famille #47, occurrence
+    // observée NOUVELLE (reload ≠ navigation) : investigation DIFFÉRÉE
+    // (post-STOP, décision opérateur) — le harnais ne la contourne pas en
+    // silence, il audite l'état résiduel PROUVÉ par marqueur + capture.
+    await pageB.locator('[data-testid="create-group"]').waitFor({ timeout: 20000 });
     await audit(pageB, "groups");
+    await snap(pageB, "axe-groups.png");
     // onboarding dialog (contexte frais)
     const ctxO = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
     const pageO = await ctxO.newPage();
     await pageO.goto(`${MAIN}/`, { waitUntil: "domcontentloaded" });
     await pageO.getByText("Crée ton identité locale").first().waitFor({ timeout: 30000 });
     await audit(pageO, "onboarding");
+    // Ajout 2 : capture du dialog réellement audité (avant la fermeture du
+    // contexte — l'état capturé = l'état audité).
+    await snap(pageO, "axe-onboarding.png");
     await ctxO.close();
 
     // messages hors-ligne (#31 — contraste de la bulle file locale) :
