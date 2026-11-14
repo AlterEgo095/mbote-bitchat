@@ -7,8 +7,15 @@
 #
 # Étapes : gate tsc (root + panneau, Clarification 1) → builds standalone
 # (app + panneau) → migrations + seed (f-seed) → serveurs RÉELS (hub :3044 +
-# app :3128 + panneau :3129) → preuve navigateur (f-ui-fixes-proof.ts) →
-# P4 simule tests.yml (bun test tests/ : 0 fail) → exit 0 si tout est vert.
+# app :3128 + panneau :3129 — app avec SYBIL_BYPASS=1 : le harnais crée 4
+# identités par run (A, B, F-Ephemere, F-Offline) > plafond D2 3/h/IP, le
+# bypass ne touche QUE ce plafond, jamais PoW ni preuve ECDSA) → preuve
+# navigateur (f-ui-fixes-proof.ts) → P4 simule tests.yml (bun test tests/ :
+# 0 fail) → exit 0 si tout est vert.
+#
+# C1 (Clarification 1 post-F) : tests destructeurs en contextes jetables,
+# onboard() attend la fermeture du dialog, bloc messages-offline auto-contenu,
+# skips axe NON tolérés (vues attendues forcées — cf. DEV-SETUP §7b).
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -93,6 +100,7 @@ DATABASE_URL="file:$DB" NEXT_TELEMETRY_DISABLED=1 \
   RELAY_EMIT_TOKEN="f-emit-token" \
   ADMIN_INTERNAL_TOKEN="f-proof-internal-token-0123456789abcdef" \
   BACKUP_STATUS_PATH="$ROOT/db/f-backup-status.json" \
+  SYBIL_BYPASS=1 \
   MBOTE_EMBED_RELAY=0 PORT=$APP_PORT HOSTNAME=127.0.0.1 NODE_ENV=production \
   bun .next/standalone/server.js > /tmp/f-main.log 2>&1 &
 APP_PID=$!

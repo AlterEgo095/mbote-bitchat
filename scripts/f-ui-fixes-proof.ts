@@ -425,55 +425,71 @@ async function main(): Promise<number> {
     await ctxO.close();
 
     // messages hors-ligne (#31 — contraste de la bulle file locale) :
-    // A active le mode mesh puis envoie un DM → bulle « En attente » rendue
-    try {
-      // laisser filer les toasts (P3 recovery) qui intercepteraient le clic menu
-      await pageA.waitForTimeout(2000);
-      // fermer tout overlay résiduel (dropdown/dialog) puis ouvrir le menu
-      await pageA.keyboard.press("Escape");
-      await pageA.waitForTimeout(300);
-      // artefact harnais connu (famille #47) : le wipe P1 + les reloads
-      // suivants peuvent laisser le contexte SANS identité chargée —
-      // re-onboard de secours au lieu de sauter l'audit
-      if ((await pageA.locator('[aria-label^="Menu de mon identité"]').count()) === 0) {
-        console.log("  [axe] messages-offline : identité absente du contexte — re-onboard de secours");
-        await onboard(pageA, "F-Alice");
-      }
-      await pageA.locator('[aria-label^="Menu de mon identité"]').waitFor({ timeout: 10000 });
-      await pageA.locator('[aria-label^="Menu de mon identité"]').click({ timeout: 10000 });
-      await pageA.getByText("Activer le mode mesh").click();
-      await pageA.goto(`${MAIN}/?view=messages`, { waitUntil: "domcontentloaded" });
-      await pageA.waitForTimeout(1500);
-      // conversation F-Bob si joignable, sinon état vide
-      const conv = pageA.getByText("F-Bob").first();
-      if (await conv.isVisible().catch(() => false)) {
-        await conv.click();
-        await pageA.waitForTimeout(500);
-        const composer = pageA.locator('[placeholder^="Message privé"], [placeholder*="privé"]').first();
-        if (await composer.isVisible().catch(() => false)) {
-          await composer.fill("Message hors-ligne preuve F");
-          await pageA.keyboard.press("Enter");
-          await pageA.waitForTimeout(1500);
-        }
-      }
-      await audit(pageA, "messages-offline");
-      await snap(pageA, "axe-messages-offline.png");
-      // retour en ligne pour laisser un état propre
-      await pageA.evaluate(() => {
-        const w = window as unknown as { localStorage: { removeItem: (k: string) => void } };
-        w.localStorage.removeItem("mbote.forceOffline");
+    // C1 (Clarification 1, artefact harnais famille #47) : le bloc est désormais
+    // AUTO-CONTENU dans un contexte JETABLE avec sa propre identité — l'ancienne
+    // version réutilisait pageA (contexte partagé par toute la suite) : après le
+    // cycle P1-wipe + reloads, l'identité pouvait manquer → re-onboard de
+    // secours → POST réel sous le garde D2 (3/h/IP : 4ᵉ création) → 429 →
+    // dialog bloqué → audit sauté (et pire : dans le run « passant » f258a25,
+    // l'audit a tourné sur le DIALOG d'onboarding au-dessus du feed, pas sur la
+    // vue Messages — capture axe-messages-offline.png de l'époque comme preuve).
+    // Flux déterministe : identité fraîche (SYBIL_BYPASS=1 côté serveur), DM à
+    // F-Bob via le picker, mode mesh activé sur place (sans reload), envoi
+    // hors-ligne → bulle « En attente » GARANTIE dans le DOM avant l'audit.
+    {
+      const ctxMsg = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+      const pageM = await ctxMsg.newPage();
+      await onboard(pageM, "F-Offline");
+      await pageM.goto(`${MAIN}/?view=messages`, { waitUntil: "domcontentloaded" });
+      await pageM.getByRole("button", { name: "Nouvelle conversation" }).waitFor({ timeout: 20000 });
+      await pageM.getByRole("button", { name: "Nouvelle conversation" }).click();
+      const picker = pageM.locator('[role="dialog"]');
+      await picker.getByRole("button", { name: /F-Bob/ }).first().waitFor({ timeout: 10000 });
+      await picker.getByRole("button", { name: /F-Bob/ }).first().click();
+      // NB : le composer ne matche PAS par placeholder (« Message chiffré
+      // (ECDH + AES-GCM)… » en ligne, « Hors-ligne — … » en mesh) — l'Input
+      // porte aria-label="Message privé" (l'ancien sélecteur placeholder du
+      // harnais était faux : le send pouvait silencieusement ne jamais partir)
+      const composer = pageM.locator('[aria-label="Message privé"]').first();
+      await composer.waitFor({ timeout: 15000 });
+      // mode mesh sur place (menu identité → pas de reload → la sélection et
+      // l'identité restent montées — plus aucun cycle destructif)
+      await pageM.locator('[aria-label^="Menu de mon identité"]').click();
+      await pageM.getByText("Activer le mode mesh").click();
+      await pageM.locator('[aria-label^="Menu de mon identité"]').waitFor({ state: "visible", timeout: 10000 });
+      await composer.fill("Message hors-ligne preuve F");
+      await pageM.keyboard.press("Enter");
+      // la cible du contrat #31 EST dans le DOM : jamais d'audit sur un état vide
+      await pageM.getByText("En attente").first().waitFor({ timeout: 15000 });
+      // C1 — DOM propre avant audit : pointer ailleurs (un tooltip Radix peut
+      // rester ouvert sous le curseur après le clic menu) + Escape (ferme tout
+      // overlay restant) + attente bornée de détachement des wrappers popper.
+      // Diagnostic à chaque étape : jamais silencieux.
+      await pageM.mouse.move(400, 400);
+      await pageM.keyboard.press("Escape");
+      await pageM.waitForTimeout(400);
+      const lingering = await pageM.evaluate(() => {
+        const poppers = Array.from(document.querySelectorAll("[data-radix-popper-content-wrapper]"));
+        const hidden = Array.from(document.querySelectorAll('[aria-hidden="true"]'))
+          .map((el) => `${el.tagName.toLowerCase()}.${(el.getAttribute("class") ?? "").slice(0, 60)}`);
+        return {
+          poppers: poppers.map((p) => (p.textContent ?? "").slice(0, 80)),
+          ariaHidden: hidden,
+        };
       });
-    } catch (e) {
-      console.log(`  [axe] messages-offline : saut (${e instanceof Error ? e.message.slice(0, 120) : String(e)})`);
-      // diagnostic : état réel de pageA au moment du saut (jamais silencieux)
+      console.log(`  [axe] messages-offline : état overlays avant audit = ${JSON.stringify(lingering)}`);
       try {
-        await pageA.screenshot({ path: join(SHOTS, "debug-messages-offline-saut.png") });
-        const dlg = (await pageA.locator('[role="dialog"]').count()) > 0;
-        const url = pageA.url();
-        console.log(`  [axe] saut — url=${url} dialog ouvert=${dlg}`);
+        await pageM.locator("[data-radix-popper-content-wrapper]").first().waitFor({ state: "detached", timeout: 3000 });
       } catch {
-        /* rien de plus à dire */
+        const stuck = await pageM.evaluate(() =>
+          Array.from(document.querySelectorAll("[data-radix-popper-content-wrapper]")).map((p) => (p.outerHTML ?? "").slice(0, 300))
+        );
+        console.log(`  [axe] messages-offline : popper ENCORE PRÉSENT après 3 s : ${JSON.stringify(stuck)}`);
+        throw new Error(`popper Radix persistant avant audit messages-offline : ${JSON.stringify(lingering.poppers)}`);
       }
+      await audit(pageM, "messages-offline");
+      await snap(pageM, "axe-messages-offline.png");
+      await ctxMsg.close();
     }
 
     // écriture incrémentale — les scores déjà mesurés survivent à un échec
@@ -498,7 +514,16 @@ async function main(): Promise<number> {
     await ctxM2.close();
 
     results.axeViews = axeViews;
-    results.axeAllOk = axeViews.length > 0 && axeViews.every((v) => v.ok);
+    // C1 — skip NON silencieux : les 5 vues attendues doivent TOUTES être
+    // présentes et vertes. Une vue manquante (saut, artefact harnais) = verdict
+    // ÉCHEC — « si un skip persiste, ne pas clore » (Clarification 1 post-F).
+    const EXPECTED_AXE_VIEWS = ["feed", "groups", "onboarding", "messages-offline", "admin-pending-actions"];
+    const missingViews = EXPECTED_AXE_VIEWS.filter((v) => !axeViews.some((x) => x.view === v));
+    results.axeMissingViews = missingViews;
+    results.axeAllOk = missingViews.length === 0 && axeViews.every((v) => v.ok);
+    if (missingViews.length > 0) {
+      console.log(`[f-proof] axe : VUES MANQUANTES = ${missingViews.join(", ")} — verdict ÉCHEC (skip non toléré)`);
+    }
     writeFileSync(join(ROOT, "docs", "proofs", "assets", "F", "axe-resume.json"), JSON.stringify(axeViews, null, 2));
   }
 

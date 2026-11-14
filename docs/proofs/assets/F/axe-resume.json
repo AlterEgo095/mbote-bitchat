@@ -18,6 +18,12 @@
     "ok": true
   },
   {
+    "view": "messages-offline",
+    "violations": [],
+    "score": 100,
+    "ok": true
+  },
+  {
     "view": "admin-pending-actions",
     "violations": [],
     "score": 100,

@@ -1,0 +1,95 @@
+# C1 — preuve harnais : 5 runs consécutifs de scripts/f-ui-fixes-proof-run.sh (Clarification 1 post-F)
+# Généré 2026-11-14T01:24:38Z — worktree wt-adm @ feat/mbote-v1
+# Exigence opérateur : « rejoué 5× consécutifs sans skip → exit 0 ×5. Si un skip persiste, ne pas clore. »
+
+──────────────────────────── RUN 1 ────────────────────────────
+commande : bash scripts/f-ui-fixes-proof-run.sh apres  (log : /tmp/c1-proof-run-1.log)
+exit     : 0
+[f-proof] 01:12:58 — 5. preuve navigateur (phase apres)
+[f-proof] 01:14:21 — 6. P4 simule tests.yml (bun test tests/)
+[f-proof] 01:14:47 — OK — preuve F complète (phase apres) — assets docs/proofs/assets/F/
+    [axe] feed : score 100 (0 types de violation)
+    [axe] groups : score 100 (0 types de violation)
+    [axe] onboarding : score 100 (0 types de violation)
+    [axe] messages-offline : score 100 (0 types de violation)
+    [axe] admin-pending-actions : score 100 (0 types de violation)
+  [skips] aucun skip d'audit, aucune vue manquante, aucun popper persistant
+[f-proof] VERDICT phase apres : TOUTES PREUVES OK
+  P4  247 pass
+  P4  231 skip
+  P4  0 fail
+
+──────────────────────────── RUN 2 ────────────────────────────
+commande : bash scripts/f-ui-fixes-proof-run.sh apres  (log : /tmp/c1-proof-run-2.log)
+exit     : 0
+[f-proof] 01:15:11 — 5. preuve navigateur (phase apres)
+[f-proof] 01:16:21 — 6. P4 simule tests.yml (bun test tests/)
+[f-proof] 01:16:47 — OK — preuve F complète (phase apres) — assets docs/proofs/assets/F/
+    [axe] feed : score 100 (0 types de violation)
+    [axe] groups : score 100 (0 types de violation)
+    [axe] onboarding : score 100 (0 types de violation)
+    [axe] messages-offline : score 100 (0 types de violation)
+    [axe] admin-pending-actions : score 100 (0 types de violation)
+  [skips] aucun skip d'audit, aucune vue manquante, aucun popper persistant
+[f-proof] VERDICT phase apres : TOUTES PREUVES OK
+  P4  247 pass
+  P4  231 skip
+  P4  0 fail
+
+──────────────────────────── RUN 3 ────────────────────────────
+commande : bash scripts/f-ui-fixes-proof-run.sh apres  (log : /tmp/c1-proof-run-3.log)
+exit     : 0
+[f-proof] 01:17:11 — 5. preuve navigateur (phase apres)
+[f-proof] 01:18:11 — 6. P4 simule tests.yml (bun test tests/)
+[f-proof] 01:18:37 — OK — preuve F complète (phase apres) — assets docs/proofs/assets/F/
+    [axe] feed : score 100 (0 types de violation)
+    [axe] groups : score 100 (0 types de violation)
+    [axe] onboarding : score 100 (0 types de violation)
+    [axe] messages-offline : score 100 (0 types de violation)
+    [axe] admin-pending-actions : score 100 (0 types de violation)
+  [skips] aucun skip d'audit, aucune vue manquante, aucun popper persistant
+[f-proof] VERDICT phase apres : TOUTES PREUVES OK
+  P4  247 pass
+  P4  231 skip
+  P4  0 fail
+
+──────────────────────────── RUN 4 ────────────────────────────
+commande : bash scripts/f-ui-fixes-proof-run.sh apres  (log : /tmp/c1-proof-run-4.log)
+exit     : 0
+[f-proof] 01:19:02 — 5. preuve navigateur (phase apres)
+[f-proof] 01:20:57 — 6. P4 simule tests.yml (bun test tests/)
+[f-proof] 01:21:23 — OK — preuve F complète (phase apres) — assets docs/proofs/assets/F/
+    [axe] feed : score 100 (0 types de violation)
+    [axe] groups : score 100 (0 types de violation)
+    [axe] onboarding : score 100 (0 types de violation)
+    [axe] messages-offline : score 100 (0 types de violation)
+    [axe] admin-pending-actions : score 100 (0 types de violation)
+  [skips] aucun skip d'audit, aucune vue manquante, aucun popper persistant
+[f-proof] VERDICT phase apres : TOUTES PREUVES OK
+  P4  247 pass
+  P4  231 skip
+  P4  0 fail
+
+──────────────────────────── RUN 5 ────────────────────────────
+commande : bash scripts/f-ui-fixes-proof-run.sh apres  (log : /tmp/c1-proof-run-5.log)
+exit     : 0
+[f-proof] 01:21:50 — 5. preuve navigateur (phase apres)
+[f-proof] 01:23:42 — 6. P4 simule tests.yml (bun test tests/)
+[f-proof] 01:24:09 — OK — preuve F complète (phase apres) — assets docs/proofs/assets/F/
+    [axe] feed : score 100 (0 types de violation)
+    [axe] groups : score 100 (0 types de violation)
+    [axe] onboarding : score 100 (0 types de violation)
+    [axe] messages-offline : score 100 (0 types de violation)
+    [axe] admin-pending-actions : score 100 (0 types de violation)
+  [skips] aucun skip d'audit, aucune vue manquante, aucun popper persistant
+[f-proof] VERDICT phase apres : TOUTES PREUVES OK
+  P4  247 pass
+  P4  231 skip
+  P4  0 fail
+
+──────────────────────────── BILAN ────────────────────────────
+exit 0 ×5 — axe : 5 vues attendues × score 100, présentes dans CHAQUE run
+(axeMissingViews=[] forcé — skip non silencieux, cf. DEV-SETUP §7b.4) ;
+P4 simule tests.yml : 247 pass / 231 skip / 0 fail à chaque run ;
+les « skip » du résumé P4 = skips préexistants de la suite CI (sans rapport
+avec les audits axe — aucun audit sauté).

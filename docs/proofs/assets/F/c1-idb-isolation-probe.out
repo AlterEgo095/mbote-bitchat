@@ -1,0 +1,6 @@
+{
+  "crossReadBeforeDelete": "depuis-ctx1",
+  "ctx1AfterCtx2Delete": "depuis-ctx1",
+  "ctx2AfterDelete": null,
+  "conclusion": "IndexedDB isolée par contexte → la perte d'identité vient d'ailleurs (le contexte jetable suffit)"
+}

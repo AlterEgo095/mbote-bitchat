@@ -2,7 +2,7 @@
   "phase": "apres",
   "main": "http://127.0.0.1:3128",
   "panel": "http://127.0.0.1:3129",
-  "startedAt": "2026-11-14T00:02:52.448Z",
+  "startedAt": "2026-11-14T01:21:51.042Z",
   "p1_dialogShown": true,
   "p1_cancelKeepsIdentity": true,
   "p1_confirmWipes": true,
@@ -17,9 +17,9 @@
   "p47_bobSeesAtSec": 2,
   "p47_ok": true,
   "p39_activeAfterTab": {
-    "testid": "group-card-btn-cmwfn7r9v0009rndfa1rl7or1",
+    "testid": "group-card-btn-cmwfq210z0009rbjti37xaw2b",
     "role": "button",
-    "text": "F-Groupe2 membres · créé par BH-jUG…2L28"
+    "text": "F-Groupe2 membres · créé par BOE4L5…zux4"
   },
   "p39_tabsToCard": 13,
   "p39_cardRoleButtons": 1,
@@ -51,12 +51,19 @@
       "ok": true
     },
     {
+      "view": "messages-offline",
+      "violations": [],
+      "score": 100,
+      "ok": true
+    },
+    {
       "view": "admin-pending-actions",
       "violations": [],
       "score": 100,
       "ok": true
     }
   ],
+  "axeMissingViews": [],
   "axeAllOk": true,
   "ok": true,
   "shots": [
@@ -72,7 +79,8 @@
     "p39-carte-focus-clavier-conversation.png",
     "p72-vue-moderateur.png",
     "p72-vue-super-admin.png",
+    "axe-messages-offline.png",
     "axe-admin-pending-actions.png"
   ],
-  "finishedAt": "2026-11-14T00:05:36.049Z"
+  "finishedAt": "2026-11-14T01:23:42.735Z"
 }

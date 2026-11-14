@@ -138,12 +138,15 @@ captures apres (login panneau, groupes).
 | feed | **100** | 0 |
 | groups (carte + clavier) | **100** | 0 |
 | onboarding (dialog) | **100** | 0 |
-| messages-offline (bulle file) | **100** | 0 — run `f258a25` (capture `F/apres/axe-messages-offline.png` commitée) ; les re-runs HEAD finals sautent cet audit (artefact harnais — cycle d'identité après wipe dans un même contexte, famille #47 ; diagnostic `F/apres/debug-messages-offline-saut.png`) |
+| messages-offline (bulle file) | **100** | 0 — audit RESTRUCTURÉ post-F (Clarification 1 : contexte jetable auto-contenu, bulle « En attente » garantie dans le DOM — voir §8b) ; score 100 dans les 5 runs de preuve consécutifs (`F/c1-harnais-5runs.txt`) |
 | admin-pending-actions | **100** | 0 |
 
-Bilan final HEAD (runs consécutifs EXIT 0) : 4/5 vues auditées à 100 + toutes les
-phases P vertes + P4 247/0 ; la 5ᵉ (messages-offline) prouvée à 100 dans le run
-complet `f258a25`.
+Bilan post-Clarification-1 : **5/5 vues auditées à 100 dans CHAQUE run** (5 runs
+consécutifs EXIT 0, skip non toléré — vues attendues forcées dans le harnais) +
+toutes les phases P vertes + P4 247/0. Historique honnête : avant le restructure,
+la 5ᵉ vue était un artefact double (skip dans les re-runs HEAD ; audit tournant
+sur le DIALOG d'onboarding au lieu de la vue Messages dans le run `f258a25`) —
+détail et correction en §8b.
 
 NB : au cours du travail, le premier fix #39 (role=button sur la CARTE entière)
 provoquait une violation `nested-interactive` (serious) dès que la conversation
@@ -223,23 +226,84 @@ admin), #64 (scope="col" users), #67 (durées suspension divergentes), #68
 - **Contrastes manuels AA hors axe** (les 2 fixes #31/#73 sont validés par le
   re-score axe = 0 violation sur les états rendus audités).
 - **CI live** : push opérateur attendu (token révoqué) — les sorties locales
-  (P4 247/0, tsc, lint, runner exit 0 ×3) sont la preuve de substitution.
+  (P4 247/0, tsc, lint, runner exit 0 ×5 post-C1) sont la preuve de substitution.
 - Le **429 réel de D2** dans le harnais P2 : le garde (3/h/IP) saturerait à
   cause des onboardings du harnais lui-même — le 429 est reproduit avec le
   corps EXACT du serveur (mock), le succès du retry est mocké 200 (même forme)
   pour rester déterministe ; le chemin réel 429→bannière→retry est exercé côté
-  client de bout en bout.
-- **Audit axe messages-offline dans les re-runs HEAD finals** : sauté (3 runs
-  consécutifs) — le contexte pageA perd son identité locale après le cycle
-  P1-wipe + reloads du harnais (capture de diagnostic au saut). Le score 100
-  du run complet `f258a25` (capture commitée) fait foi ; ce comportement du
-  harnais est lui-même un indicateur utile : le wipe détruit bien TOUT l'état
-  local de l'origine (invariant voulu de `panicWipe`).
+  client de bout en bout. Depuis la Clarification 1, le serveur du harnais
+  tourne avec `SYBIL_BYPASS=1` (le harnais crée 4 identités/run) — le mock P2
+  reste inchangé et reste nécessaire pour la détermination du run ; la portée
+  du bypass (plafond 3/h/IP SEUL) est documentée en DEV-SETUP §7b.
+- ~~Audit axe messages-offline dans les re-runs HEAD finals : sauté~~ —
+  **CORRIGÉ post-validation (Clarification 1)** : cause racine double identifiée
+  (flux fragile en contexte partagé + re-onboard de secours tué par le garde D2
+  réel ; ET l'audit « passant » de `f258a25` tournait en réalité sur le dialog
+  d'onboarding, pas sur la vue Messages) ; bloc restructuré auto-contenu,
+  skips désormais NON tolérés — détail complet §8b.
+
+## 8b. Clarification 1 post-validation — l'artefact harnais est CORRIGÉ, pas skippé
+
+Directive opérateur : « #47 (E) et 5ᵉ-vue-axe (F) ont la même cause : contexte
+Playwright partagé qui casse l'identité après une action destructive. Le skip
+"documenté" n'est pas une solution — la 6ᵉ occurrence arriverait en G. »
+
+### Diagnostic (avant code)
+
+1. **Sonde d'isolation IndexedDB** (`scripts/c1-idb-isolation-probe.ts`, sortie
+   `F/c1-idb-isolation-probe.out`) : chromium-1200 headless Isole IndexedDB par
+   browserContext (écriture croisée + `deleteDatabase` inter-contexte : le
+   contexte 1 garde son record). Conclusion : le contexte jetable de P1-wipe
+   SUFFIT — la perte d'identité de pageA venait d'ailleurs.
+2. **Capture de diagnostic au saut** (`debug-messages-offline-saut.png`) : le
+   dialog de re-onboard F-Alice ouvert et BLOQUÉ — la republication réelle (4ᵉ
+   création du run) tombait sous le garde D2 (3/h/IP) : 429 → le harnais
+   restait attendre la fermeture d'un dialog qui ne venait pas.
+3. **Découverte aggravante** : dans le run « passant » `f258a25`, la capture
+   `axe-messages-offline.png` de l'époque montre le DIALOG d'onboarding au-dessus
+   du feed — l'audit « à 100 » tournait sur le mauvais DOM (pas la vue Messages).
+   L'ancien sélecteur de composer (`placeholder^="Message privé"`) était de plus
+   faux (le vrai placeholder : « Message chiffré (ECDH + AES-GCM)… »), donc le
+   send hors-ligne pouvait ne jamais partir sans que le harnais ne le voie.
+
+### Corrections (harnais + serveur de test)
+
+| Correctif | Où | Détail |
+|---|---|---|
+| Bloc messages-offline AUTO-CONTENU | `f-ui-fixes-proof.ts` | contexte jetable dédié + identité fraîche « F-Offline » ; conversation ouverte via le picker « Nouvelle conversation » → F-Bob ; mode mesh activé SUR PLACE (sans reload) ; bulle « En attente » GARANTIE dans le DOM avant l'audit (`waitFor` explicite — jamais d'audit sur un état vide) |
+| Composer localisé par aria-label | `f-ui-fixes-proof.ts` | `[aria-label="Message privé"]` (stable) au lieu du placeholder faux |
+| Overlays Radix purgés avant audit | `f-ui-fixes-proof.ts` | `mouse.move` hors du chrome + Escape + attente bornée du détachement des wrappers popper ; un popper persistant >3 s = ÉCHEC explicite (diagnostic dumpé) — l'artefact d'overlay (`aria-hidden-focus` + `region`, score 66 au run de mise au point) est désormais impossible à manquer en silence |
+| Skip NON silencieux | `f-ui-fixes-proof.ts` | `EXPECTED_AXE_VIEWS` (5 vues) forcées : `axeMissingViews` non vide → verdict ÉCHEC — « si un skip persiste, ne pas clore » est maintenant mécanique (DEV-SETUP §7b.4) |
+| Bypass test du garde D2 | `src/app/api/identity/route.ts` + runner | `SYBIL_BYPASS=1` court-circuite UNIQUEMENT le plafond de création 3/h/IP ; PoW, preuve ECDSA et plafonds par minute INTACTS ; variable explicite opt-in (jamais `NODE_ENV=test`), warn console au chargement ; runner F démarre le serveur app avec `SYBIL_BYPASS=1` ; documenté DEV-SETUP §7b.3 |
+| onboard() (déjà correct depuis 8dcaf14) | `f-ui-fixes-proof.ts` | attend la FERMETURE du dialog (`state: "detached"`) avant le menu — conservé, vérifié |
+
+### Preuve : 5 runs consécutifs EXIT 0, zéro skip
+
+`F/c1-harnais-5runs.txt` — 5 exécutions consécutives de
+`bash scripts/f-ui-fixes-proof-run.sh apres` :
+
+- **exit 0 ×5** ; `VERDICT phase apres : TOUTES PREUVES OK` ×5 ;
+- axe : **5 vues attendues × score 100, présentes dans CHAQUE run**
+  (`axeMissingViews=[]` forcé — un saut rendrait le verdict ÉCHEC) ;
+- P4 simule tests.yml : **247 pass / 231 skip / 0 fail** à chaque run (les
+  « skip » du résumé P4 = skips préexistants de la suite CI, sans rapport avec
+  les audits axe) ;
+- capture finale `F/apres/axe-messages-offline.png` : la VRAIE vue Messages
+  hors-ligne (conversation F-Bob, bulle « Message hors-ligne preuve F » badge
+  « En attente », composer « Hors-ligne — ton courrier partira au retour du
+  réseau », badge « Mesh — file locale 1 »).
+
+La 6ᵉ occurrence en G est structurellement bloquée : toute future vue ajoutée
+aux audits DOIT figer son bloc auto-contenu (contexte jetable + cible garantie)
+et entrer dans `EXPECTED_AXE_VIEWS` — sinon verdict ÉCHEC.
 
 ## 9. Verdict
 
 **SUCCESS local** — 25/25 écarts du sous-ensemble validé sont corrigés avec la
 preuve de la bonne sévérité (navigateur pour les 6 Critiques, unitaire/axe pour
-les Majeurs) ; 0 régression détectée (P4 247/0, tsc, lint, axe 100×5). Le statut
-restera « PARTIEL tant que CI live non confirmée » (push opérateur) — même
-convention que F-16/F-17.
+les Majeurs) ; 0 régression détectée (P4 247/0, tsc, lint, axe 100×5 — désormais
+**100×5 dans chacun des 5 runs consécutifs post-Clarification-1**, skip non
+toléré mécaniquement). Le statut restera « PARTIEL tant que CI live non
+confirmée » (push opérateur) — même convention que F-16/F-17. SUITE : STOP —
+démarrage de G uniquement après push opérateur + CI verte confirmée
+(Clarification 2 post-F).

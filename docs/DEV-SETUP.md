@@ -496,6 +496,38 @@ navigateur du flux complet n'est pas validée, même si tous les tests passent.
 Les harnais restent nécessaires (logique métier, adversarial, régression) mais
 suffisants JAMAIS.
 
+### 7b. Harnais — contextes jetables, onboard(), bypass D2 test (Clarification 1 post-F)
+
+> **« L'artefact harnais récurrent (famille #47 : identité cassée après une
+> action destructive, audit sauté) se CORRIGE, il ne se SKIP pas — la 6ᵉ
+> occurrence serait sinon arrivée en G. »** Trois règles + un mode test :
+
+1. **Contexte jetable par test destructeur** — `newContext()` à la création du
+   test, pas un contexte partagé par suite. Un wipe ou un logout forcé détruit
+   l'état local du contexte qui le porte : `f-ui-fixes-proof.ts` P1 (wipe) et
+   le bloc axe messages-offline (identité fraîche dédiée) tournent chacun dans
+   leur propre contexte fermé à la fin du bloc. NB : la sonde
+   `scripts/c1-idb-isolation-probe.ts` a PROUVÉ (chromium-1200 headless) que
+   IndexedDB est isolée par contexte — un contexte jetable suffit, un second
+   navigateur n'est pas nécessaire.
+2. **`onboard()` attend la FERMETURE du dialog** — pas l'apparition du menu :
+   `locator('[role="dialog"]').waitFor({ state: "detached" })` AVANT le wait
+   menu. Le menu s'affiche dès `setIdentity`, AVANT la fin du flux de
+   publication (PoW + POST) — c'est le bug du diagnostic #47 (E).
+3. **Bypass test du garde D2 — `SYBIL_BYPASS=1`** : tout harnais qui crée
+   >3 identités en <1h casse (le garde D2 compte 3 CRÉATIONS/h/IP dans
+   `src/app/api/identity/route.ts` — 429 → dialog bloqué → phase suivante
+   sautée). Le runner F démarre donc le serveur app avec `SYBIL_BYPASS=1`.
+   Portée EXACTE du bypass : UNIQUEMENT le plafond de création 3/h/IP. Le
+   PoW, la preuve de possession ECDSA et les plafonds par minute restent
+   INTACTS — le chemin cryptographique réel est toujours exercé. JAMAIS en
+   production (variable explicite opt-in, jamais `NODE_ENV=test` — trop
+   facile à oublier sur un serveur standalone ; l'activation logge un warn
+   console au chargement du module).
+4. **Skip NON silencieux** : un harnais qui SAUTE une vérification attendue
+   doit ÉCHOUER. Le runner F force la présence des 5 vues axe attendues
+   (`axeMissingViews` → verdict ÉCHEC) : « si un skip persiste, ne pas clore ».
+
 ---
 
 ## 8. Preuves navigateur en CI hebdomadaire (`weekly-proof-run.yml`) — prérequis et jamais-silencieux (F-17, 2026-…)

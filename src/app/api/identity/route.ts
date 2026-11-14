@@ -21,6 +21,22 @@ const RATE_WINDOW_MS = 60_000;
 const IDENTITY_CREATIONS_PER_HOUR_PER_IP = 3;
 const CREATION_WINDOW_MS = 3_600_000;
 
+// C1 — Clarification 1 (post-F, artefact harnais récurrent famille #47) : mode
+// TEST du garde D2. SYBIL_BYPASS=1 désactive UNIQUEMENT le plafond de
+// CRÉATION 3/h/IP : tout harnais qui crée >3 identités en <1h (re-onboard de
+// secours après une action destructive, phases multiples) sinon casse — le
+// 429 real laisse le dialog d'onboarding bloqué et l'audit sauté. Le PoW, la
+// preuve de possession ECDSA et les plafonds par minute restent INTACTS : le
+// chemin cryptographique réel est toujours exercé. DÉFENSE EN PROFONDEUR :
+// variable explicite (jamais NODE_ENV), opt-in par harnais, jamais présente
+// en production ; l'activation est annoncée en console (jamais silencieux).
+const SYBIL_BYPASS = process.env.SYBIL_BYPASS === "1";
+if (SYBIL_BYPASS) {
+  console.warn(
+    "[identity] SYBIL_BYPASS=1 — plafond D2 (3 créations/h/IP) DÉSACTIVÉ — environnement de test uniquement"
+  );
+}
+
 /** POST /api/identity — enregistre / met à jour une identité (clé publique = compte)
  *
  *  F-01 (audit Vague 1) : toute écriture d'identité exige une PREUVE DE
@@ -74,11 +90,15 @@ export async function POST(req: NextRequest) {
     let powChallenge: string | undefined;
     if (isCreation) {
       // fail-closed : le hit incrémente AVANT toute vérification (sonder = payer)
-      const byCreateIp = rates.hit(
-        `identity-create-ip:${ip}`,
-        IDENTITY_CREATIONS_PER_HOUR_PER_IP,
-        CREATION_WINDOW_MS
-      );
+      // C1 : SYBIL_BYPASS=1 court-circuite UNIQUEMENT ce plafond (mode test,
+      // voir const SYBIL_BYPASS) — le PoW ci-dessous reste obligatoire.
+      const byCreateIp = SYBIL_BYPASS
+        ? { allowed: true, remaining: IDENTITY_CREATIONS_PER_HOUR_PER_IP, retryAfterMs: 0 }
+        : rates.hit(
+            `identity-create-ip:${ip}`,
+            IDENTITY_CREATIONS_PER_HOUR_PER_IP,
+            CREATION_WINDOW_MS
+          );
       if (!byCreateIp.allowed) {
         const retry = Math.ceil(byCreateIp.retryAfterMs / 1000);
         return NextResponse.json(
