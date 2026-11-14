@@ -126,44 +126,46 @@ async function main(): Promise<number> {
   await onboard(pageB, "F-Bob");
 
   // ══ P1 — Critique #1 : panic wipe SANS confirmation (header) ══════════════
-  console.log("[f-proof] P1 — panic wipe (#1)");
+  console.log("[f-proof] P1 — panic wipe (#1) — contexte JETABLE (le wipe détruit");
+  console.log("[f-proof]       l'identité du contexte : pageA la garde pour la suite)");
   {
-    await pageA.locator('[aria-label^="Menu de mon identité"]').click();
-    await pageA.getByText("Panic wipe").first().waitFor({ timeout: 5000 });
-    await snap(pageA, "p1-menu-ouvert.png");
-    await pageA.getByText("Panic wipe").first().click();
-    await pageA.waitForTimeout(1200);
-    const dialog = await pageA.locator('[role="alertdialog"]').count();
-    const backToOnboarding = (await pageA.getByText("Crée ton identité locale").count()) > 0;
-    const menuStill = (await pageA.locator('[aria-label^="Menu de mon identité"]').count()) > 0;
+    const ctxW = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+    const pageW = await ctxW.newPage();
+    await onboard(pageW, "F-Ephemere");
+    await pageW.locator('[aria-label^="Menu de mon identité"]').click();
+    await pageW.getByText("Panic wipe").first().waitFor({ timeout: 5000 });
+    await snap(pageW, "p1-menu-ouvert.png");
+    await pageW.getByText("Panic wipe").first().click();
+    await pageW.waitForTimeout(1200);
+    const dialog = await pageW.locator('[role="alertdialog"]').count();
+    const backToOnboarding = (await pageW.getByText("Crée ton identité locale").count()) > 0;
+    const menuStill = (await pageW.locator('[aria-label^="Menu de mon identité"]').count()) > 0;
     if (PHASE === "apres") {
       results.p1_dialogShown = dialog > 0;
       if (dialog > 0) {
-        await snap(pageA, "p1-dialog-confirmation.png");
+        await snap(pageW, "p1-dialog-confirmation.png");
         // annuler → identité intacte
-        await pageA.getByRole("button", { name: "Annuler" }).click();
-        await pageA.waitForTimeout(400);
+        await pageW.getByRole("button", { name: "Annuler" }).click();
+        await pageW.waitForTimeout(400);
         results.p1_cancelKeepsIdentity =
-          (await pageA.locator('[aria-label^="Menu de mon identité"]').count()) > 0 &&
-          (await pageA.getByText("Crée ton identité locale").count()) === 0;
-        await snap(pageA, "p1-apres-annuler.png");
+          (await pageW.locator('[aria-label^="Menu de mon identité"]').count()) > 0 &&
+          (await pageW.getByText("Crée ton identité locale").count()) === 0;
+        await snap(pageW, "p1-apres-annuler.png");
         // confirmer → wipe réel
-        await pageA.locator('[aria-label^="Menu de mon identité"]').click();
-        await pageA.getByText("Panic wipe").first().click();
-        await pageA.locator('[role="alertdialog"]').waitFor({ timeout: 5000 });
-        await pageA.getByRole("button", { name: "Effacer définitivement" }).click();
-        await pageA.getByText("Crée ton identité locale").first().waitFor({ timeout: 15000 });
+        await pageW.locator('[aria-label^="Menu de mon identité"]').click();
+        await pageW.getByText("Panic wipe").first().click();
+        await pageW.locator('[role="alertdialog"]').waitFor({ timeout: 5000 });
+        await pageW.getByRole("button", { name: "Effacer définitivement" }).click();
+        await pageW.getByText("Crée ton identité locale").first().waitFor({ timeout: 15000 });
         results.p1_confirmWipes = true;
-        await snap(pageA, "p1-wipe-execute.png");
-        // ré-onboard pour les phases suivantes
-        await onboard(pageA, "F-Alice");
+        await snap(pageW, "p1-wipe-execute.png");
       }
     } else {
       // avant : le wipe s'exécute SANS aucune confirmation
       results.p1_wipeImmediate = backToOnboarding && !menuStill && dialog === 0;
-      await snap(pageA, "p1-wipe-immediat-sans-confirmation.png");
-      await onboard(pageA, "F-Alice");
+      await snap(pageW, "p1-wipe-immediat-sans-confirmation.png");
     }
+    await ctxW.close();
   }
 
   // ══ P2 — Critique #2 : échec de publication d'identité invisible (429) ════
@@ -425,7 +427,20 @@ async function main(): Promise<number> {
     // messages hors-ligne (#31 — contraste de la bulle file locale) :
     // A active le mode mesh puis envoie un DM → bulle « En attente » rendue
     try {
-      await pageA.locator('[aria-label^="Menu de mon identité"]').click();
+      // laisser filer les toasts (P3 recovery) qui intercepteraient le clic menu
+      await pageA.waitForTimeout(2000);
+      // fermer tout overlay résiduel (dropdown/dialog) puis ouvrir le menu
+      await pageA.keyboard.press("Escape");
+      await pageA.waitForTimeout(300);
+      // artefact harnais connu (famille #47) : le wipe P1 + les reloads
+      // suivants peuvent laisser le contexte SANS identité chargée —
+      // re-onboard de secours au lieu de sauter l'audit
+      if ((await pageA.locator('[aria-label^="Menu de mon identité"]').count()) === 0) {
+        console.log("  [axe] messages-offline : identité absente du contexte — re-onboard de secours");
+        await onboard(pageA, "F-Alice");
+      }
+      await pageA.locator('[aria-label^="Menu de mon identité"]').waitFor({ timeout: 10000 });
+      await pageA.locator('[aria-label^="Menu de mon identité"]').click({ timeout: 10000 });
       await pageA.getByText("Activer le mode mesh").click();
       await pageA.goto(`${MAIN}/?view=messages`, { waitUntil: "domcontentloaded" });
       await pageA.waitForTimeout(1500);
@@ -449,7 +464,16 @@ async function main(): Promise<number> {
         w.localStorage.removeItem("mbote.forceOffline");
       });
     } catch (e) {
-      console.log(`  [axe] messages-offline : saut (${e instanceof Error ? e.message.slice(0, 80) : String(e)})`);
+      console.log(`  [axe] messages-offline : saut (${e instanceof Error ? e.message.slice(0, 120) : String(e)})`);
+      // diagnostic : état réel de pageA au moment du saut (jamais silencieux)
+      try {
+        await pageA.screenshot({ path: join(SHOTS, "debug-messages-offline-saut.png") });
+        const dlg = (await pageA.locator('[role="dialog"]').count()) > 0;
+        const url = pageA.url();
+        console.log(`  [axe] saut — url=${url} dialog ouvert=${dlg}`);
+      } catch {
+        /* rien de plus à dire */
+      }
     }
 
     // écriture incrémentale — les scores déjà mesurés survivent à un échec

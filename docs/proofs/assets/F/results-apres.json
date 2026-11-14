@@ -2,7 +2,7 @@
   "phase": "apres",
   "main": "http://127.0.0.1:3128",
   "panel": "http://127.0.0.1:3129",
-  "startedAt": "2026-11-13T23:37:54.305Z",
+  "startedAt": "2026-11-14T00:02:52.448Z",
   "p1_dialogShown": true,
   "p1_cancelKeepsIdentity": true,
   "p1_confirmWipes": true,
@@ -17,9 +17,9 @@
   "p47_bobSeesAtSec": 2,
   "p47_ok": true,
   "p39_activeAfterTab": {
-    "testid": "group-card-btn-cmwfmbhyg0009rnrfj5k0d3sg",
+    "testid": "group-card-btn-cmwfn7r9v0009rndfa1rl7or1",
     "role": "button",
-    "text": "F-Groupe2 membres · créé par BELdLt…MtvU"
+    "text": "F-Groupe2 membres · créé par BH-jUG…2L28"
   },
   "p39_tabsToCard": 13,
   "p39_cardRoleButtons": 1,
@@ -58,6 +58,7 @@
     }
   ],
   "axeAllOk": true,
+  "ok": true,
   "shots": [
     "p1-menu-ouvert.png",
     "p1-dialog-confirmation.png",
@@ -73,5 +74,5 @@
     "p72-vue-super-admin.png",
     "axe-admin-pending-actions.png"
   ],
-  "finishedAt": "2026-11-13T23:39:28.012Z"
+  "finishedAt": "2026-11-14T00:05:36.049Z"
 }
