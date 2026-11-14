@@ -31,6 +31,26 @@ const CREATION_WINDOW_MS = 3_600_000;
 // variable explicite (jamais NODE_ENV), opt-in par harnais, jamais présente
 // en production ; l'activation est annoncée en console (jamais silencieux).
 const SYBIL_BYPASS = process.env.SYBIL_BYPASS === "1";
+// Ajout post-validation C1 — garde-fou production (demande opérateur) : le
+// bypass est un mode TEST LOCAL/CI ; un serveur de production qui démarre
+// avec SYBIL_BYPASS=1 REFUSE de démarrer — fail-closed (leçon V4), jamais
+// silencieux.
+// NB honnête (écart documenté à contresigner) : le server.js standalone de
+// Next force `process.env.NODE_ENV = 'production'` À L'EXÉCUTION — même en
+// local (template node_modules/next/dist/build/utils.js:1201). Le harnais F,
+// qui exerce justement ce build production (leçon É8), ne peut PAS
+// désamorcer le garde via NODE_ENV : il pose donc SYBIL_BYPASS_TEST=1,
+// marqueur EXPLICITE et unique des runners de test locaux/CI. La 1ʳᵉ défense
+// reste le grep de sécurité (runner F step 1b + DEV-SETUP §7b.3) : 0
+// occurrence de SYBIL_BYPASS (la sous-chaîne couvre SYBIL_BYPASS_TEST) dans
+// deploy-vps.yml, deploy/*.yml, .env.example et les workflows.
+if (
+  SYBIL_BYPASS &&
+  process.env.NODE_ENV === "production" &&
+  process.env.SYBIL_BYPASS_TEST !== "1"
+) {
+  throw new Error("SYBIL_BYPASS ne doit JAMAIS être activé en production");
+}
 if (SYBIL_BYPASS) {
   console.warn(
     "[identity] SYBIL_BYPASS=1 — plafond D2 (3 créations/h/IP) DÉSACTIVÉ — environnement de test uniquement"

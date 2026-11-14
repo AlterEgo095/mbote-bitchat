@@ -16,6 +16,18 @@
 # C1 (Clarification 1 post-F) : tests destructeurs en contextes jetables,
 # onboard() attend la fermeture du dialog, bloc messages-offline auto-contenu,
 # skips axe NON tolérés (vues attendues forcées — cf. DEV-SETUP §7b).
+#
+# Ajouts post-validation C1 (demande opérateur) :
+#   · step 1b — gate SYBIL_BYPASS : 0 occurrence dans deploy-vps.yml,
+#     deploy/*.yml, .env.example et les workflows (le bypass D2 ne doit
+#     JAMAIS fuiter côté déploiement) ;
+#   · le serveur app du harnais pose SYBIL_BYPASS_TEST=1 (marqueur explicite
+#     des runners de test — le server.js standalone force NODE_ENV=production
+#     même en local, le garde prod du module identity refuse sinon de
+#     démarrer, à juste titre) ;
+#   · captures axe des 5 vues : feed, groups et onboarding sont désormais
+#     photographiées (comme messages-offline et admin-pending-actions) —
+#     vérification visuelle §8b de docs/proofs/F-ui-fixes.md.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -70,6 +82,23 @@ bunx tsc --noEmit > /tmp/f-tsc-main.log 2>&1 \
 (cd admin && bunx tsc --noEmit) > /tmp/f-tsc-panel.log 2>&1 \
   || { say "FAIL — tsc panneau admin : erreurs de type (extrait)"; tail -40 /tmp/f-tsc-panel.log; exit 1; }
 
+# ── 1b. gate SYBIL_BYPASS (ajout post-validation) : 0 occurrence côté ────────
+# déploiement. La sous-chaîne "SYBIL_BYPASS" couvre aussi SYBIL_BYPASS_TEST.
+# Si un workflow de TEST devait un jour légitimement porter SYBIL_BYPASS=1
+# (harnais en CI), il faut étendre CE gate explicitement (jamais silencieux).
+say "1b. gate SYBIL_BYPASS — 0 occurrence dans les artefacts de déploiement"
+SYBIL_LEAK=""
+if grep -q "SYBIL_BYPASS" .env.example 2>/dev/null; then SYBIL_LEAK="$SYBIL_LEAK .env.example"; fi
+for f in .github/workflows/*.yml deploy/*.yml; do
+  [ -e "$f" ] || continue
+  if grep -q "SYBIL_BYPASS" "$f"; then SYBIL_LEAK="$SYBIL_LEAK $f"; fi
+done
+if [ -n "$SYBIL_LEAK" ]; then
+  say "FAIL — SYBIL_BYPASS présent dans :$SYBIL_LEAK — le garde D2 serait désactivé côté déploiement"
+  exit 1
+fi
+say "   ok — deploy-vps.yml, deploy/*.yml, .env.example, workflows : 0 occurrence"
+
 # ── 2. builds production standalone (TOUJOURS — leçon É8) ────────────────────
 say "2. builds standalone (app + panneau)"
 NEXT_TELEMETRY_DISABLED=1 DATABASE_URL="file:$DB" NEXT_PUBLIC_SOCKET_URL="$HUB_URL" \
@@ -100,7 +129,7 @@ DATABASE_URL="file:$DB" NEXT_TELEMETRY_DISABLED=1 \
   RELAY_EMIT_TOKEN="f-emit-token" \
   ADMIN_INTERNAL_TOKEN="f-proof-internal-token-0123456789abcdef" \
   BACKUP_STATUS_PATH="$ROOT/db/f-backup-status.json" \
-  SYBIL_BYPASS=1 \
+  SYBIL_BYPASS=1 SYBIL_BYPASS_TEST=1 \
   MBOTE_EMBED_RELAY=0 PORT=$APP_PORT HOSTNAME=127.0.0.1 NODE_ENV=production \
   bun .next/standalone/server.js > /tmp/f-main.log 2>&1 &
 APP_PID=$!

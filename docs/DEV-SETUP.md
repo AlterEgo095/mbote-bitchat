@@ -524,6 +524,23 @@ suffisants JAMAIS.
    production (variable explicite opt-in, jamais `NODE_ENV=test` — trop
    facile à oublier sur un serveur standalone ; l'activation logge un warn
    console au chargement du module).
+   **Garde-fou production (ajout post-validation C1)** : le module identity
+   REFUSE de démarrer si `SYBIL_BYPASS=1` et `NODE_ENV=production`
+   (`throw new Error("SYBIL_BYPASS ne doit JAMAIS être activé en
+   production")`) — fail-closed. NB : le `server.js` standalone de Next force
+   `NODE_ENV=production` à l'exécution (même en local) ; le harnais F, qui
+   exerce ce build production (leçon É8), pose donc `SYBIL_BYPASS_TEST=1`,
+   marqueur EXPLICITE réservé aux runners de test locaux/CI — c'est le seul
+   désamorceur du garde.
+   **SYBIL_BYPASS ne doit apparaître que dans les runners de test
+   locaux/CI. Audit de sécurité : `grep SYBIL_BYPASS .github/workflows/*.yml
+   deploy/*.yml` → doit renvoyer 0 occurrence dans les workflows de
+   déploiement.** Idem `.env.example` et `deploy-vps.yml`. Preuve mécanisée :
+   le runner F, step 1b — échec immédiat si une occurrence fuite (la
+   sous-chaîne `SYBIL_BYPASS` couvre aussi `SYBIL_BYPASS_TEST`). Si un
+   workflow de TEST devait un jour légitimement porter `SYBIL_BYPASS=1`
+   (harnais en CI), le gate du step 1b doit être étendu explicitement —
+   jamais silencieux.
 4. **Skip NON silencieux** : un harnais qui SAUTE une vérification attendue
    doit ÉCHOUER. Le runner F force la présence des 5 vues axe attendues
    (`axeMissingViews` → verdict ÉCHEC) : « si un skip persiste, ne pas clore ».
