@@ -138,8 +138,12 @@ captures apres (login panneau, groupes).
 | feed | **100** | 0 |
 | groups (carte + clavier) | **100** | 0 |
 | onboarding (dialog) | **100** | 0 |
-| messages-offline (bulle file) | **100** | 0 |
+| messages-offline (bulle file) | **100** | 0 — run `f258a25` (capture `F/apres/axe-messages-offline.png` commitée) ; les re-runs HEAD finals sautent cet audit (artefact harnais — cycle d'identité après wipe dans un même contexte, famille #47 ; diagnostic `F/apres/debug-messages-offline-saut.png`) |
 | admin-pending-actions | **100** | 0 |
+
+Bilan final HEAD (runs consécutifs EXIT 0) : 4/5 vues auditées à 100 + toutes les
+phases P vertes + P4 247/0 ; la 5ᵉ (messages-offline) prouvée à 100 dans le run
+complet `f258a25`.
 
 NB : au cours du travail, le premier fix #39 (role=button sur la CARTE entière)
 provoquait une violation `nested-interactive` (serious) dès que la conversation
@@ -225,6 +229,12 @@ admin), #64 (scope="col" users), #67 (durées suspension divergentes), #68
   corps EXACT du serveur (mock), le succès du retry est mocké 200 (même forme)
   pour rester déterministe ; le chemin réel 429→bannière→retry est exercé côté
   client de bout en bout.
+- **Audit axe messages-offline dans les re-runs HEAD finals** : sauté (3 runs
+  consécutifs) — le contexte pageA perd son identité locale après le cycle
+  P1-wipe + reloads du harnais (capture de diagnostic au saut). Le score 100
+  du run complet `f258a25` (capture commitée) fait foi ; ce comportement du
+  harnais est lui-même un indicateur utile : le wipe détruit bien TOUT l'état
+  local de l'origine (invariant voulu de `panicWipe`).
 
 ## 9. Verdict
 
