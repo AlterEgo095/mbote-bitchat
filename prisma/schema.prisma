@@ -65,6 +65,12 @@ model User {
   // la préférence d'un tiers. Lecture publique (même classe d'exposition que
   // le profil). Le LS `mbote_locale` (appareil) reste prioritaire dessus.
   locale String @default("fr")
+  // G — la locale n'est ADOPTÉE par un autre appareil que si elle a été
+  // CHOISIE explicitement (sélecteur Profil) : la valeur par défaut 'fr' ne
+  // doit jamais écraser la détection navigateur d'un nouvel appareil (bug
+  // détecté par le harnais G : onboarding en-US basculé en fr par adoption
+  // du défaut). Posé à true UNIQUEMENT par POST /api/preferences.
+  localeExplicit Boolean @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

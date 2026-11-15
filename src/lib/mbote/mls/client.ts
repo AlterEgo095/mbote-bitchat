@@ -33,7 +33,6 @@
 import type { ClientState } from "ts-mls";
 import { signPayload } from "../crypto";
 import { loadGroupState, saveGroupState, loadKpCache, saveKpCache, setStoreIdentity } from "./store";
-import { decodeValue } from "./state-codec";
 
 // ── chargement paresseux du module MLS ──────────────────────────────────────
 
@@ -159,15 +158,40 @@ function newRuntime(state: ClientState | null): GroupRuntime {
   return { state, processed: new Set(), appliedMessages: new Set() };
 }
 
+/** Empreinte de forme d'un état MLS — types et longueurs SEULEMENT (aucun
+ *  octet, aucun secret) — pour le diagnostic des échecs d'encodeur. */
+function shapeOf(v: unknown, depth = 0): string {
+  if (depth > 4) return "…";
+  if (v instanceof Uint8Array) return `u8(${v.length})`;
+  if (typeof v === "bigint") return "bigint";
+  if (v instanceof Map) return `map{${[...v.keys()].slice(0, 4).map((k) => shapeOf(k, depth + 1)).join(",")}}`;
+  if (v instanceof Set) return `set(${v.size})`;
+  if (v === null || v === undefined) return String(v);
+  if (Array.isArray(v)) return `[${v.length}×${v.length ? shapeOf(v[0], depth + 1) : "?"}]`;
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o).slice(0, 10).map((k) => `${k}:${shapeOf(o[k], depth + 1)}`).join(",")}}`;
+  }
+  return typeof v;
+}
+
 async function runtimeFor(serverGroupId: string): Promise<GroupRuntime> {
   const existing = runtimes.get(serverGroupId);
   if (existing) return existing;
   const me = requireIdentity();
+  // loadGroupState retourne DÉJÀ la structure décodée (deserializeGroupState =
+  // decodeValue∘JSON.parse) — BUG G (famille #47) : un 2ᵉ decodeValue ici
+  // re-passait la structure DÉJÀ restaurée dans le décodeur → les Uint8Array
+  // (déjà réels) tombaient dans la branche objet générique et devenaient des
+  // {0:number,…}, les Map/Set devenaient {} — d'où « Length too large to
+  // encode » au premier envoi post-reload (createApplicationMessage lisait
+  // .length === undefined → NaN). Défaut latent C4 jamais exercé : le reload
+  // post-MLS tuait l'identité avant d'atteindre ce chemin (corrigé en G).
   const raw = await loadGroupState(serverGroupId, me.ecdhPriv, me.ecdhPub);
   let state: ClientState | null = null;
   if (raw) {
     const m = await loadMls();
-    state = { ...(decodeValue(raw) as unknown as ClientState), clientConfig: defaultConfig(m) };
+    state = { ...(raw as unknown as ClientState), clientConfig: defaultConfig(m) };
   }
   const rt = newRuntime(state);
   runtimes.set(serverGroupId, rt);
@@ -205,7 +229,16 @@ async function loadKpCacheOnce(): Promise<CachedKp[]> {
 }
 
 async function persistKpCache(): Promise<void> {
-  if (kpCache) await saveKpCache(kpCache);
+  if (!kpCache) return;
+  try {
+    await saveKpCache(kpCache);
+  } catch (e) {
+    // Non-bloquant par design : le cache KP est une OPTIMISATION (survie au
+    // reload entre publication et jointure) — un échec de persistence ne doit
+    // JAMAIS faire échouer la publication des key packages (leçon du run G :
+    // saveKpCache est devenu réel au branchement setStoreIdentity).
+    console.warn("[mls] cache KP non persisté (non bloquant)", e);
+  }
 }
 
 /** Génère + publie des key packages frais (appelé à l'ouverture de session et
@@ -444,7 +477,23 @@ export async function sendGroupMessage(serverGroupId: string, text: string): Pro
   const me = requireIdentity();
   const rt = await runtimeFor(serverGroupId);
   if (!rt.state) throw new Error("groupe non joint");
-  const app = await m.createApplicationMessage(rt.state, new TextEncoder().encode(text), impl);
+  let app: Awaited<ReturnType<typeof m.createApplicationMessage>>;
+  try {
+    app = await m.createApplicationMessage(rt.state, new TextEncoder().encode(text), impl);
+  } catch (e) {
+    // Diagnostic G (famille #47 — envoi post-reload) : l'état vient de
+    // loadGroupState (codec JSON) — un champ mal restauré échoue ICI avec un
+    // message d'encodeur peu parlant (« Length too large to encode »).
+    // On logge l'erreur + une empreinte de forme SANS matériel secret
+    // (types et longueurs uniquement) pour le diagnostic harnais.
+    console.error(
+      "[mls] createApplicationMessage échoué (état rechargé ?) —",
+      e instanceof Error ? `${e.message}\n${e.stack?.split("\n").slice(1, 5).join("\n")}` : e,
+      "forme de l'état :",
+      shapeOf(rt.state as unknown as Record<string, unknown>)
+    );
+    throw e;
+  }
   rt.state = app.newState;
   const wire = m.encodeMlsMessage({
     version: "mls10",

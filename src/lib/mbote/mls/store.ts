@@ -18,7 +18,7 @@
 
 import type { SealedPayload } from "../crypto";
 import { sealMessage, openMessage } from "../crypto";
-import { serializeGroupState, deserializeGroupState } from "./state-codec";
+import { serializeGroupState, deserializeGroupState, encodeValue, decodeValue } from "./state-codec";
 import { openSecureDb } from "../secure-db";
 
 const STORE = "mls";
@@ -146,7 +146,9 @@ export async function loadKpCache(): Promise<Array<{ wire: string; pub: unknown;
       });
       if (!rec) return null;
       const plaintext = await openMessage(me.ecdhPriv, me.ecdhPub, rec.sealed);
-      return JSON.parse(plaintext) as Array<{ wire: string; pub: unknown; priv: unknown }>;
+      // Le privatePackage ts-mls porte Uint8Array + bigint → codec C4 obligatoire
+      // (un JSON.parse brut rendrait les octets en objets {"0":…} inutilisables).
+      return decodeValue(JSON.parse(plaintext)) as Array<{ wire: string; pub: unknown; priv: unknown }>;
     } finally {
       db.close();
     }
@@ -158,7 +160,13 @@ export async function loadKpCache(): Promise<Array<{ wire: string; pub: unknown;
 export async function saveKpCache(entries: Array<{ wire: string; pub: unknown; priv: unknown }>): Promise<void> {
   const me = identityHandle();
   if (!me) return; // identité absente — pas de persistence (reconnect obligatoire)
-  const sealed = await sealMessage(me.ecdhPriv, me.ecdhPub, JSON.stringify(entries));
+  // Codec C4 (state-codec) : le privatePackage contient des bigint (JSON
+  // brut THROWERAIT) et des Uint8Array (JSON brut les corromprait en {"0":…}).
+  // Défaut latent ACTIVÉ par le branchement setStoreIdentity (vague G) —
+  // jusqu'ici ce chemin était du dead code et la publication KP passait
+  // « par chance » sans persistence.
+  const plaintext = JSON.stringify(encodeValue(entries));
+  const sealed = await sealMessage(me.ecdhPriv, me.ecdhPub, plaintext);
   const db = await openSecureDb();
   try {
     const tx = db.transaction(STORE, "readwrite");

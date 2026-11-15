@@ -1,0 +1,20 @@
+[
+  {
+    "view": "feed-en",
+    "violations": [],
+    "score": 100,
+    "ok": true
+  },
+  {
+    "view": "messages-en",
+    "violations": [],
+    "score": 100,
+    "ok": true
+  },
+  {
+    "view": "profile-en",
+    "violations": [],
+    "score": 100,
+    "ok": true
+  }
+]

@@ -125,7 +125,7 @@ export function PostCard({
             <time
               dateTime={post.createdAt}
               className="text-[11px] text-muted-foreground"
-              title={fmt.fmtDateTime.format(new Date(post.createdAt))}
+              title={fmt.fmtDate.format(new Date(post.createdAt))}
             >
               {fmt.fmtRelative(post.createdAt)}
             </time>

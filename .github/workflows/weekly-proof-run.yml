@@ -5,8 +5,8 @@
 #  preuves navigateur (*.proof-run.sh) ne tournaient qu'en LOCAL manuel. Si un
 #  composant client casse plus tard (CSP, Permissions-Policy, WebSocket, fake
 #  devices, hydratation — 4 vagues consécutives de bugs invisibles aux
-#  harnais), la CI restait verte. Ce workflow exécute les 4 runners critiques
-#  (D1 recherche · C2 audio · C3 vidéo · C4 MLS) une fois par semaine.
+#  harnais), la CI restait verte. Ce workflow exécute les 5 runners critiques
+#  (D1 recherche · C2 audio · C3 vidéo · C4 MLS · G i18n) une fois par semaine.
 #
 #  SKIP PROPRE (documenté, jamais silencieux) : si les prérequis ne peuvent
 #  pas être installés (chromium, réseau), le job est SUCCESS mais avec :
@@ -22,6 +22,11 @@
 #  l'install — et l'install est épinglée (version lockfile + chemin des scripts).
 #  Docker est vérifié et rapporté pour traçabilité (les 4 runners n'en
 #  dépendent pas directement : TURN = harnais bun, DB = SQLite fichier).
+#
+#  Vague G : le runner g-i18n-proof-run.sh rejoint la file (i18n FR/EN +
+#  non-régression C1 reload post-MLS). NB artefacts : le glob est passé en
+#  récursif (assets/**) — les preuves par vague vivent dans des sous-dossiers
+#  (F/…, G/fr-…, G/en-…) que l’ancien glob plat ne remontait pas.
 #
 #  Supply chain : actions épinglées par SHA de commit (condition 6) — mêmes
 #  SHA que tests.yml/security.yml.
@@ -43,7 +48,7 @@ permissions:
 
 jobs:
   browser-proofs:
-    name: Runners de preuve navigateur (D1 · C2 · C3 · C4)
+    name: Runners de preuve navigateur (D1 · C2 · C3 · C4 · G)
     runs-on: ubuntu-latest
     timeout-minutes: 75
     steps:
@@ -65,9 +70,9 @@ jobs:
             echo "## Prérequis des preuves navigateur"
             echo ""
             if docker info >/dev/null 2>&1; then
-              echo "- docker : disponible (rapporté pour traçabilité — les 4 runners n'en dépendent pas directement)"
+              echo "- docker : disponible (rapporté pour traçabilité — les 5 runners n'en dépendent pas directement)"
             else
-              echo "- docker : INDISPONIBLE (les 4 runners n'en dépendent pas directement — non bloquant)"
+              echo "- docker : INDISPONIBLE (les 5 runners n'en dépendent pas directement — non bloquant)"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           echo "docker=$(docker info >/dev/null 2>&1 && echo disponible || echo indisponible)" >> "$GITHUB_OUTPUT"
@@ -120,6 +125,10 @@ jobs:
         name: "C4 — groupes privés MLS (preuve navigateur)"
         run: bash scripts/c4-mls-groups-proof-run.sh
 
+      - if: steps.prereqs.outputs.skip == ''
+        name: "G — i18n FR/EN + reload post-MLS (preuve navigateur)"
+        run: bash scripts/g-i18n-proof-run.sh
+
       - if: steps.prereqs.outputs.skip != ''
         name: "SKIP — preuves navigateur non exécutées (raison explicite)"
         run: |
@@ -141,9 +150,6 @@ jobs:
         with:
           name: proof-assets
           path: |
-            docs/proofs/assets/*.png
-            docs/proofs/assets/*.json
-            docs/proofs/assets/*.jsonl
-            docs/proofs/assets/*.txt
+            docs/proofs/assets/**
           retention-days: 30
           if-no-files-found: ignore

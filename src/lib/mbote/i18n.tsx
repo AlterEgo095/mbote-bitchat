@@ -261,8 +261,13 @@ export function I18nProvider({ children }: { children: ReactNode }) {
           if (!id || cancelled || userChosenRef.current || readLsLocale()) return;
           const res = await fetch(`/api/preferences?pubkey=${encodeURIComponent(id.pubkey)}`);
           if (!res.ok) return;
-          const json = (await res.json()) as { locale?: string | null };
-          if (!isLocale(json.locale)) return;
+          const json = (await res.json()) as { locale?: string | null; explicit?: boolean };
+          // ADOPTION ROAMING STRICTE : uniquement un choix EXPLICITE du compte
+          // (localeExplicit posé par POST /api/preferences). Le défaut 'fr'
+          // d'un compte jamais réglé ne doit JAMAIS écraser la détection
+          // navigateur (bug détecté par le harnais G : onboarding en-US
+          // basculé en fr par adoption du défaut).
+          if (!isLocale(json.locale) || json.explicit !== true) return;
           if (cancelled || userChosenRef.current || readLsLocale()) return; // re-vérifié après l'await
           setLocaleState(json.locale);
           try {

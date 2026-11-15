@@ -24,9 +24,15 @@ export async function GET(req: NextRequest) {
     }
     const user = await db.user.findUnique({
       where: { pubkey },
-      select: { locale: true },
+      select: { locale: true, localeExplicit: true },
     });
-    return NextResponse.json({ locale: user?.locale ?? null });
+    // `explicit` : la locale n'est ADOPTÉE par un autre appareil que si elle
+    // a été CHOISIE (le défaut 'fr' d'un compte jamais réglé ne doit pas
+    // écraser la détection navigateur — bug détecté par le harnais G).
+    return NextResponse.json({
+      locale: user?.locale ?? null,
+      explicit: user?.localeExplicit ?? false,
+    });
   } catch (e) {
     console.error("GET /api/preferences", e);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
@@ -97,10 +103,10 @@ export async function POST(req: NextRequest) {
 
     const user = await db.user.update({
       where: { pubkey },
-      data: { locale },
-      select: { locale: true },
+      data: { locale, localeExplicit: true },
+      select: { locale: true, localeExplicit: true },
     });
-    return NextResponse.json({ locale: user.locale });
+    return NextResponse.json({ locale: user.locale, explicit: user.localeExplicit });
   } catch (e) {
     console.error("POST /api/preferences", e);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
