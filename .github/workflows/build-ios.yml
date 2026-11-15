@@ -110,6 +110,32 @@ jobs:
             "$GITHUB_WORKSPACE/mbote-v${{ steps.version.outputs.version }}-ios-simulateur.zip"
           echo "✅ artefact simulateur : $(basename "$APP")"
 
+      - name: IPA non signée (device — méthode Payload, CODE_SIGNING_ALLOWED=NO)
+        run: |
+          cd mobile/ios
+          # Build DEVICE non signé : vérifie que la nouvelle version compile
+          # pour l'architecture réelle (arm64). L'IPA ainsi produite ne
+          # s'installe pas telle quelle (re-signature requise : Sideloadly /
+          # AltStore / compte Developer) — son rôle ici est la preuve de
+          # compilation + l'inspection libre (voir docs/proofs/DEPLOY-AND-MOBILE.md).
+          xcodebuild \
+            -workspace *.xcworkspace \
+            -scheme "${{ steps.scheme.outputs.scheme }}" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build-device \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -quiet build
+          APP=$(find build-device/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -n1)
+          if [ -z "$APP" ]; then
+            echo "::error::aucun .app device produit — vérifier le schéma : ${{ steps.scheme.outputs.scheme }}"
+            exit 1
+          fi
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry "$GITHUB_WORKSPACE/mbote-v${{ steps.version.outputs.version }}-ios-unsigned.ipa" Payload
+          rm -rf Payload
+          echo "✅ IPA non signée : mbote-v${{ steps.version.outputs.version }}-ios-unsigned.ipa"
+
       - name: Préparer la signature (si certificats Apple configurés)
         id: signing
         env:
@@ -195,6 +221,7 @@ jobs:
           name: mbote-ios-v${{ steps.version.outputs.version }}-r${{ github.run_number }}
           path: |
             mbote-v*-ios-simulateur.zip
+            mbote-v*-ios-unsigned.ipa
             mbote-v*-ios.ipa
           if-no-files-found: warn
           retention-days: 14
@@ -221,6 +248,7 @@ jobs:
         with:
           files: |
             mbote-v*-ios.ipa
+            mbote-v*-ios-unsigned.ipa
             mbote-v*-ios-simulateur.zip
           body_path: RELEASE_IOS.md
           generate_release_notes: true
