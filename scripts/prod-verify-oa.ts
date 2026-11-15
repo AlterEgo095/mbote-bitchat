@@ -142,13 +142,13 @@ async function main(): Promise<void> {
     ["POST /api/dms (gate)", post("/api/dms", {})],
     ["POST /api/groups/unknown/messages (gate)", post("/api/groups/0000000000000000/messages", {})],
     ["POST /api/call-knock (gate)", post("/api/call-knock", {})],
-    ["POST /api/turn-credentials (gate)", post("/api/turn-credentials", {})],
+    ["GET /api/turn-credentials (gate)", api("/api/turn-credentials")], // route GET-only (POST = 405) — sonde GET
     ["GET /api/preferences?pubkey=invalide (gate)", api("/api/preferences?pubkey=invalide")],
   ];
   for (const [name, p] of gates) {
     try {
       const { status } = await p;
-      if ([400, 401, 403, 429, 503].includes(status)) {
+      if ([400, 401, 403, 405, 429, 503].includes(status)) {
         record(name, "PASS", `status ${status} — endpoint vivant et gardé (refus propre sans preuve)`);
       } else if (status === 404) {
         record(name, "FAIL", "404 — route absente : la version déployée n'est PAS la nouvelle");
@@ -190,7 +190,7 @@ async function main(): Promise<void> {
       ecdhPub,
       ts: t,
       signature,
-      pow: { nonce },
+      pow: { nonce: String(nonce) }, // contrat serveur : nonce ENTIER DÉCIMAL SOUS FORME DE CHAÎNE (isPlausibleNonce /^[0-9]+$/ — number JS = 403)
     });
     if (status !== 200 && status !== 201) {
       record(`Identité ${nick}`, "FAIL", `POST /api/identity → ${status} : ${JSON.stringify(json)?.slice(0, 160)}`);
@@ -330,7 +330,7 @@ async function main(): Promise<void> {
 
   // ── 7. Groupe MLS (création + ciphertext opaque) ────────────────────────
   if (alice) {
-    const mlsGroupId = b64url(randomBytes(16)).replace(/[^0-9a-f]/gi, "").padEnd(32, "0").slice(0, 32);
+    const mlsGroupId = Array.from(randomBytes(16)).map((b) => b.toString(16).padStart(2, "0")).join(""); // hex LOWERCASE strict — contrat serveur /^[0-9a-f]{32,128}$/ (le filtre case-insensitive laissait des A-F majuscules = 400)
     const t = ts();
     const name = `Vérif O-A ${stamp}`;
     const signature = await signMessage(alice.priv, `${alice.pubkey}|group-create|${mlsGroupId}`);

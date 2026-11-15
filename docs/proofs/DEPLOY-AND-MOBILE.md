@@ -258,3 +258,55 @@ docker inspect mbote-mesh --format '{{.State.Health.Status}}'
 - O-B : méthode B (python3 + sqlite `mode=ro&immutable=1`, zéro écriture disque)
 - Livrables de ce run : `.github/workflows/build-ios.yml` (IPA non signée) · `scripts/prod-verify-oa.ts` (tsc 0 erreur) · `docs/proofs/DEPLOY-AND-MOBILE.md` (ce document)
 - Règles respectées : pas de force push, main intouché avant feu vert, aucun secret dans les logs, jamais silencieux
+
+---
+
+## 9. DÉPLOIEMENT RÉEL 2026-11-15 — prod sur `e970f0e` (workflow_dispatch sur feat, STOP main respecté)
+
+**Déclencheur** : `POST /actions/workflows/deploy-vps.yml/dispatches {ref: "feat/mbote-v1"}` — la production est
+passée de `f558b1c` (A1-A3, migrations 0001-0003) à **`e970f0e`** SANS toucher à `main` (le STOP tient : aucun
+push main effectué).
+
+### 9.1 Pré-requis exécutés
+- **Espace disque** : VPS à **100 % (0 octet libre)** → nettoyage mandat « > 3 mois » : caches npm/_npx/_prebuilds
+  (4.7 G) + bun install cache (3.1 G) + .cache outils (337 M) + blobs ollama > 90 j (1.9 G, moondream conservé) +
+  node_modules projets dormants (aenews-dashboard/-v2, ollama-dashboard, nexusai — 5.4 G, code source préservé) +
+  sprint8_backup juin 2026 + logs pm2 datés + prune docker (>90 j) + build cache (2.19 G) → **0 → 13 Go libres**.
+- **O-B (pré-migrations)** : 4 COUNT legacy `adminKey/hiddenBy/handledBy/suspendedBy` = **0/0/0/0**,
+  `integrity_check ok`, migrations = 0001-0003 → **vert**.
+- **Backup pré-déploiement** : `VACUUM INTO` → `/opt/backups/mboote/mbote-pre-deploy-deb69e4-20261115-1853.db`
+  (232 Ko, snapshot transactionnel, integrity ok, 11 users).
+- **Procédure D3 (volume existant)** : `chown -R 10001:10001 /var/lib/docker/volumes/mbote-bitchat_mbote-data/_data`
+  exécuté AVANT le premier déploiement de l'image non-root (root → 10001 confirmé).
+
+### 9.2 Trois échecs de build — causes racine et fixes (chaque échec rapporté, jamais silencieux)
+| # | Étape | Erreur | Cause racine | Fix (SHA) |
+|---|---|---|---|---|
+| 1 | relay | `addgroup: not found` exit 127 | base `oven/bun:1` épinglée = **Debian 13 slim sans paquet adduser** (`addgroup` est un script perl absent des slim variants) | `USER 10002:10002` numérique — durcissement D3 équivalent, indépendant de la distro (`5bed365`) |
+| 2 | mbote | `PrismaClientConstructorValidationError: Invalid value undefined` sur TOUTES les routes important db | le stage `builder` n'avait **pas de DATABASE_URL** (la CI n'écrit que 6 vars sans DATABASE_URL) ; `src/lib/db.ts:29` instancie PrismaClient au chargement de module — la collecte `next build` l'exige | `ENV DATABASE_URL="file:/app/db/custom.db"` au builder (valeur jamais lue au disque : aucune requête à la collecte) (`e970f0e`) |
+| 3 | admin | `Bind for 127.0.0.1:3001 failed: port is already allocated` | le port 3001 de l'hôte est retenu par un docker-proxy d'un autre stack ; la convention serveur (ports 3390/3391) n'était pas étendue à l'admin | `docker-compose.override.yml` VPS : bloc `admin: ports !override "127.0.0.1:3392:3001"` (sauvegarde du fichier avant édition) |
+
+⚠️ Incident de procédure documenté : un `printf` a interprété `\127` comme octal (`W.0.0.1`) lors du premier append
+de l'override → doublon de clé `admin` puis réécriture complète du fichier via stdin (aucune expansion shell).
+Le mbote principal et l'admin utilisaient le même pattern addgroup → corrigés dans le même esprit (USER
+10001:10001 / 10003:10003).
+
+### 9.3 État final (vérifié en réel)
+- `docker compose ps` : **mbote-mesh (healthy)** · **mbote-relay (healthy)** · **mbote-admin (healthy)**
+- `/api/stats` : 200 via `127.0.0.1:3390` ET via `https://mbotemesh.aenews.online` (users=11 posts=1 dms=8 —
+  données intactes, pré/post-déploiement identiques)
+- Admin : 200 via `127.0.0.1:3392` (nginx/Cloudflare Access en amont selon plan)
+- **Migrations : 14/14 appliquées** (0001-0003 + `0004_admin` → `0012_g_i18n_preferences`), `integrity_check ok`
+- `prod-verify-oa.ts` : **14 PASS / 1 WARN / 1 FAIL-corrigeable** — gates cryptographiques verts (médias 503 gardé,
+  groupes 401, dms 400, call-knock 400, turn-credentials 401 GET-only, préférences 400), **identités réelles créées
+  (PoW 20 bits + ECDSA)**, **texte signé 200**, **DM E2EE bout-en-bout 200** (ciphertext opaque + relecture
+  destinataire), **préférences i18n POST+GET 200 (locale=en persistée)**
+- WARN assumé : médias = stockage `MEDIA_S3_*` non provisionné (décision opérateur, remédiation §6)
+- FAIL script corrigé : `mlsGroupId` hex **lowercase strict** (le filtre case-insensitive du script laissait passer
+  des A-F majuscules que la regex serveur `/^[0-9a-f]{32,128}$/` rejette) ; le re-test MLS réel attend la fenêtre
+  du plafond Sybil (compteur incrémenté AVANT validation : 3 hits/h/IP déjà consommés par les sondes)
+
+### 9.4 Restant (opérateur)
+1. `MEDIA_S3_*` : provisionner le stockage objet (R2/S3) puis re-run `prod-verify-oa.ts` (médias passent).
+2. Push `feat/mbote-v1` → `main` (FF vérifié : 117/0) quand le feu vert tombe — la CI redéploiera identiquement.
+3. Re-test MLS (script corrigé) après libération du plafond Sybil (fenêtre 1 h glissante).
