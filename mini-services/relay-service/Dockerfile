@@ -14,11 +14,14 @@ RUN bun install --frozen-lockfile
 COPY hub.ts ./
 COPY index.ts ./
 # D3 — durcissement : utilisateur non-root (relay sans état : aucune écriture
-# disque — /tmp tmpfs suffit pour les éphémères)
-RUN addgroup --system --gid 10002 relay \
-    && adduser --system --uid 10002 --ingroup relay --no-create-home relay
+# disque — /tmp tmpfs suffit pour les éphémères).
+# USER NUMÉRIQUE 10002:10002 (déploiement 2026-11-15) : la base oven/bun:1
+# épinglée (Debian 13 slim) ne contient NI addgroup NI adduser (paquet adduser
+# absent des slim variants — échec de build exit 127 au premier déploiement de
+# cette image). Un UID/GID numérique fournit le même durcissement non-root,
+# indépendant de la distro — préférence documentée si la base change.
 ENV HOME=/tmp BUN_INSTALL=/tmp/.bun
-USER relay
+USER 10002:10002
 
 EXPOSE 3030 3031
 CMD ["bun", "index.ts"]

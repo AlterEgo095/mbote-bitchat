@@ -57,25 +57,25 @@ LABEL org.opencontainers.image.title="Mbote BitChat" \
       org.opencontainers.image.description="Messagerie offline-first (Next.js standalone + relay socket.io) — migrations Prisma appliquées au démarrage"
 
 # ── D3 (supply chain 2026-11-13) : durcissement runtime — USER NON-ROOT ────
-# Procédure documentée (le TODO ci-dessous a été exécuté à la vague D3) :
-#   1. Ici : utilisateur dédié mbote (uid/gid 10001), /app/db chowné (le
-#      volume Nommé Docker est initialisé AVEC les droits de l'image au
-#      premier montage) ;
-#   2. Sur le VPS (volume EXISTANT) : docker compose down &&
-#      chown -R 10001:10001 <chemin du volume mbote-data> && docker compose
-#      up -d — migration des droits RÉALISÉE AVANT le premier déploiement de
-#      cette image (docs/DOCKER-HARDENING.md §procédure VPS) ;
+# UID/GID NUMÉRIQUES 10001:10001 (déploiement 2026-11-15) : la base oven/bun:1
+# épinglée (Debian 13 slim) ne contient NI addgroup NI adduser (paquet adduser
+# absent des slim variants — échec de build exit 127 au premier déploiement de
+# cette image). Le durcissement non-root est conservé à l'identique via
+# UID/GID numériques, indépendants de la distro.
+# Procédure documentée :
+#   1. Ici : /app/db chowné 10001:10001 (le volume Nommé Docker est
+#      initialisé AVEC les droits de l'image au premier montage) ;
+#   2. Sur le VPS (volume EXISTANT) : chown -R 10001:10001 <chemin du volume
+#      mbote-data> AVANT le premier déploiement de cette image (exécuté
+#      2026-11-15 — docs/DOCKER-HARDENING.md §procédure VPS) ;
 #   3. Vérifier /api/stats en santé après déploiement.
-RUN mkdir -p /app/db \
-    && addgroup --system --gid 10001 mbote \
-    && adduser --system --uid 10001 --ingroup mbote --no-create-home mbote \
-    && chown -R mbote:mbote /app/db
+RUN mkdir -p /app/db && chown -R 10001:10001 /app/db
 # HOME/BUN_INSTALL dans /tmp (tmpfs read-only-compose) : bunx prisma ne doit
 # JAMAIS tenter d'écrire dans un HOME root — toute écriture éphémère part en
 # tmpfs, la base seule est persistée dans /app/db.
 ENV HOME=/tmp \
     BUN_INSTALL=/tmp/.bun
-USER mbote
+USER 10001:10001
 
 VOLUME ["/app/db"]
 

@@ -41,11 +41,13 @@ LABEL org.opencontainers.image.title="Mbote Admin" \
       org.opencontainers.image.description="Panneau d'administration Mbote Mesh — BFF sans état, zéro accès DB direct"
 
 # D3 — durcissement : utilisateur non-root (BFF sans état, zéro DB —
-# docs/specs/ADMIN-RBAC.md §1)
-RUN addgroup --system --gid 10003 admpannel \
-    && adduser --system --uid 10003 --ingroup admpannel --no-create-home admpannel
+# docs/specs/ADMIN-RBAC.md §1).
+# USER NUMÉRIQUE 10003:10003 (déploiement 2026-11-15) : la base oven/bun:1
+# épinglée (Debian 13 slim) ne contient NI addgroup NI adduser (paquet adduser
+# absent des slim variants — échec de build exit 127 au premier déploiement de
+# cette image). Durcissement non-root équivalent, indépendant de la distro.
 ENV HOME=/tmp BUN_INSTALL=/tmp/.bun
-USER admpannel
+USER 10003:10003
 
 EXPOSE 3001
 
