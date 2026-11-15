@@ -13,6 +13,13 @@
 #   - un step nommé « SKIP — ... » avec annotation ::notice::,
 #   - un résumé de job (GITHUB_STEP_SUMMARY) expliquant la raison et rappelant
 #     que la preuve navigateur reste OBLIGATOIRE en local avant livraison.
+#
+#  Leçon CI rouge ed25110 (2026-11-15) : le step d'install `bunx playwright-core
+#  install` était reparti exit 0 SANS produire chromium-1200 (résolution de
+#  version ≠ lockfile et/ou PLAYWRIGHT_BROWSERS_PATH de l'image runner) → D1
+#  plantait « Chromium introuvable ». Le gate décide désormais sur le
+#  FILESYSTEM (binaire attendu présent et exécutable), pas sur l'exit code de
+#  l'install — et l'install est épinglée (version lockfile + chemin des scripts).
 #  Docker est vérifié et rapporté pour traçabilité (les 4 runners n'en
 #  dépendent pas directement : TURN = harnais bun, DB = SQLite fichier).
 #
@@ -51,7 +58,7 @@ jobs:
       - name: Installer les dépendances (lockfile strict)
         run: bun install --frozen-lockfile
 
-      - name: "Garde-fous — prérequis navigateur (absence → SKIP documenté)"
+      - name: "Garde-fous — prérequis navigateur (install épinglée + binaire VÉRIFIÉ, sinon SKIP documenté)"
         id: prereqs
         run: |
           {
@@ -64,15 +71,37 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           echo "docker=$(docker info >/dev/null 2>&1 && echo disponible || echo indisponible)" >> "$GITHUB_OUTPUT"
-          # Chromium : version ALIGNÉE au lockfile (playwright-core 1.65.0 →
-          # build chromium-1200, même chemin que les scripts de preuve :
-          # ~/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome).
-          if bunx playwright-core install --with-deps chromium; then
+          # Chromium : TROIS couches (leçon CI rouge ed25110) :
+          #   1. version ÉPINGLÉE = playwright-core@1.65.0 du bun.lock (→ build
+          #      chromium-1200 ; bunx sans version pouvait en résoudre une autre) ;
+          #   2. PLAYWRIGHT_BROWSERS_PATH ÉPINGLÉ au chemin CODÉ des scripts de
+          #      preuve (~/.cache/ms-playwright — l'image runner peut en exposer
+          #      un autre via l'environnement) ;
+          #   3. le binaire attendu est VÉRIFIÉ au filesystem ([ -x ]) AVANT
+          #      d'autoriser les runners — l'exit code de l'install ne suffit pas
+          #      (il a été exit 0 sans binaire le jour du rouge).
+          #  Binaire absent après installation → SKIP documenté (jamais rouge
+          #  pour un binaire manquant, jamais silencieux) : annotation ::notice::
+          #  + diagnostic du cache dans le résumé.
+          export PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright"
+          CHROME_BIN="$HOME/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome"
+          bunx playwright-core@1.65.0 install --with-deps chromium \
+            || bunx playwright-core@1.65.0 install chromium
+          if [ -x "$CHROME_BIN" ]; then
             echo "skip=" >> "$GITHUB_OUTPUT"
-            echo "- chromium : installé (aligné playwright-core du lockfile)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- chromium : installé et VÉRIFIÉ au chemin attendu — \`$CHROME_BIN\` (playwright-core@1.65.0 = bun.lock → chromium-1200)" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "skip=chromium" >> "$GITHUB_OUTPUT"
-            echo "- chromium : ÉCHEC d'installation → preuves navigateur SKIPPÉES (raison documentée ci-dessous)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- chromium : ABSENT après installation épinglée (\`$CHROME_BIN\`) → preuves navigateur SKIPPÉES (raison documentée ci-dessous)" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Diagnostic — contenu du cache navigateurs :" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+            if [ -d "$HOME/.cache/ms-playwright" ]; then
+              ls -la "$HOME/.cache/ms-playwright" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "(cache $HOME/.cache/ms-playwright absent)" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - if: steps.prereqs.outputs.skip == ''
