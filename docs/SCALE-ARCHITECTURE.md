@@ -223,6 +223,26 @@ optionnellement, `bash scripts/check-merge-clean.sh <branche>` fait un
 état modifié). Le résultat est consigné dans le rapport de preuve de chaque
 vague (C3, C4, D2, D3…).
 
+### §8.3 — Portage de clés multi-appareils « Signal-style » (reporté vague G, 2026-11-15)
+
+Directive vague G (Clarification 3) : le portage Signal-style (QR code entre
+appareils, transfert de clé) était TIMEBOXÉ à 2 jours-personne — au-delà,
+STOP et dette documentée ici. **Timebox déclenchée : STOP appliqué** —
+l'estimation honnête dépasse largement 2 jp (5–8 jp,voir décomposition
+ci-dessous), et bâcler un transfert de CLÉS PRIVÉES est le pire endroit où
+économiser.
+
+| Élément reporté | État actuel (vague G) | Jalon cible (borne dure) | Pourquoi cette borne |
+|---|---|---|---|
+| **Portage de clés « Signal-style » entre appareils** (QR code de pairing → transfert chiffré du matériel de clé + état MLS) — ajouté 2026-11-15 (Clarification 3 vague G, timebox 2 jp dépassée) | **V1 = sessions INDÉPENDANTES par appareil** : identité = paire de clés NON-extractibles (F-06) née et morte sur l'appareil ; deux appareils = deux identités publiées séparément (aucun partage de clé, rien à fuiter). Le roaming de ce qui est roammable EST livré en G : préférence de locale par compte (`/api/preferences` signée, adoption `localeExplicit` — G-i18n.md §3). Décomposition de l'estimation : (a) les CryptoKey actuelles sont non-extractibles → le transfert exige soit des clés extractibles ré-encryptées (régression F-06 à re-prouver) soit une régénération dérivée d'un secret de portage — refactor de `crypto.ts`/`secure-keys.ts` ; (b) l'état MLS scellé ECDH-soi doit être ré-scellé pour l'appareil cible (re-wrap de TOUT l'historique de groupes) ; (c) canal QR : pairing hors-bande + anti-QR-swap (confirmation croisée style safety number) ; (d) modèle serveur : 2 pools de key packages pour UNE pubkey (rotation, consommation single-use entre appareils) ; (e) preuves adversariales complètes (QR échangé, appareil volé en cours de pairing, pairing interrompu) | **G-bis ou vague dédiée AVANT toute promesse « multi-appareils » dans la communication publique** — jamais en covert-change | le transfert de clés est la surface d'attaque n°1 des messagers (pairing trompé = clôture de compte volée) ; un MVP bâclé ferait croire à la sécurité Signal sans ses garanties ; les sessions indépendantes V1 sont SÛRES et honnêtes — le jalon porte le doublement d'appareil, pas un raccourci |
+
+Ce que la V1 GARANTIT déjà (exigé par la directive G, vérifié harnais) :
+deux appareils connectés au même serveur ont des sessions entièrement
+indépendantes (contexts isolés, coffres IDB séparés par origine/appareil,
+aucun état partagé côté serveur hormis les données publiques signées) —
+preuve : le harnais G fait vivre 4 identités en parallèle sans
+interférence (`docs/proofs/G-i18n.md` §2, C1 + FR + EN).
+
 ### §8.2 — Note benchmarks mono-client (Cl. 3 vague D2+D3, 2026-11-13)
 
 > **Benchmarks C3/C4 mesurés en mono-client local (établissement 94 ms / 767 ms,
