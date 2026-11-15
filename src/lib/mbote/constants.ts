@@ -21,3 +21,5 @@ export const MAX_POST_LENGTH = 500;
 export const LS_IDENTITY = "mbote_identity_v1";
 export const LS_OUTBOX = "mbote_outbox_v1";
 export const LS_FORCE_OFFLINE = "mbote_force_offline";
+/** G — locale de l'interface (i18n maison) ; effacée par le panic wipe. */
+export const LS_LOCALE = "mbote_locale";

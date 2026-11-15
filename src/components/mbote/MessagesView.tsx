@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
+import { useI18n } from "@/lib/mbote/i18n";
 import {
   AlertTriangle,
   Bot,
@@ -170,10 +169,14 @@ function parseDmBody(body: string): MediaDmPayload | null {
   return null;
 }
 
-function humanBytes(n: number): string {
-  if (n < 1024) return `${n} o`;
-  if (n < 1048576) return `${(n / 1024).toFixed(0)} Ko`;
-  return `${(n / 1048576).toFixed(1)} Mo`;
+/** i18n : unités (o/Ko/Mo) via catalogue — valeurs numériques inchangées (toFixed). */
+function humanBytes(
+  n: number,
+  t: (key: string, vars?: Record<string, string | number>) => string
+): string {
+  if (n < 1024) return `${n} ${t("messages.unit.bytes")}`;
+  if (n < 1048576) return `${(n / 1024).toFixed(0)} ${t("messages.unit.kilobytes")}`;
+  return `${(n / 1048576).toFixed(1)} ${t("messages.unit.megabytes")}`;
 }
 
 interface MessagesViewProps {
@@ -198,6 +201,7 @@ interface MediaBubbleProps {
 }
 
 function MediaBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
+  const { t } = useI18n();
   const [url, setUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
   const [errCode, setErrCode] = useState<string | null>(null);
@@ -239,10 +243,10 @@ function MediaBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
         <ImageOff className="size-4 shrink-0 opacity-70" aria-hidden="true" />
         <span>
           {errCode === "magic-bytes-mismatch"
-            ? "Média refusé — le contenu ne correspond pas au type annoncé (protection MIME spoofing)."
+            ? t("messages.media.mimeMismatch")
             : errCode === "decrypt-failed"
-              ? "Média indéchiffrable (CEK absent ou objet altéré)."
-              : "Média indisponible."}
+              ? t("messages.media.decryptFailed")
+              : t("messages.media.unavailable")}
         </span>
       </div>
     );
@@ -254,13 +258,16 @@ function MediaBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
         type="button"
         onClick={() => status === "ok" && setFullOpen(true)}
         className="block overflow-hidden rounded-lg"
-        aria-label={`Image reçue — ${humanBytes(payload.bytes)} (${payload.mediaType})`}
+        aria-label={t("messages.media.receivedImageAria", {
+          size: humanBytes(payload.bytes, t),
+          type: payload.mediaType,
+        })}
       >
         {status === "ok" && url ? (
           // eslint-disable-next-line @next/next/no-img-element -- blob local déchiffré client, pas d'optimisation possible
           <img
             src={url}
-            alt={`Image partagée (${humanBytes(payload.bytes)})`}
+            alt={t("messages.media.sharedImageAlt", { size: humanBytes(payload.bytes, t) })}
             className="max-h-44 w-auto max-w-[280px] rounded-lg object-cover"
             loading="lazy"
           />
@@ -269,7 +276,7 @@ function MediaBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
             className={`flex h-32 w-44 items-center justify-center gap-2 rounded-lg text-xs ${mine ? "bg-primary-foreground/15" : "bg-background/60"}`}
           >
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            décryptage…
+            {t("messages.media.decrypting")}
           </span>
         )}
       </button>
@@ -278,15 +285,18 @@ function MediaBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm">
               <ImageIcon className="size-4 text-primary" aria-hidden="true" />
-              Image chiffrée · {humanBytes(payload.bytes)} · {payload.mediaType}
+              {t("messages.media.encryptedImageTitle", {
+                size: humanBytes(payload.bytes, t),
+                type: payload.mediaType,
+              })}
             </DialogTitle>
             <DialogDescription>
-              Déchiffrée localement (AES-256-GCM) — magic bytes vérifiés avant rendu.
+              {t("messages.media.decryptNotice")}
             </DialogDescription>
           </DialogHeader>
           {url && (
             // eslint-disable-next-line @next/next/no-img-element -- blob local déchiffré client
-            <img src={url} alt="Image partagée en plein écran" className="max-h-[70vh] w-auto rounded-lg object-contain" />
+            <img src={url} alt={t("messages.media.fullscreenImageAlt")} className="max-h-[70vh] w-auto rounded-lg object-contain" />
           )}
           {payload.text && <p className="text-sm text-muted-foreground">{payload.text}</p>}
         </DialogContent>
@@ -298,8 +308,9 @@ function MediaBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
 // ── B3 — bulle voix : download → decrypt → sniff opus → VoiceNote ────────────
 
 function VoiceBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
+  const { t } = useI18n();
   const [blob, setBlob] = useState<Blob | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [errKey, setErrKey] = useState<"mimeMismatch" | "unavailable" | null>(null);
   const [measuredPeaks, setMeasuredPeaks] = useState<number[] | null>(null);
 
   useEffect(() => {
@@ -321,10 +332,10 @@ function VoiceBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
         }
       } catch (e) {
         if (!cancelled) {
-          setErr(
+          setErrKey(
             e instanceof MediaClientError && e.code === "magic-bytes-mismatch"
-              ? "Note refusée — le contenu n'est pas de l'opus annoncé."
-              : "Note vocale indisponible (CEK absent ou objet altéré)."
+              ? "mimeMismatch"
+              : "unavailable"
           );
         }
       }
@@ -333,6 +344,15 @@ function VoiceBubble({ payload, mine, me, signPriv }: MediaBubbleProps) {
       cancelled = true;
     };
   }, [payload.mediaId, payload.cek, payload.mediaType, payload.peaks, me, signPriv]);
+
+  // i18n : la clé d'erreur est stockée dans le state, le texte résolu au rendu
+  const err = errKey
+    ? t(
+        errKey === "mimeMismatch"
+          ? "messages.voice.mimeTypeMismatch"
+          : "messages.voice.unavailable"
+      )
+    : null;
 
   return (
     <VoiceNote
@@ -354,6 +374,7 @@ export function MessagesView({
   focusMessage,
   onFocusConsumed,
 }: MessagesViewProps) {
+  const { t, tp, fmt } = useI18n();
   const qc = useQueryClient();
   const myPub = identity.pubkey;
   const canUseNetwork = isOnline && !forceOffline;
@@ -435,7 +456,7 @@ export function MessagesView({
       bitrateKey: "default",
       onTick: (ms) => setVoiceElapsedMs(ms),
       onAutoStop: () =>
-        toast.info(`Durée maximale atteinte (${VOICE_MAX_DURATION_S} s) — relâchez pour prévisualiser`),
+        toast.info(t("messages.toast.voiceMaxDuration", { max: VOICE_MAX_DURATION_S })),
     });
     voiceRecorderRef.current = rec;
     setVoiceElapsedMs(0);
@@ -444,7 +465,7 @@ export function MessagesView({
       setVoiceRecording(true);
     } catch (e) {
       voiceRecorderRef.current = null;
-      toast.error("Micro indisponible", {
+      toast.error(t("messages.toast.micUnavailable"), {
         description: describeApiError(e),
       });
     }
@@ -462,12 +483,12 @@ export function MessagesView({
       }
       const result = await rec.stop();
       if (result.durationMs < 400) {
-        toast.info("Trop court — maintenez le bouton (ou tapez pour démarrer/arrêter).");
+        toast.info(t("messages.toast.tooShort"));
         return;
       }
       setPendingVoice(result);
     } catch (e) {
-      toast.error("Enregistrement perdu", {
+      toast.error(t("messages.toast.recordingLost"), {
         description: describeApiError(e),
       });
     }
@@ -693,8 +714,8 @@ export function MessagesView({
       }
       setTrust({ ...trust, level: "green", firstContact: false, keyChanged: false });
       setTrustDialogOpen(false);
-      toast.success("Numéro de sécurité vérifié", {
-        description: "La clé de chiffrement de ce contact est épinglée sur cet appareil.",
+      toast.success(t("messages.toast.trustVerified"), {
+        description: t("messages.toast.trustVerifiedDesc"),
       });
     } finally {
       setVerifying(false);
@@ -707,7 +728,7 @@ export function MessagesView({
     const text = draft.trim();
     if (!text || !peer) return;
     if (!peer.ecdhPub) {
-      toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
+      toast.error(t("messages.toast.noEncryptionKey"));
       return;
     }
     setSending(true);
@@ -716,8 +737,8 @@ export function MessagesView({
       if (peer.isBot) {
         // F-15 : le bot répond en ligne par design — pas de courrier pour lui
         if (!canUseNetwork) {
-          toast.info("Mbote (bot) est joignable seulement une fois reconnecté au réseau", {
-            description: "Ses réponses partent du serveur : le mode mesh ne peut pas les porter.",
+          toast.info(t("messages.toast.botNeedsNetwork"), {
+            description: t("messages.toast.botNeedsNetworkDesc"),
           });
           return;
         }
@@ -758,8 +779,8 @@ export function MessagesView({
           } else {
             // défensif : propriétaire outbox absent — on ne perd JAMAIS le courrier
             enqueueOutbox({ type: "dm", payload: queuedPayload });
-            toast.error("File locale indisponible — courrier conservé sur l'appareil", {
-              description: "Il partira dès que la synchronisation redeviendra possible.",
+            toast.error(t("messages.toast.queueUnavailable"), {
+              description: t("messages.toast.queueUnavailableDesc"),
             });
           }
           setQueued((q) => [
@@ -775,7 +796,7 @@ export function MessagesView({
         }
       }
     } catch (e) {
-      toast.error("Échec d'envoi", {
+      toast.error(t("messages.toast.sendFailed"), {
         description: describeApiError(e),
       });
     } finally {
@@ -787,7 +808,7 @@ export function MessagesView({
   const sendMediaDm = async (media: UploadedMedia, peerPub: string, text: string) => {
     const target = peerPub === selectedPub ? peer : users.data?.users.find((u) => u.pubkey === peerPub);
     if (!target?.ecdhPub) {
-      toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
+      toast.error(t("messages.toast.noEncryptionKey"));
       return;
     }
     const payloadMedia: MediaDmPayload = {
@@ -825,7 +846,7 @@ export function MessagesView({
   const sendVoiceDm = async (voice: UploadedVoice, peerPub: string) => {
     const target = peerPub === selectedPub ? peer : users.data?.users.find((u) => u.pubkey === peerPub);
     if (!target?.ecdhPub) {
-      toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
+      toast.error(t("messages.toast.noEncryptionKey"));
       return;
     }
     const payloadVoice: MediaDmPayload = {
@@ -884,12 +905,15 @@ export function MessagesView({
         onProgress: (stage, info) => setUploadState({ stage, fraction: info?.fraction, message: info?.message }),
       });
       await sendVoiceDm(uploaded, peerPub);
-      toast.success("Note vocale envoyée", {
-        description: `Opus ${(uploaded.durationMs / 1000).toFixed(1)} s · ${humanBytes(uploaded.plainBytes)} · chiffrée (AES-256-GCM)`,
+      toast.success(t("messages.toast.voiceSent"), {
+        description: t("messages.toast.voiceSentDesc", {
+          duration: (uploaded.durationMs / 1000).toFixed(1),
+          size: humanBytes(uploaded.plainBytes, t),
+        }),
       });
     } catch (e) {
       setPendingVoice(voice); // échec → preview restaurée (invariant §1.8)
-      toast.error("Échec d'envoi vocal", {
+      toast.error(t("messages.toast.voiceSendFailed"), {
         description: describeApiError(e),
       });
     } finally {
@@ -920,7 +944,7 @@ export function MessagesView({
     const rec = new VideoRecorder({
       onTick: (ms) => setVideoElapsedMs(ms),
       onAutoStop: () =>
-        toast.info(`Durée maximale atteinte (${VIDEO_MAX_DURATION_S} s) — prévisualisation`),
+        toast.info(t("messages.toast.videoMaxDuration", { max: VIDEO_MAX_DURATION_S })),
     });
     videoRecorderRef.current = rec;
     setVideoElapsedMs(0);
@@ -929,7 +953,7 @@ export function MessagesView({
       setVideoRecording(true);
     } catch (e) {
       videoRecorderRef.current = null;
-      toast.error("Caméra indisponible", {
+      toast.error(t("messages.toast.cameraUnavailable"), {
         description: describeApiError(e),
       });
     }
@@ -949,7 +973,7 @@ export function MessagesView({
       setPendingVideo(result);
       setVideoPreviewUrl(URL.createObjectURL(new Blob([result.bytes as unknown as BlobPart], { type: result.container })));
     } catch (e) {
-      toast.error("Enregistrement perdu", {
+      toast.error(t("messages.toast.recordingLost"), {
         description: describeApiError(e),
       });
     }
@@ -964,7 +988,7 @@ export function MessagesView({
     const peerPub = peer.pubkey;
     const target = peer;
     if (!target.ecdhPub) {
-      toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
+      toast.error(t("messages.toast.noEncryptionKey"));
       return;
     }
     setPendingVideo(null);
@@ -1022,14 +1046,18 @@ export function MessagesView({
       });
       await qc.invalidateQueries({ queryKey: ["dms", myPub, peerPub] });
       await qc.invalidateQueries({ queryKey: ["conversations", myPub] });
-      toast.success("Vidéo envoyée", {
-        description: `${uploaded.mediaType === "video/mp4" ? "MP4" : "WebM"} ${(uploaded.durationMs / 1000).toFixed(1)} s · ${humanBytes(uploaded.plainBytes)} · chiffrée (AES-256-GCM)`,
+      toast.success(t("messages.toast.videoSent"), {
+        description: t("messages.toast.videoSentDesc", {
+          container: uploaded.mediaType === "video/mp4" ? "MP4" : "WebM",
+          duration: (uploaded.durationMs / 1000).toFixed(1),
+          size: humanBytes(uploaded.plainBytes, t),
+        }),
       });
       if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
       setVideoPreviewUrl(null);
     } catch (e) {
       setPendingVideo(video); // échec → preview restaurée (invariant §1.8)
-      toast.error("Échec d'envoi vidéo", {
+      toast.error(t("messages.toast.videoSendFailed"), {
         description: describeApiError(e),
       });
     } finally {
@@ -1047,9 +1075,9 @@ export function MessagesView({
         queuePeerRef.current.delete(item.ref);
         if (peerPub && peerPub !== "") {
           void sendMediaDm(media, peerPub, "").then(() =>
-            toast.success("Image envoyée après reprise réseau")
+            toast.success(t("messages.toast.imageSentAfterReconnect"))
           ).catch((e) =>
-            toast.error("Image uploadée mais envoi échoué", {
+            toast.error(t("messages.toast.imageUploadedSendFailed"), {
               description: describeApiError(e),
             })
           );
@@ -1062,20 +1090,26 @@ export function MessagesView({
   // B2 : picker → preview (nom + taille) — validation d'entrée AVANT tout
   const pickFile = async (file: File) => {
     if (peer?.isBot) {
-      toast.info("Le bot ne reçoit pas d'images — choisissez un contact humain.");
+      toast.info(t("messages.toast.botNoImages"));
       return;
     }
     if (!peer?.ecdhPub) {
-      toast.error("Ce contact n'a pas de clé de chiffrement enregistrée");
+      toast.error(t("messages.toast.noEncryptionKey"));
       return;
     }
     const allowed = ["image/jpeg", "image/png", "image/webp"];
     if (!allowed.includes(file.type)) {
-      toast.error(`Type ${file.type || "inconnu"} refusé — images jpeg, png ou webp uniquement`);
+      toast.error(
+        t("messages.toast.fileTypeRejected", {
+          type: file.type || t("messages.file.unknownType"),
+        })
+      );
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast.error(`Fichier de ${(file.size / 1048576).toFixed(1)} Mo — la limite est 5 Mo`);
+      toast.error(
+        t("messages.toast.fileTooLarge", { size: (file.size / 1048576).toFixed(1) })
+      );
       return;
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -1103,16 +1137,18 @@ export function MessagesView({
         onProgress: (stage, info) => setUploadState({ stage, fraction: info?.fraction, message: info?.message }),
       });
       await sendMediaDm(media, peerPub, "");
-      toast.success("Image envoyée", {
-        description: `Chiffrée (AES-256-GCM) · ${humanBytes(media.plainBytes)} · EXIF nettoyé`,
+      toast.success(t("messages.toast.imageSent"), {
+        description: t("messages.toast.imageSentDesc", {
+          size: humanBytes(media.plainBytes, t),
+        }),
       });
     } catch (e) {
       if (e instanceof MediaClientError && (e.code === "put-failed" || e.code === "presign-failed")) {
         // réseau tombé en cours d'upload → FILE (reprise au retour du réseau)
         const item = enqueueOfflineUpload(file.name, file.bytes, file.mediaType);
         queuePeerRef.current.set(item.ref, peerPub);
-        toast.info("Upload interrompu — conservé sur l'appareil", {
-          description: "L'image partira automatiquement au retour du réseau.",
+        toast.info(t("messages.toast.uploadInterrupted"), {
+          description: t("messages.toast.uploadInterruptedDesc"),
         });
       } else {
         // Clarification 4 É9+C1 (invariant §1.8, symétrie voix/vidéo) : échec
@@ -1120,7 +1156,7 @@ export function MessagesView({
         // fix, l'image était jetée en cas d'échec non-réseau — même classe que
         // le bug setPendingVoice(null) précoce B3.)
         setPendingFile(file);
-        toast.error("Échec d'upload", {
+        toast.error(t("messages.toast.uploadFailed"), {
           description: describeApiError(e),
         });
       }
@@ -1140,10 +1176,10 @@ export function MessagesView({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyRound className="size-4 text-primary" aria-hidden="true" />
-            Choisir un contact
+            {t("messages.newConv.title")}
           </DialogTitle>
           <DialogDescription>
-            Seules les identités publiées sur le réseau apparaissent — toujours.
+            {t("messages.newConv.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-80 space-y-1 overflow-y-auto scrollbar-thin">
@@ -1182,18 +1218,19 @@ export function MessagesView({
     return (
       <div className="space-y-4">
         {/* a11y : l'état vide remplace TOUTE la vue → il porte le h1 aussi */}
-        <h1 className="text-lg font-bold tracking-tight">Messages privés</h1>
+        <h1 className="text-lg font-bold tracking-tight">{t("messages.title")}</h1>
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
             <MessageSquarePlus className="size-8 text-muted-foreground" aria-hidden="true" />
-            <p className="text-sm font-semibold">Aucune conversation</p>
+            <p className="text-sm font-semibold">{t("messages.empty.title")}</p>
             <p className="max-w-sm text-xs text-muted-foreground">
-              Démarre un dialogue chiffré de bout en bout — essaie d&apos;abord le{" "}
-              <strong>Mbote Bot</strong>, il répond toujours (en ciphertext authentique).
+              {t("messages.empty.introBefore")}{" "}
+              <strong>Mbote Bot</strong>
+              {t("messages.empty.introAfter")}
             </p>
             <Button size="sm" onClick={() => setNewConvOpen(true)}>
               <MessageSquarePlus className="size-4" aria-hidden="true" />
-              Nouvelle conversation
+              {t("messages.empty.newConversation")}
             </Button>
           </CardContent>
         </Card>
@@ -1206,15 +1243,15 @@ export function MessagesView({
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-lg font-bold tracking-tight">Messages privés</h1>
+          <h1 className="text-lg font-bold tracking-tight">{t("messages.title")}</h1>
           <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
             <Lock className="size-3 text-primary" aria-hidden="true" />
-            E2E : ECDH P-256 + AES-GCM sur ton appareil — le serveur ne voit que du ciphertext.
+            {t("messages.header.e2eNotice")}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setNewConvOpen(true)} className="h-9">
           <MessageSquarePlus className="size-4" aria-hidden="true" />
-          Nouvelle
+          {t("messages.header.new")}
         </Button>
       </div>
 
@@ -1222,7 +1259,7 @@ export function MessagesView({
         {/* Liste des conversations */}
         <div className="rounded-xl border bg-card md:max-h-[560px]">
           <p className="border-b px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Conversations
+            {t("messages.list.heading")}
           </p>
           <ScrollArea className="h-52 md:h-[520px]">
             <div className="scrollbar-thin space-y-0.5 p-1.5">
@@ -1232,7 +1269,7 @@ export function MessagesView({
                 ))
               ) : (conversations.data?.conversations.length ?? 0) === 0 ? (
                 <p className="p-3 text-xs text-muted-foreground">
-                  Rien encore. Le bot est le premier contact idéal.
+                  {t("messages.list.empty")}
                 </p>
               ) : (
                 (conversations.data?.conversations ?? []).map(({ peer: u, unread }) => (
@@ -1251,13 +1288,13 @@ export function MessagesView({
                         {u.isBot && <span className="ml-1 text-[10px] text-primary">bot</span>}
                       </p>
                       <p className="truncate text-[11px] text-muted-foreground">
-                        {u.ecdhPub ? "🔒 enveloppe chiffrée" : "clés indisponibles"}
+                        {u.ecdhPub ? t("messages.list.encrypted") : t("messages.list.noKeys")}
                       </p>
                     </div>
                     {unread > 0 && (
                       <span
                         className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground"
-                        aria-label={`${unread} non lus`}
+                        aria-label={tp("messages.list.unread", unread)}
                       >
                         {unread}
                       </span>
@@ -1291,13 +1328,13 @@ export function MessagesView({
                     <CallButton peer={peer.pubkey} peerLabel={peer.nickname} mode="video" />
                     <Badge variant="outline" className="gap-1 border-primary/40 text-[10px] text-primary">
                       <ShieldCheck className="size-3" aria-hidden="true" />
-                      E2E actif
+                      {t("messages.chat.e2eBadge")}
                     </Badge>
                   </div>
                 ) : (
                   <Badge variant="outline" className="shrink-0 gap-1 border-amber-500/40 text-[10px] text-amber-500">
                     <AlertTriangle className="size-3" aria-hidden="true" />
-                    clés absentes
+                    {t("messages.chat.noKeysBadge")}
                   </Badge>
                 )}
               </div>
@@ -1305,8 +1342,7 @@ export function MessagesView({
               {peer.isBot && (
                 <div className="flex items-start gap-2 border-b bg-primary/5 px-3 py-2 text-[11px] text-muted-foreground">
                   <Bot className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden="true" />
-                  Bot de démonstration : ses réponses sont réellement chiffrées vers ta clé
-                  publique — écris « aide » pour explorer.
+                  {t("messages.chat.botNotice")}
                 </div>
               )}
 
@@ -1319,12 +1355,10 @@ export function MessagesView({
                   <ShieldAlert className="mt-0.5 size-4 shrink-0 text-red-400" aria-hidden="true" />
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-red-300">
-                      Clé de chiffrement changée — envoi bloqué
+                      {t("messages.trust.keyChangedTitle")}
                     </p>
                     <p className="mt-0.5 text-red-200/90">
-                      La clé de {peer.nickname} diffère de celle épinglée sur cet appareil.
-                      Re-vérifiez le numéro de sécurité en présentiel avant de continuer —
-                      c&apos;est peut-être un nouvel appareil, ou une tentative d&apos;interception.
+                      {t("messages.trust.keyChangedBody", { nickname: peer.nickname })}
                     </p>
                     <Button
                       size="sm"
@@ -1333,7 +1367,7 @@ export function MessagesView({
                       onClick={() => setTrustDialogOpen(true)}
                     >
                       <KeyRound className="size-3.5" aria-hidden="true" />
-                      Re-vérifier le numéro de sécurité
+                      {t("messages.trust.reverify")}
                     </Button>
                   </div>
                 </div>
@@ -1349,10 +1383,12 @@ export function MessagesView({
                   <ShieldQuestion className="mt-0.5 size-3.5 shrink-0 text-amber-400" aria-hidden="true" />
                   <span className="min-w-0 flex-1">
                     {trust.firstContact
-                      ? "Premier contact — numéro de sécurité non vérifié. Comparez-le en présentiel pour sceller cette conversation."
-                      : "Numéro de sécurité non vérifié — comparez-le en présentiel pour sceller cette conversation."}
+                      ? t("messages.trust.firstContact")
+                      : t("messages.trust.unverified")}
                   </span>
-                  <span className="shrink-0 font-semibold text-amber-300">Vérifier</span>
+                  <span className="shrink-0 font-semibold text-amber-300">
+                    {t("messages.trust.verifyAction")}
+                  </span>
                 </button>
               )}
 
@@ -1364,15 +1400,14 @@ export function MessagesView({
                     ))
                   ) : (messages.data?.messages.length ?? 0) === 0 && queuedForPeer.length === 0 ? (
                     <p className="py-8 text-center text-xs text-muted-foreground">
-                      Aucun message. Écris le premier — il sera chiffré avant de quitter cet
-                      onglet.
+                      {t("messages.thread.empty")}
                     </p>
                   ) : (
                     (messages.data?.messages ?? []).map((m) => {
                       const mine = m.senderKey === myPub;
                       const body = peer.ecdhPub
-                        ? (plain[m.id] ?? "…déchiffrement")
-                        : "🔒 ciphertext (clés de démo indisponibles)";
+                        ? (plain[m.id] ?? t("messages.thread.decrypting"))
+                        : t("messages.thread.demoNoKeys");
                       const media = parseDmBody(body);
                       return (
                         <div
@@ -1425,10 +1460,7 @@ export function MessagesView({
                                 )
                               )}
                               <Lock className="size-2.5" aria-hidden="true" />
-                              {formatDistanceToNow(new Date(m.createdAt), {
-                                addSuffix: true,
-                                locale: fr,
-                              })}
+                              {fmt.fmtRelative(m.createdAt)}
                             </p>
                           </div>
                         </div>
@@ -1449,10 +1481,10 @@ export function MessagesView({
                             className="gap-1 border-amber-300/60 px-1.5 py-0 text-[11px] text-amber-300"
                           >
                             <Clock className="size-3" aria-hidden="true" />
-                            En attente
+                            {t("messages.queue.pending")}
                           </Badge>
                           <span className="text-[11px] text-zinc-400">
-                            Sera envoyé dès le retour du réseau
+                            {t("messages.queue.willSend")}
                           </span>
                         </div>
                       </div>
@@ -1473,16 +1505,18 @@ export function MessagesView({
                     <Loader2 className="size-3.5 animate-spin text-primary" aria-hidden="true" />
                     <span className="flex-1">
                       {uploadState.stage === "strip"
-                        ? "Nettoyage EXIF (GPS, dates, appareil)…"
+                        ? t("messages.upload.strip")
                         : uploadState.stage === "encrypt"
-                          ? "Chiffrement de bout en bout…"
+                          ? t("messages.upload.encrypt")
                           : uploadState.stage === "presign"
-                            ? "Demande d'URL d'upload…"
+                            ? t("messages.upload.presign")
                             : uploadState.stage === "put"
-                              ? `Envoi chiffré au bucket… ${Math.round((uploadState.fraction ?? 0) * 100)} %`
+                              ? t("messages.upload.put", {
+                                  percent: Math.round((uploadState.fraction ?? 0) * 100),
+                                })
                               : uploadState.stage === "finalize"
-                                ? "Finalisation (vérification serveur)…"
-                                : "Terminé"}
+                                ? t("messages.upload.finalize")
+                                : t("messages.upload.done")}
                     </span>
                   </div>
                 )}
@@ -1498,7 +1532,7 @@ export function MessagesView({
                       e.target.value = ""; // permet re-sélection du même fichier
                       if (f) void pickFile(f);
                     }}
-                    aria-label="Choisir une image à envoyer"
+                    aria-label={t("messages.composer.pickImageAria")}
                   />
                   <Button
                     variant="outline"
@@ -1506,8 +1540,8 @@ export function MessagesView({
                     className="h-11 shrink-0"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={!peer.ecdhPub || sending || uploadState !== null || trustBlocked || peer.isBot}
-                    aria-label="Joindre une image"
-                    title="Joindre une image (jpeg, png, webp — 5 Mo max)"
+                    aria-label={t("messages.composer.attachImageAria")}
+                    title={t("messages.composer.attachImageTitle")}
                   >
                     <Paperclip className="size-4" aria-hidden="true" />
                   </Button>
@@ -1537,17 +1571,17 @@ export function MessagesView({
                     }
                     aria-label={
                       !voiceSupported
-                        ? "Notes vocales indisponibles (Opus requis)"
+                        ? t("messages.composer.voiceUnsupported")
                         : voiceRecording
-                          ? "Arrêter l'enregistrement"
-                          : "Note vocale — maintenir pour enregistrer"
+                          ? t("messages.composer.voiceStop")
+                          : t("messages.composer.voiceHold")
                     }
                     title={
                       !voiceSupported
                         ? VOICE_UNSUPPORTED_MESSAGE
                         : voiceRecording
-                          ? "Enregistrement… relâchez pour prévisualiser"
-                          : "Maintenir pour enregistrer (Opus 8 kbps, 60 s max)"
+                          ? t("messages.composer.voiceRecordingTitle")
+                          : t("messages.composer.voiceHoldTitle")
                     }
                     data-testid="mic-button"
                   >
@@ -1594,17 +1628,17 @@ export function MessagesView({
                     }
                     aria-label={
                       !videoSupported
-                        ? "Vidéo indisponible sur ce navigateur"
+                        ? t("messages.composer.videoUnsupported")
                         : videoRecording
-                          ? "Arrêter la vidéo"
-                          : "Enregistrer une vidéo"
+                          ? t("messages.composer.videoStop")
+                          : t("messages.composer.videoStart")
                     }
                     title={
                       !videoSupported
                         ? VIDEO_UNSUPPORTED_MESSAGE
                         : videoRecording
-                          ? "Enregistrement… cliquez pour arrêter"
-                          : "Vidéo (webm 480p/720p, 60 s max, 100 Mo max)"
+                          ? t("messages.composer.videoRecordingTitle")
+                          : t("messages.composer.videoTitle")
                     }
                     data-testid="video-button"
                   >
@@ -1635,25 +1669,25 @@ export function MessagesView({
                     }}
                     placeholder={
                       trustBlocked
-                        ? "Envoi bloqué — re-vérifiez le numéro de sécurité"
+                        ? t("messages.composer.placeholderBlocked")
                         : peer.ecdhPub
                           ? canUseNetwork
-                            ? "Message chiffré (ECDH + AES-GCM)…"
+                            ? t("messages.composer.placeholderEncrypted")
                             : peer.isBot
-                              ? "Mbote (bot) attend le retour du réseau…"
-                              : "Hors-ligne — ton courrier partira au retour du réseau"
-                          : "Contact sans clés ECDH"
+                              ? t("messages.composer.placeholderBotOffline")
+                              : t("messages.composer.placeholderOffline")
+                          : t("messages.composer.placeholderNoKeys")
                     }
                     disabled={!peer.ecdhPub || sending || trustBlocked}
                     maxLength={2000}
                     className="h-11"
-                    aria-label="Message privé"
+                    aria-label={t("messages.composer.inputAria")}
                   />
                   <Button
                     onClick={send}
                     disabled={!peer.ecdhPub || !draft.trim() || sending || trustBlocked}
                     className="h-11 shrink-0"
-                    aria-label="Envoyer le message chiffré"
+                    aria-label={t("messages.composer.sendAria")}
                   >
                     {sending ? (
                       <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -1667,7 +1701,7 @@ export function MessagesView({
           ) : (
             <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
               <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
-              Sélectionne une conversation…
+              {t("messages.chat.selectConversation")}
             </div>
           )}
         </div>
@@ -1679,12 +1713,12 @@ export function MessagesView({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Mic className="size-4 text-primary" aria-hidden="true" />
-              Envoyer une note vocale
+              {t("messages.voiceDialog.title")}
             </DialogTitle>
             <DialogDescription>
-              Opus {pendingVoice ? (pendingVoice.durationMs / 1000).toFixed(1) : "0"} s —
-              chiffrée sur ton appareil, le serveur n&apos;entend rien. Écoute-toi avant
-              d&apos;envoyer.
+              {t("messages.voiceDialog.description", {
+                duration: pendingVoice ? (pendingVoice.durationMs / 1000).toFixed(1) : "0",
+              })}
             </DialogDescription>
           </DialogHeader>
           {pendingVoice && (
@@ -1704,7 +1738,7 @@ export function MessagesView({
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1" onClick={cancelPendingVoice}>
                   <X className="size-4" aria-hidden="true" />
-                  Annuler
+                  {t("common.cancel")}
                 </Button>
                 <Button className="flex-1" onClick={sendPendingVoice} disabled={voiceUploading}>
                   {voiceUploading ? (
@@ -1712,7 +1746,7 @@ export function MessagesView({
                   ) : (
                     <Mic className="size-4" aria-hidden="true" />
                   )}
-                  Chiffrer et envoyer
+                  {t("messages.common.encryptAndSend")}
                 </Button>
               </div>
             </div>
@@ -1726,13 +1760,13 @@ export function MessagesView({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Film className="size-4 text-primary" aria-hidden="true" />
-              Envoyer une vidéo
+              {t("messages.videoDialog.title")}
             </DialogTitle>
             <DialogDescription>
-              {pendingVideo ? (pendingVideo.durationMs / 1000).toFixed(1) : "0"} s ·{" "}
-              {pendingVideo ? humanBytes(pendingVideo.bytes.length) : "—"} — chiffrée sur ton
-              appareil (AES-256-GCM), le serveur n&apos;en voit que le chiffré. Vise avant
-              d&apos;envoyer.
+              {t("messages.videoDialog.description", {
+                duration: pendingVideo ? (pendingVideo.durationMs / 1000).toFixed(1) : "0",
+                size: pendingVideo ? humanBytes(pendingVideo.bytes.length, t) : "—",
+              })}
             </DialogDescription>
           </DialogHeader>
           {pendingVideo && (
@@ -1744,22 +1778,22 @@ export function MessagesView({
                     controls
                     preload="metadata"
                     className="max-h-56 w-full rounded-lg bg-black"
-                    aria-label="Aperçu de la vidéo enregistrée"
+                    aria-label={t("messages.videoDialog.previewAria")}
                   />
                 ) : pendingVideo.thumb ? (
-                  <span className="text-xs text-muted-foreground">vignette seule (metadata en attente)</span>
+                  <span className="text-xs text-muted-foreground">{t("messages.videoDialog.thumbOnly")}</span>
                 ) : null}
               </div>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>
                   {pendingVideo.width}×{pendingVideo.height} · {pendingVideo.container}
                 </span>
-                <span>{humanBytes(pendingVideo.bytes.length)}</span>
+                <span>{humanBytes(pendingVideo.bytes.length, t)}</span>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1" onClick={cancelPendingVideo}>
                   <X className="size-4" aria-hidden="true" />
-                  Annuler
+                  {t("common.cancel")}
                 </Button>
                 <Button className="flex-1" onClick={sendPendingVideo} disabled={videoUploading} data-testid="video-send">
                   {videoUploading ? (
@@ -1767,7 +1801,7 @@ export function MessagesView({
                   ) : (
                     <Film className="size-4" aria-hidden="true" />
                   )}
-                  Chiffrer et envoyer
+                  {t("messages.common.encryptAndSend")}
                 </Button>
               </div>
             </div>
@@ -1781,11 +1815,10 @@ export function MessagesView({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ImageIcon className="size-4 text-primary" aria-hidden="true" />
-              Envoyer une image
+              {t("messages.imageDialog.title")}
             </DialogTitle>
             <DialogDescription>
-              EXIF/GPS supprimés, chiffrement sur ton appareil, puis envoi au bucket —
-              le serveur ne verra que du chiffré.
+              {t("messages.imageDialog.description")}
             </DialogDescription>
           </DialogHeader>
           {pendingFile && (
@@ -1793,21 +1826,21 @@ export function MessagesView({
               {/* eslint-disable-next-line @next/next/no-img-element -- blob local de preview */}
               <img
                 src={pendingFile.previewUrl}
-                alt={`Aperçu de ${pendingFile.name}`}
+                alt={t("messages.imageDialog.previewAlt", { name: pendingFile.name })}
                 className="max-h-56 w-full rounded-lg object-contain"
               />
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="truncate">{pendingFile.name}</span>
-                <span>{humanBytes(pendingFile.bytes.length)}</span>
+                <span>{humanBytes(pendingFile.bytes.length, t)}</span>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1" onClick={() => setPendingFile(null)}>
                   <X className="size-4" aria-hidden="true" />
-                  Annuler
+                  {t("common.cancel")}
                 </Button>
                 <Button className="flex-1" onClick={attachAndSend}>
                   <ImageIcon className="size-4" aria-hidden="true" />
-                  Chiffrer et envoyer
+                  {t("messages.common.encryptAndSend")}
                 </Button>
               </div>
             </div>
@@ -1821,18 +1854,17 @@ export function MessagesView({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <KeyRound className="size-4 text-primary" aria-hidden="true" />
-              Numéro de sécurité
+              {t("messages.trust.dialogTitle")}
             </DialogTitle>
             <DialogDescription>
-              Comparez ces 60 chiffres avec {peer?.nickname} — en présentiel ou par un canal
-              déjà sûr (voix mesh). Identiques des deux côtés = personne au milieu.
+              {t("messages.trust.dialogDescription", { nickname: peer?.nickname ?? "" })}
             </DialogDescription>
           </DialogHeader>
           {trust && (
             <div className="space-y-3">
               <div
                 className="rounded-lg border bg-muted/60 p-3 text-center font-mono text-sm font-semibold tracking-widest"
-                aria-label="Numéro de sécurité en 12 groupes de 5 chiffres"
+                aria-label={t("messages.trust.groupsAria")}
               >
                 <p>{trust.safetyNumber.split(" ").slice(0, 6).join(" ")}</p>
                 <p className="mt-1.5">{trust.safetyNumber.split(" ").slice(6, 12).join(" ")}</p>
@@ -1840,8 +1872,7 @@ export function MessagesView({
               {trust.keyChanged && (
                 <p className="flex items-start gap-1.5 text-xs text-red-400">
                   <ShieldAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                  Ce numéro diffère du précédent — ne confirmez que si {peer?.nickname}
-                  vous confirme ce NOUVEAU numéro de vive voix.
+                  {t("messages.trust.keyChangedWarning", { nickname: peer?.nickname ?? "" })}
                 </p>
               )}
               <Button className="w-full" onClick={confirmTrust} disabled={verifying}>
@@ -1850,7 +1881,7 @@ export function MessagesView({
                 ) : (
                   <ShieldCheck className="size-4" aria-hidden="true" />
                 )}
-                J&apos;ai comparé en présentiel — Sceller
+                {t("messages.trust.confirmInPerson")}
               </Button>
             </div>
           )}

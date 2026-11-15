@@ -78,7 +78,11 @@ async function onboard(page: import("playwright-core").Page, name: string): Prom
 
 async function main(): Promise<number> {
   const ctxA = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxA.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   const ctxB = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxB.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   const pageA = await ctxA.newPage();
   const pageB = await ctxB.newPage();
 

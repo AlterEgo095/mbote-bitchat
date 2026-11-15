@@ -9,6 +9,7 @@ import {
   Check,
   Copy,
   Flame,
+  Languages,
   Loader2,
   PenLine,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,8 +42,8 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetchFeed, apiGetUser, apiUpsertIdentity, describeApiError } from "@/lib/mbote/api";
-// D2 — réputation : libellés des tiers (module pur isomorphe)
-import { REPUTATION_TIER_LABEL } from "@/lib/mbote/sybil";
+// D2 — réputation : libellés des tiers extraits dans le catalogue i18n
+// (profile.reputation.*) — miroir exact des textes FR de sybil.ts (vague G).
 import { shortKey, signPayload } from "@/lib/mbote/crypto";
 import { identityProofMessage } from "@/lib/mbote/proof";
 import {
@@ -51,6 +53,7 @@ import {
   unsubscribePush,
 } from "@/lib/mbote/push-client";
 import type { StoredIdentity } from "@/lib/mbote/identity";
+import { isLocale, useI18n } from "@/lib/mbote/i18n";
 import { MboteAvatar } from "./Avatar";
 import { PostCard } from "./PostCard";
 
@@ -69,6 +72,9 @@ export function ProfileView({
   onReply,
   onPanicWipe,
 }: ProfileViewProps) {
+  // G (i18n) : hook UNIQUE du composant — la carte Préférences (prefs.*) est
+  // déjà câblée ; l'extraction des autres textes réutilise ce même `t`.
+  const { locale, setLocale, t, tp, fmt } = useI18n();
   const qc = useQueryClient();
   const myPub = identity.pubkey;
 
@@ -181,14 +187,14 @@ export function ProfileView({
       if (res.ok) {
         setPushPermission(notificationPermission());
         setPushSubscribed(true);
-        setPushNotice("Notifications activées — tu seras prévenu(e) d'un nouveau message (sans contenu).");
+        setPushNotice(t("profile.push.enabledNotice"));
       } else {
         // l'état suit le RÉEL : ni permission ni registration — refetch serveur
         setPushPermission(notificationPermission());
         setPushNotice(res.reason);
       }
     } catch (e) {
-      setPushNotice(e instanceof Error ? e.message : "Échec de l'activation (réseau)");
+      setPushNotice(e instanceof Error ? e.message : t("profile.push.enableFailed"));
     } finally {
       setPushBusy(false);
     }
@@ -203,7 +209,7 @@ export function ProfileView({
       await unsubscribePush({ me: myPub, sign: (payload) => signPayload(identity.signPriv, payload) });
       setPushPermission(notificationPermission());
       setPushSubscribed(false);
-      setPushNotice("Notifications désactivées sur cet appareil.");
+      setPushNotice(t("profile.push.disabledNotice"));
     } finally {
       setPushBusy(false);
     }
@@ -230,10 +236,10 @@ export function ProfileView({
       await apiUpsertIdentity({ ...payload, ts, signature });
       await qc.invalidateQueries({ queryKey: ["me", myPub] });
       await qc.invalidateQueries({ queryKey: ["feed"] });
-      toast.success("Profil mis à jour");
+      toast.success(t("profile.toasts.updated"));
       setEditOpen(false);
     } catch (e) {
-      toast.error("Échec de mise à jour", {
+      toast.error(t("profile.toasts.updateFailed"), {
         description: e instanceof Error ? e.message : undefined,
       });
     } finally {
@@ -245,10 +251,10 @@ export function ProfileView({
     try {
       await navigator.clipboard.writeText(myPub);
       setCopied(true);
-      toast.success("Empreinte copiée");
+      toast.success(t("profile.fingerprintCopied"));
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      toast.error("Copie impossible");
+      toast.error(t("profile.copyFailed"));
     }
   };
 
@@ -258,14 +264,14 @@ export function ProfileView({
           locales restent affichées, l'état réseau est dit) */}
       {me.isError && (
         <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-          Profil distant indisponible — {describeApiError(me.error)} L&apos;affichage continue avec tes données locales.
+          {t("profile.remoteUnavailable", { error: describeApiError(me.error) })}
         </div>
       )}
       {/* F #35 — échec de chargement des avertissements : rendu (avant : jeté
           en silence — « avertissements indisponibles » jamais affiché) */}
       {warnings.isError && (
         <div role="alert" className="rounded-lg border border-red-300 bg-red-50 px-4 py-2.5 text-sm text-red-800">
-          Avertissements de modération indisponibles — {describeApiError(warnings.error)}
+          {t("profile.warningsUnavailable", { error: describeApiError(warnings.error) })}
         </div>
       )}
       {/* ADM Étape 6 — avertissements de modération (visibles du titulaire seul) */}
@@ -275,7 +281,7 @@ export function ProfileView({
             <div className="flex items-center gap-2">
               <AlertTriangle className="size-4 text-amber-600" aria-hidden="true" />
               <h2 className="text-sm font-semibold">
-                Avertissement{warnings.data.warnings.length > 1 ? "s" : ""} de la modération
+                {tp("profile.warnings.title", warnings.data.warnings.length)}
               </h2>
             </div>
             <ul className="mt-3 space-y-2">
@@ -289,13 +295,13 @@ export function ProfileView({
                   </p>
                   <p className="mt-1 text-sm text-amber-950">{w.note}</p>
                   <p className="mt-1 text-[11px] text-amber-800/70">
-                    {new Date(w.createdAt).toLocaleString("fr-FR")}
+                    {fmt.fmtDateTime.format(new Date(w.createdAt))}
                   </p>
                 </li>
               ))}
             </ul>
             <p className="mt-2 text-xs text-muted-foreground">
-              Visible uniquement par vous — aucun message privé (E2EE par conception).
+              {t("profile.warnings.privateNote")}
             </p>
           </CardContent>
         </Card>
@@ -312,11 +318,11 @@ export function ProfileView({
                   {user?.nickname ?? identity.nickname}
                 </h1>
                 <span
-                  title="Identité = paire de clés locale (ECDSA P-256)"
+                  title={t("profile.identityTitle")}
                   className="inline-flex items-center gap-1 text-[11px] text-primary"
                 >
                   <BadgeCheck className="size-4" aria-hidden="true" />
-                  clés locales vérifiées
+                  {t("profile.keysVerified")}
                 </span>
                 {user?.quota && (
                   <Badge
@@ -329,21 +335,23 @@ export function ProfileView({
                           : "secondary"
                     }
                     className={user.quota.tier === "established" ? "bg-emerald-600 text-white" : undefined}
-                    title={`Score de réputation : ${user.quota.reputationScore} (D2 — +1 post de qualité après 24 h, +2 par like reçu, +1 par follow reçu, −5 par report confirmé)`}
+                    title={t("profile.reputationScoreTitle", {
+                      score: fmt.fmtNumber(user.quota.reputationScore),
+                    })}
                   >
-                    {REPUTATION_TIER_LABEL[user.quota.tier]}
+                    {t(`profile.reputation.${user.quota.tier}`)}
                   </Badge>
                 )}
               </div>
 
               <p className="mt-1 text-sm text-muted-foreground">
-                {user?.bio || identity.bio || "Aucune bio pour l'instant."}
+                {user?.bio || identity.bio || t("profile.noBio")}
               </p>
 
               <button
                 onClick={copyPubkey}
                 className="mt-2.5 inline-flex max-w-full items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                aria-label={`Copier l'empreinte de la clé publique - ${shortKey(myPub, 14)}`}
+                aria-label={t("profile.copyFingerprint", { key: shortKey(myPub, 14) })}
               >
                 {copied ? (
                   <Check className="size-3 shrink-0 text-primary" aria-hidden="true" />
@@ -356,21 +364,21 @@ export function ProfileView({
               <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-lg border bg-background/50 p-2">
                   <p className="font-mono text-lg font-bold text-primary">
-                    {user?._count?.posts ?? 0}
+                    {fmt.fmtNumber(user?._count?.posts ?? 0)}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">publications</p>
+                  <p className="text-[10px] text-muted-foreground">{t("profile.counters.posts")}</p>
                 </div>
                 <div className="rounded-lg border bg-background/50 p-2">
                   <p className="font-mono text-lg font-bold text-primary">
-                    {user?._count?.followers ?? 0}
+                    {fmt.fmtNumber(user?._count?.followers ?? 0)}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">abonnés</p>
+                  <p className="text-[10px] text-muted-foreground">{t("profile.counters.followers")}</p>
                 </div>
                 <div className="rounded-lg border bg-background/50 p-2">
                   <p className="font-mono text-lg font-bold text-primary">
-                    {user?._count?.following ?? 0}
+                    {fmt.fmtNumber(user?._count?.following ?? 0)}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">abonnements</p>
+                  <p className="text-[10px] text-muted-foreground">{t("profile.counters.following")}</p>
                 </div>
               </div>
 
@@ -381,20 +389,26 @@ export function ProfileView({
                 >
                   <span data-testid="quota-posts" className="font-medium text-foreground">
                     {user.quota.posts.remaining === null
-                      ? "posts : illimités aujourd'hui"
-                      : `${user.quota.posts.remaining}/${user.quota.posts.limit} posts restants aujourd'hui`}
+                      ? t("profile.quota.postsUnlimited")
+                      : t("profile.quota.postsRemaining", {
+                          remaining: fmt.fmtNumber(user.quota.posts.remaining),
+                          limit: fmt.fmtNumber(user.quota.posts.limit),
+                        })}
                   </span>
                   <span className="mx-2" aria-hidden="true">
                     ·
                   </span>
                   <span data-testid="quota-dms" className="font-medium text-foreground">
-                    {user.quota.dms.remaining === null
-                      ? "DMs : illimités aujourd'hui"
-                      : `${user.quota.dms.remaining}/${user.quota.dms.limit} DMs restants aujourd'hui`}
+                    {user.quota.dms.remaining == null
+                      ? t("profile.quota.dmsUnlimited")
+                      : t("profile.quota.dmsRemaining", {
+                          remaining: fmt.fmtNumber(user.quota.dms.remaining),
+                          limit: fmt.fmtNumber(user.quota.dms.limit ?? 0),
+                        })}
                   </span>
                   {user.flaggedCount ? (
                     <span className="mt-1 block text-amber-600">
-                      {user.flaggedCount} signalement(s) confirmé(s) par la modération
+                      {tp("profile.quota.flagged", user.flaggedCount)}
                     </span>
                   ) : null}
                 </div>
@@ -412,7 +426,7 @@ export function ProfileView({
                   className="h-9"
                 >
                   <PenLine className="size-3.5" aria-hidden="true" />
-                  Modifier le profil
+                  {t("profile.editButton")}
                 </Button>
               </div>
             </div>
@@ -423,7 +437,7 @@ export function ProfileView({
       {/* Mes publications */}
       <div>
         <h2 className="mb-2.5 text-sm font-bold uppercase tracking-wide text-muted-foreground">
-          Mes publications
+          {t("profile.postsTitle")}
         </h2>
         {myPosts.isError ? (
           // F #35 — échec de chargement de l'historique : plus de faux « rien
@@ -431,11 +445,11 @@ export function ProfileView({
           <Card className="border-red-300 bg-red-50">
             <CardContent className="flex flex-col items-start gap-3 p-5" role="alert">
               <p className="text-sm font-semibold text-red-900">
-                Impossible de charger tes publications
+                {t("profile.postsError")}
               </p>
               <p className="text-sm text-red-800">{describeApiError(myPosts.error)}</p>
               <Button size="sm" className="h-11 bg-red-700 text-white hover:bg-red-800" onClick={() => void myPosts.refetch()}>
-                Réessayer
+                {t("common.retry")}
               </Button>
             </CardContent>
           </Card>
@@ -453,7 +467,7 @@ export function ProfileView({
         ) : (myPosts.data?.posts.length ?? 0) === 0 ? (
           <Card className="border-dashed">
             <CardContent className="p-6 text-center text-sm text-muted-foreground">
-              Rien publié pour l&apos;instant — ton historique vit ici, signé par ta clé.
+              {t("profile.postsEmpty")}
             </CardContent>
           </Card>
         ) : (
@@ -479,11 +493,9 @@ export function ProfileView({
             <Bell className="size-5 text-primary" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">Notifications push</p>
+            <p className="text-sm font-semibold">{t("profile.push.title")}</p>
             <p className="text-xs text-muted-foreground">
-              Prévenu(e) d&apos;un nouveau message même app fermée — sans AUCUN
-              contenu : la notification dit « Nouveau message de X », rien de
-              plus (le serveur ne peut pas lire tes messages).
+              {t("profile.push.description")}
             </p>
             {pushNotice && (
               <p
@@ -496,19 +508,17 @@ export function ProfileView({
             )}
             {!pushSupported && (
               <p className="mt-1 text-xs" data-testid="push-unsupported">
-                Ce navigateur ne supporte pas les notifications push (HTTP non
-                sécurisé ou navigateur ancien).
+                {t("profile.push.unsupported")}
               </p>
             )}
             {pushSupported && vapidState === "unavailable" && (
               <p className="mt-1 text-xs" data-testid="push-unavailable">
-                Push indisponible côté serveur (clés VAPID non configurées).
+                {t("profile.push.unavailable")}
               </p>
             )}
             {pushSupported && pushPermission === "denied" && (
               <p className="mt-1 text-xs text-destructive" data-testid="push-denied">
-                Notifications bloquées par le navigateur — réautorise-les dans
-                les réglages du site (icône cadenas).
+                {t("profile.push.denied")}
               </p>
             )}
           </div>
@@ -522,7 +532,7 @@ export function ProfileView({
                 disabled={pushBusy}
                 data-testid="btn-push-disable"
               >
-                {pushBusy ? "En attente…" : "Désactiver"}
+                {pushBusy ? t("profile.push.busy") : t("profile.push.disable")}
               </Button>
             ) : (
               <Button
@@ -532,10 +542,41 @@ export function ProfileView({
                 disabled={pushBusy}
                 data-testid="btn-push-enable"
               >
-                {pushBusy ? "En attente du serveur…" : "Activer les notifications"}
+                {pushBusy ? t("profile.push.busyServer") : t("profile.push.enable")}
               </Button>
             )
           )}
+        </CardContent>
+      </Card>
+
+      {/* ── G : Préférences — sélecteur de langue (i18n maison) ── */}
+      <Card>
+        <CardContent className="flex flex-col items-start gap-3 p-4 sm:flex-row sm:items-center">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+            <Languages className="size-5 text-primary" aria-hidden="true" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">{t("prefs.title")}</p>
+            <p className="text-xs text-muted-foreground">{t("prefs.hint")}</p>
+          </div>
+          <Select
+            value={locale}
+            onValueChange={(v) => {
+              if (isLocale(v)) setLocale(v);
+            }}
+          >
+            <SelectTrigger
+              className="h-9 w-[140px] shrink-0"
+              aria-label={t("prefs.language")}
+              data-testid="lang-select"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="fr">{t("prefs.langFr")}</SelectItem>
+              <SelectItem value="en">{t("prefs.langEn")}</SelectItem>
+            </SelectContent>
+          </Select>
         </CardContent>
       </Card>
 
@@ -546,41 +587,36 @@ export function ProfileView({
             <Flame className="size-5 text-destructive" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">Panic wipe</p>
+            <p className="text-sm font-semibold">{t("profile.wipe.title")}</p>
             <p className="text-xs text-muted-foreground">
-              Efface instantanément les clés privées, la file locale et l&apos;état de
-              l&apos;application — comme le triple-tap de BitChat. Irréversible : ta clé
-              publique ne pourra plus être prouvée.
+              {t("profile.wipe.description")}
             </p>
           </div>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="destructive" size="sm" className="h-9 shrink-0">
                 <Flame className="size-4" aria-hidden="true" />
-                Tout effacer
+                {t("profile.wipe.trigger")}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle className="flex items-center gap-2">
                   <AlertTriangle className="size-5 text-destructive" aria-hidden="true" />
-                  Confirmer le panic wipe ?
+                  {t("profile.wipe.confirmTitle")}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  Clés privées, identité, file « courrier » et préférences locales seront
-                  détruites sur cet appareil. Tes publications déjà diffusées sur le serveur
-                  resteront (publiques par nature) — mais plus personne ne pourra prouver qu&apos;il
-                  détient encore ta clé.
+                  {t("profile.wipe.confirmDescription")}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={onPanicWipe}
                   className="bg-destructive text-white hover:bg-destructive/90"
                 >
                   <Flame className="size-4" aria-hidden="true" />
-                  Effacer définitivement
+                  {t("profile.wipe.confirmAction")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -592,14 +628,12 @@ export function ProfileView({
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Modifier le profil</DialogTitle>
-            <DialogDescription>
-              Publiquement associé à ton empreinte de clé — rien de plus.
-            </DialogDescription>
+            <DialogTitle>{t("profile.edit.title")}</DialogTitle>
+            <DialogDescription>{t("profile.edit.description")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="edit-nick">Pseudo</Label>
+              <Label htmlFor="edit-nick">{t("profile.edit.nickname")}</Label>
               <Input
                 id="edit-nick"
                 value={nickname}
@@ -608,7 +642,7 @@ export function ProfileView({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="edit-bio">Bio</Label>
+              <Label htmlFor="edit-bio">{t("profile.edit.bio")}</Label>
               <Textarea
                 id="edit-bio"
                 value={bio}
@@ -621,7 +655,7 @@ export function ProfileView({
           <DialogFooter>
             <Button onClick={saveProfile} disabled={saving || nickname.trim().length < 2}>
               {saving && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
-              Enregistrer
+              {t("common.save")}
             </Button>
           </DialogFooter>
         </DialogContent>

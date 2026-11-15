@@ -57,6 +57,7 @@ import {
 import { CITY_PRESETS } from "@/lib/mbote/constants";
 import { generateKeyBundle, signPayload } from "@/lib/mbote/crypto";
 import { encodeGeohash } from "@/lib/mbote/geohash";
+import { useI18n } from "@/lib/mbote/i18n";
 import { loadIdentity, loadIdentityMeta } from "@/lib/mbote/identity";
 import { getWebOutbox, type OutboxItem } from "@/lib/mbote/transports";
 import { getWebRouter } from "@/lib/mbote/transports";
@@ -90,7 +91,8 @@ function itemToQueued(it: OutboxItem): QueuedPacket {
     hops: Number(it.meta?.hops ?? 0),
     senderId: bytesToHex(desc.header.senderId).toUpperCase(),
     meshLatencyMs: Number(it.meta?.meshLatencyMs ?? 0),
-    preview: it.meta?.preview ?? "(contenu opaque)",
+    // i18n : repli « contenu opaque » résolu au rendu via t("bridge.previewOpaque")
+    preview: it.meta?.preview ?? "",
     fragLabel: it.meta?.fragLabel,
     createdAt: it.enqueuedAt,
     attempts: it.attempts,
@@ -102,6 +104,7 @@ const CANAL_NONE = "__global__";
 
 export function BitChatBridge() {
   const qc = useQueryClient();
+  const { t, tp, fmt } = useI18n();
   // P2 : outbox durable (IndexedDB, repli localStorage) — les paquets en
   // attente survivent au rechargement de la page et reflushent tout seuls.
   const outbox = useMemo(() => getWebOutbox(), []);
@@ -269,13 +272,16 @@ export function BitChatBridge() {
     const totalBytes = newPkts.reduce((a, p) => a + p.bytes, 0);
     toast.success(
       chunks.length > 1
-        ? `${newPkts.length} paquets fragmentés · ${totalBytes} octets · TTL ${ttl}`
-        : `Paquet encapsulé · ${totalBytes} octets · TTL ${ttl}`,
+        ? tp("bridge.toastFragmented", newPkts.length, {
+            bytes: fmt.fmtNumber(totalBytes),
+            ttl,
+          })
+        : t("bridge.toastEncapsulated", { bytes: fmt.fmtNumber(totalBytes), ttl }),
       {
         description:
           hops > 0
-            ? `≈ ${newPkts[0].meshLatencyMs} ms de gigue cumulée sur ${hops} saut(s) · écrit(s) dans l'outbox durable`
-            : `remis directement à la passerelle · outbox durable (${outbox.storageKind})`,
+            ? tp("bridge.toastJitter", hops, { ms: fmt.fmtNumber(newPkts[0].meshLatencyMs) })
+            : t("bridge.toastDirect", { storage: outbox.storageKind }),
       }
     );
   };
@@ -319,17 +325,17 @@ export function BitChatBridge() {
       const duplicates = results.filter((r) => r.status === "duplicate").length;
       const queuedN = results.filter((r) => r.status === "outbox").length;
       toast.success(
-        `${accepted + duplicates} acheminé(s) via le routeur · ${queuedN} en outbox durable`,
+        tp("bridge.toastRouted", accepted + duplicates, { queued: fmt.fmtNumber(queuedN) }),
         {
           description:
             queuedN > 0
-              ? "Les paquets en attente survivent au rechargement — flush auto dès qu'un canal revient."
-              : "Le VPS a dédupliqué et injecté les publications dans le fil global.",
+              ? t("bridge.toastPendingDesc")
+              : t("bridge.toastInjectedDesc"),
         }
       );
       if (accepted > 0) await qc.invalidateQueries({ queryKey: ["feed"] });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Échec de transmission");
+      toast.error(e instanceof Error ? e.message : t("bridge.txFailed"));
     } finally {
       setSending(false);
     }
@@ -341,7 +347,7 @@ export function BitChatBridge() {
       const dl = await apiBridgeDownlink(gatewayId);
       setDownlink(dl);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Échec du downlink");
+      toast.error(e instanceof Error ? e.message : t("bridge.downlinkFailed"));
     }
   };
 
@@ -356,15 +362,13 @@ export function BitChatBridge() {
           <div>
             <h3 className="flex items-center gap-2 text-base font-bold tracking-tight">
               <Bluetooth className="size-4 text-primary" aria-hidden="true" />
-              Tunnel BitChat — de l&apos;appareil hors-ligne au VPS
+              {t("bridge.title")}
             </h3>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
-              Le chemin exact de la future app native : le message est encapsulé en
-              <strong> paquet binaire BitChat</strong> (≤ 469 octets, TTL, gigue 10–220 ms), relayé
-              de proche en proche en Bluetooth LE, puis déposé au VPS par une
-              <strong> passerelle</strong> qui retrouve internet (store-and-forward). Testez le
-              tunnel réel : ce formulaire parle au même endpoint <code className="font-mono">/api/mesh/bridge</code> que
-              l&apos;app native.
+              {t("bridge.desc1")}
+              <strong> {t("bridge.descPacket")}</strong> {t("bridge.desc2")}
+              <strong> {t("bridge.descGateway")}</strong> {t("bridge.desc3")}{" "}
+              <code className="font-mono">/api/mesh/bridge</code> {t("bridge.desc4")}
             </p>
           </div>
         </div>
@@ -372,15 +376,16 @@ export function BitChatBridge() {
         {/* schéma du chemin */}
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border bg-background/60 p-3 text-[11px]">
           <Badge variant="outline" className="gap-1.5 py-1">
-            <Smartphone className="size-3.5" aria-hidden="true" /> appareil hors-ligne
+            <Smartphone className="size-3.5" aria-hidden="true" /> {t("bridge.badgeDevice")}
           </Badge>
           <ArrowRight className="size-3.5 text-muted-foreground" aria-hidden="true" />
           <Badge variant="outline" className="gap-1.5 border-primary/40 py-1 text-primary">
-            <Bluetooth className="size-3.5" aria-hidden="true" /> mesh BLE · {hops} saut{hops > 1 ? "s" : ""} · TTL {Math.max(1, ttlEff - hops)}
+            <Bluetooth className="size-3.5" aria-hidden="true" />{" "}
+            {tp("bridge.badgeMesh", hops, { ttl: Math.max(1, ttlEff - hops) })}
           </Badge>
           <ArrowRight className="size-3.5 text-muted-foreground" aria-hidden="true" />
           <Badge variant="outline" className="gap-1.5 py-1">
-            <Router className="size-3.5" aria-hidden="true" /> passerelle
+            <Router className="size-3.5" aria-hidden="true" /> {t("bridge.badgeGateway")}
           </Badge>
           <ArrowRight className="size-3.5 text-muted-foreground" aria-hidden="true" />
           <Badge variant="outline" className="gap-1.5 border-primary/40 py-1 text-primary">
@@ -390,15 +395,15 @@ export function BitChatBridge() {
 
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {/* ① appareil */}
-          <section className="rounded-xl border p-4" aria-label="Composer hors connexion">
+          <section className="rounded-xl border p-4" aria-label={t("bridge.a11yCompose")}>
             <div className="flex items-center justify-between">
               <h4 className="flex items-center gap-1.5 text-sm font-semibold">
                 <Smartphone className="size-4 text-primary" aria-hidden="true" />
-                ① Appareil hors connexion
+                {t("bridge.sectionDevice")}
               </h4>
               {!hasIdentity && (
                 <Badge variant="outline" className="text-[10px]">
-                  identité mesh éphémère
+                  {t("bridge.ephemeralIdentity")}
                 </Badge>
               )}
             </div>
@@ -408,15 +413,15 @@ export function BitChatBridge() {
               onChange={(e) => setDraft(e.target.value)}
               maxLength={500}
               rows={3}
-              placeholder="Message écrit sans internet…"
+              placeholder={t("bridge.placeholderDraft")}
               className="mt-3 min-h-[72px] text-sm"
-              aria-label="Message à encapsuler"
+              aria-label={t("bridge.a11yDraft")}
             />
 
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
               <div>
                 <Label className="text-xs text-muted-foreground">
-                  Voisins à portée : <span className="font-mono font-semibold text-foreground">{neighbors}</span>
+                  {t("bridge.neighborsLabel")} <span className="font-mono font-semibold text-foreground">{neighbors}</span>
                 </Label>
                 <Slider
                   value={[neighbors]}
@@ -425,21 +430,21 @@ export function BitChatBridge() {
                   max={9}
                   step={1}
                   className="mt-2"
-                  aria-label="Nombre de voisins Bluetooth à portée"
+                  aria-label={t("bridge.a11yNeighbors")}
                 />
                 <p className="mt-1 text-[10px] text-muted-foreground">
                   {neighbors >= 6 ? (
                     <span className="text-amber-500">
-                      zone dense → TTL clampé à {TTL_DENSE}
+                      {t("bridge.ttlDense", { ttl: TTL_DENSE })}
                     </span>
                   ) : (
-                    <>TTL effectif {TTL_MAX}</>
+                    <>{t("bridge.ttlEffective", { ttl: TTL_MAX })}</>
                   )}
                 </p>
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">
-                  Sauts jusqu&apos;à la passerelle : <span className="font-mono font-semibold text-foreground">{hops}</span>
+                  {t("bridge.hopsLabel")} <span className="font-mono font-semibold text-foreground">{hops}</span>
                 </Label>
                 <Slider
                   value={[hops]}
@@ -448,20 +453,20 @@ export function BitChatBridge() {
                   max={maxHops}
                   step={1}
                   className="mt-2"
-                  aria-label="Nombre de sauts mesh avant la passerelle"
+                  aria-label={t("bridge.a11yHops")}
                 />
-                <p className="mt-1 text-[10px] text-muted-foreground">max {maxHops} (TTL − 1)</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">{t("bridge.maxHops", { count: maxHops })}</p>
               </div>
             </div>
 
             <div className="mt-3">
-              <Label className="text-xs text-muted-foreground">Canal géohash transporté</Label>
+              <Label className="text-xs text-muted-foreground">{t("bridge.channelLabel")}</Label>
               <Select value={channel} onValueChange={setChannel}>
-                <SelectTrigger size="sm" className="mt-1.5" aria-label="Canal géohash">
-                  <SelectValue placeholder="Choisir un canal" />
+                <SelectTrigger size="sm" className="mt-1.5" aria-label={t("bridge.a11yChannel")}>
+                  <SelectValue placeholder={t("bridge.channelPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={CANAL_NONE}>Sans canal (fil global)</SelectItem>
+                  <SelectItem value={CANAL_NONE}>{t("bridge.noChannel")}</SelectItem>
                   {cityChannels.map((c) => (
                     <SelectItem key={c.value} value={c.value}>
                       {c.value} · {c.label}
@@ -473,16 +478,16 @@ export function BitChatBridge() {
 
             <Button onClick={encapsulate} disabled={!draft.trim()} className="mt-4 w-full">
               <Send className="size-4" aria-hidden="true" />
-              Encapsuler en paquet BitChat
+              {t("bridge.encapsulate")}
             </Button>
           </section>
 
           {/* ② passerelle */}
-          <section className="rounded-xl border p-4" aria-label="Outbox durable de la passerelle">
+          <section className="rounded-xl border p-4" aria-label={t("bridge.a11yOutbox")}>
             <div className="flex items-center justify-between">
               <h4 className="flex items-center gap-1.5 text-sm font-semibold">
                 <Router className="size-4 text-primary" aria-hidden="true" />
-                ② Outbox durable de la passerelle
+                {t("bridge.sectionOutbox")}
               </h4>
               <Badge variant="outline" className="gap-1.5 font-mono text-[10px]">
                 GW {gatewayId.slice(0, 8)}
@@ -496,13 +501,12 @@ export function BitChatBridge() {
               <div className="mt-3 flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-center">
                 <PackageOpen className="size-6 text-muted-foreground" aria-hidden="true" />
                 <p className="text-xs text-muted-foreground">
-                  Outbox vide.<br />Encapsulez un message ci-contre : il sera écrit
-                  durablement ({outboxKind || "IndexedDB"}) et patientera ici même après un
-                  rechargement, comme sur un vrai téléphone sans internet.
+                  {t("bridge.outboxEmptyTitle")}<br />
+                  {t("bridge.outboxEmptyBody", { storage: outboxKind || "IndexedDB" })}
                 </p>
               </div>
             ) : (
-              <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto scrollbar-thin pr-1" aria-label="Paquets en attente">
+              <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto scrollbar-thin pr-1" aria-label={t("bridge.a11yQueue")}>
                 {queue.map((p, i) => (
                   <li key={p.id} className="rounded-lg border bg-background/60 p-2.5">
                     <div className="flex items-center justify-between gap-2">
@@ -512,7 +516,10 @@ export function BitChatBridge() {
                           {p.fragLabel ? ` · ${p.fragLabel}` : ""}
                         </Badge>
                         <span className="font-mono text-[10px] text-muted-foreground">
-                          {p.bytes} o · {p.hops} saut{p.hops > 1 ? "s" : ""} · hash {p.hash.slice(0, 8)}…
+                          {tp("bridge.pktMeta", p.hops, {
+                            bytes: fmt.fmtNumber(p.bytes),
+                            hash: p.hash.slice(0, 8),
+                          })}
                         </span>
                       </div>
                       <Button
@@ -520,18 +527,22 @@ export function BitChatBridge() {
                         size="icon"
                         className="size-6"
                         onClick={() => void outbox.purge([p.id])}
-                        aria-label={`Retirer le paquet ${i + 1}`}
+                        aria-label={t("bridge.a11yRemove", { n: i + 1 })}
                       >
                         <Trash2 className="size-3.5" aria-hidden="true" />
                       </Button>
                     </div>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">« {p.preview} »</p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      {t("bridge.previewLine", { preview: p.preview || t("bridge.previewOpaque") })}
+                    </p>
                     {p.attempts > 0 && (
                       <p className="mt-1 font-mono text-[10px] text-amber-500">
-                        backoff P2 : {p.attempts} échec{p.attempts > 1 ? "s" : ""} · reflush
-                        {p.nextAttemptAt > Date.now()
-                          ? ` dans ${Math.ceil((p.nextAttemptAt - Date.now()) / 1000)} s`
-                          : " iminent"}
+                        {tp("bridge.backoff", p.attempts, {
+                          when:
+                            p.nextAttemptAt > Date.now()
+                              ? t("bridge.reflushIn", { s: Math.ceil((p.nextAttemptAt - Date.now()) / 1000) })
+                              : t("bridge.reflushSoon"),
+                        })}
                       </p>
                     )}
                     {showHex === p.id && (
@@ -546,7 +557,12 @@ export function BitChatBridge() {
 
             {q && (
               <p className="mt-2 font-mono text-[10px] text-muted-foreground">
-                en-tête décodé : v{qHeader?.version} · senderID {q.senderId} · ttl {qHeader?.ttl} · {PACKET_TYPE_NAMES[PKT_PUBLIC]}
+                {t("bridge.headerDecoded", {
+                  version: qHeader?.version ?? "?",
+                  sender: q.senderId,
+                  ttl: qHeader?.ttl ?? "?",
+                  type: PACKET_TYPE_NAMES[PKT_PUBLIC],
+                })}
               </p>
             )}
 
@@ -557,33 +573,31 @@ export function BitChatBridge() {
                 ) : (
                   <CloudUpload className="size-4" aria-hidden="true" />
                 )}
-                Transmettre {queue.length > 0 ? `${queue.length} paquet${queue.length > 1 ? "s" : ""}` : ""} au VPS
+                {queue.length > 0 ? tp("bridge.transmit", queue.length) : t("bridge.transmitAll")}
               </Button>
               {queue.length > 0 && (
                 <Button
                   variant="outline"
                   onClick={() => void outbox.clear()}
-                  aria-label="Vider l'outbox durable"
+                  aria-label={t("bridge.clearOutbox")}
                 >
                   <Trash2 className="size-4" aria-hidden="true" />
-                  <span className="sr-only">Vider l&apos;outbox durable</span>
+                  <span className="sr-only">{t("bridge.clearOutbox")}</span>
                 </Button>
               )}
             </div>
             <p className="mt-2 text-[10px] text-muted-foreground">
-              Store-and-forward durable : les paquets sont écrits sur disque ({outboxKind || "IndexedDB"}),
-              purgés par ack du pont, et reflushés automatiquement sur regain réseau,
-              retour au premier plan ou toutes les 5 minutes (backoff 30 s → 15 min).
+              {t("bridge.sfNote", { storage: outboxKind || "IndexedDB" })}
             </p>
           </section>
         </div>
 
         {/* journal d'ingestion */}
         {journal.length > 0 && (
-          <section className="mt-4 rounded-xl border p-4" aria-label="Journal d'ingestion du serveur">
+          <section className="mt-4 rounded-xl border p-4" aria-label={t("bridge.a11yJournal")}>
             <h4 className="flex items-center gap-1.5 text-sm font-semibold">
               <Hash className="size-4 text-primary" aria-hidden="true" />
-              Journal d&apos;ingestion du VPS
+              {t("bridge.journalTitle")}
             </h4>
             <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto scrollbar-thin font-mono text-[11px]">
               {journal.map((r, i) => (
@@ -602,44 +616,44 @@ export function BitChatBridge() {
               ))}
             </ul>
             <p className="mt-2 text-[10px] text-muted-foreground">
-              Les publications acceptées sont désormais dans le fil global avec le badge
-              « via mesh ». La dédup persistante (fenêtre 6 h) rejette tout paquet déjà vu —
-              même redéposé par une autre passerelle.
+              {t("bridge.journalNote")}
             </p>
           </section>
         )}
 
         {/* downlink + stats */}
-        <section className="mt-4 rounded-xl border p-4" aria-label="Downlink et statistiques">
+        <section className="mt-4 rounded-xl border p-4" aria-label={t("bridge.a11yDownlink")}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="flex items-center gap-1.5 text-sm font-semibold">
               <ClipboardCopy className="size-4 text-primary" aria-hidden="true" />
-              ③ Sens inverse : le VPS rend les paquets à redistribuer en BLE
+              {t("bridge.sectionDownlink")}
             </h4>
             <Button variant="outline" size="sm" onClick={pullDownlink}>
               <RefreshCw className="size-3.5" aria-hidden="true" />
-              Récupérer le downlink
+              {t("bridge.pullDownlink")}
             </Button>
           </div>
 
           {downlink && (
             <div className="mt-3 grid gap-3 sm:grid-cols-4">
-              <Stat label="paquets à redistribuer" value={String(downlink.packets.length)} />
-              <Stat label="ingérés (24 h)" value={String(downlink.stats.ingested24h)} />
-              <Stat label="sauts moyens" value={downlink.stats.avgHops.toFixed(1)} />
-              <Stat label="passerelles connues" value={String(downlink.stats.gateways.length)} />
+              <Stat label={t("bridge.statPackets")} value={fmt.fmtNumber(downlink.packets.length)} />
+              <Stat label={t("bridge.statIngested")} value={fmt.fmtNumber(downlink.stats.ingested24h)} />
+              <Stat label={t("bridge.statAvgHops")} value={fmt.fmtNumber(downlink.stats.avgHops)} />
+              <Stat label={t("bridge.statGateways")} value={fmt.fmtNumber(downlink.stats.gateways.length)} />
               {downlink.packets[0] && (
                 <p className="col-span-full truncate font-mono text-[10px] text-muted-foreground">
-                  1er paquet ({downlink.packets[0].bytes} o) : {downlink.packets[0].base64.slice(0, 72)}…
+                  {t("bridge.firstPacket", {
+                    bytes: fmt.fmtNumber(downlink.packets[0].bytes),
+                    payload: downlink.packets[0].base64.slice(0, 72),
+                  })}
                 </p>
               )}
             </div>
           )}
           {!downlink && (
             <p className="mt-2 text-[11px] text-muted-foreground">
-              Une passerelle native appelle <code className="font-mono">GET /api/mesh/bridge</code> pour
-              récupérer les publications récentes encodées en paquets BitChat et les diffuser en
-              Bluetooth aux téléphones hors-ligne à portée — le retour du store-and-forward.
+              {t("bridge.downlinkDesc1")} <code className="font-mono">GET /api/mesh/bridge</code>{" "}
+              {t("bridge.downlinkDesc2")}
             </p>
           )}
         </section>

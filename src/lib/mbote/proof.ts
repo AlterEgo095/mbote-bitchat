@@ -212,6 +212,17 @@ export function mediaDownloadProofMessage(me: string, mediaId: string, ts: numbe
   return `${me}|media-dl|${mediaId}|${ts}`;
 }
 
+/**
+ * G — chaîne canonique de PRÉFÉRENCE de locale (/api/preferences).
+ * L'écriture est signée (même mécanique que identity) : un tiers ne peut pas
+ * réécrire la préférence d'un compte. La locale n'est PAS sensible (lecture
+ * publique, comme le profil) — seule l'ÉCRITURE exige la preuve.
+ *   preferences : `${pubkey}|preferences|${locale}|${ts}`
+ */
+export function preferencesProofMessage(pubkey: string, locale: string, ts: number): string {
+  return `${pubkey}|preferences|${locale}|${ts}`;
+}
+
 /** Chaîne canonique des publications (historique, inchangée) */
 export function postSignatureMessage(pubkey: string, content: string, ts: number): string {
   return `${pubkey}|${content}|${ts}`;

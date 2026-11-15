@@ -59,6 +59,12 @@ model User {
   // création (`${pubkey}|pow|${ts}`). Le rejet global est garanti par la
   // table PowSpent (PK challenge) — ce champ garde la trace locale.
   powChallenge String?
+  // G (i18n) — préférence de LOCALE du compte (roaming multi-appareils).
+  // Écriture signée ECDSA via POST /api/preferences (chaîne canonique
+  // `${pubkey}|preferences|${locale}|${ts}`) — un tiers ne peut pas réécrire
+  // la préférence d'un tiers. Lecture publique (même classe d'exposition que
+  // le profil). Le LS `mbote_locale` (appareil) reste prioritaire dessus.
+  locale String @default("fr")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

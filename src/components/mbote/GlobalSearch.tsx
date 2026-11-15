@@ -16,8 +16,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
 import { Loader2, Lock, MessageCircle, Newspaper, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,6 +31,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiSearchPosts, type SearchResultPost } from "@/lib/mbote/api";
 import { searchLocalDm, type DmSearchHit } from "@/lib/mbote/dm-search-index";
+import { useI18n } from "@/lib/mbote/i18n";
 
 interface GlobalSearchProps {
   onOpenPost: (postId: string) => void;
@@ -65,6 +64,7 @@ function Highlight({ text, terms }: { text: string; terms: string[] }) {
 }
 
 export function GlobalSearch({ onOpenPost, onOpenMessage, hasIdentity }: GlobalSearchProps) {
+  const { t, tp, fmt } = useI18n();
   const [open, setOpen] = useState(false);
   const [raw, setRaw] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -156,23 +156,20 @@ export function GlobalSearch({ onOpenPost, onOpenMessage, hasIdentity }: GlobalS
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Rechercher dans les fils publics et mes messages privés"
+        aria-label={t("search.triggerAria")}
         className="flex h-9 w-9 items-center justify-center rounded-lg border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:h-9 md:w-56 md:justify-start md:gap-2 md:px-3"
       >
         <Search className="size-4 shrink-0" aria-hidden="true" />
         <span className="hidden text-xs text-muted-foreground md:inline">
-          Rechercher…
+          {t("search.triggerPlaceholder")}
         </span>
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="flex max-h-[85vh] flex-col gap-0 p-0 sm:max-w-xl">
           <DialogHeader className="sr-only">
-            <DialogTitle>Recherche</DialogTitle>
-            <DialogDescription>
-              Fils publics (serveur) et messages privés (recherche locale sur
-              cet appareil).
-            </DialogDescription>
+            <DialogTitle>{t("search.title")}</DialogTitle>
+            <DialogDescription>{t("search.description")}</DialogDescription>
           </DialogHeader>
           <div className="border-b p-3">
             <div className="relative">
@@ -184,14 +181,13 @@ export function GlobalSearch({ onOpenPost, onOpenMessage, hasIdentity }: GlobalS
                 ref={inputRef}
                 value={raw}
                 onChange={(e) => setRaw(e.target.value)}
-                placeholder="Rechercher un mot dans le fil public ou vos messages…"
-                aria-label="Terme de recherche"
+                placeholder={t("search.inputPlaceholder")}
+                aria-label={t("search.inputAria")}
                 className="pl-8"
               />
             </div>
             <p className="mt-1.5 px-1 text-[10px] text-muted-foreground">
-              Fil public : serveur (FTS5) · Messages privés : recherche locale
-              chiffrée sur cet appareil, jamais envoyée.
+              {t("search.footerNote")}
             </p>
           </div>
 
@@ -199,7 +195,7 @@ export function GlobalSearch({ onOpenPost, onOpenMessage, hasIdentity }: GlobalS
             <div className="space-y-4 p-3">
               {debounced.length < 2 && (
                 <p className="py-6 text-center text-xs text-muted-foreground">
-                  Saisissez au moins 2 caractères.
+                  {t("search.minChars")}
                 </p>
               )}
 
@@ -212,17 +208,24 @@ export function GlobalSearch({ onOpenPost, onOpenMessage, hasIdentity }: GlobalS
 
               {debounced.length >= 2 && postsQuery.isError && (
                 <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
-                  Recherche du fil public indisponible : {(postsQuery.error as Error)?.message ?? "erreur réseau"} (30 req/min — réessayez dans un instant).
+                  {t("search.publicError", {
+                    message: (postsQuery.error as Error)?.message ?? t("search.publicErrorNetwork"),
+                  })}
                 </p>
               )}
 
               {/* ── section fil public ── */}
               {results.length > 0 && (
-                <section aria-label="Résultats du fil public">
+                <section aria-label={t("search.sectionPublic")}>
                   <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
                     <Newspaper className="size-3.5" aria-hidden="true" />
-                    Fil public
-                    <Badge variant="outline" className="ml-1 px-1.5 py-0 text-[9px]">
+                    {t("search.publicHeader")}
+                    <Badge
+                      variant="outline"
+                      className="ml-1 px-1.5 py-0 text-[9px]"
+                      aria-label={tp("search.results", results.length)}
+                      title={tp("search.results", results.length)}
+                    >
                       {results.length}
                     </Badge>
                   </h3>
@@ -240,10 +243,7 @@ export function GlobalSearch({ onOpenPost, onOpenMessage, hasIdentity }: GlobalS
                           <p className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
                             <span className="truncate font-medium">{r.authorNickname}</span>
                             <span aria-hidden="true">·</span>
-                            {formatDistanceToNow(new Date(r.createdAt), {
-                              addSuffix: true,
-                              locale: fr,
-                            })}
+                            {fmt.fmtRelative(r.createdAt)}
                           </p>
                         </button>
                       </li>
@@ -251,7 +251,7 @@ export function GlobalSearch({ onOpenPost, onOpenMessage, hasIdentity }: GlobalS
                   </ul>
                   {postsQuery.data?.hasMore && (
                     <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-                      D&apos;autres résultats — affinez la recherche.
+                      {t("search.moreResults")}
                     </p>
                   )}
                 </section>
@@ -259,15 +259,20 @@ export function GlobalSearch({ onOpenPost, onOpenMessage, hasIdentity }: GlobalS
 
               {/* ── section messages privés (local) ── */}
               {hasIdentity && localHits && localHits.length > 0 && (
-                <section aria-label="Résultats des messages privés (recherche locale)">
+                <section aria-label={t("search.sectionDm")}>
                   <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
                     <MessageCircle className="size-3.5" aria-hidden="true" />
-                    Messages privés
-                    <Badge variant="outline" className="ml-1 px-1.5 py-0 text-[9px]">
+                    {t("search.dmHeader")}
+                    <Badge
+                      variant="outline"
+                      className="ml-1 px-1.5 py-0 text-[9px]"
+                      aria-label={tp("search.dmResults", localHits.length)}
+                      title={tp("search.dmResults", localHits.length)}
+                    >
                       {localHits.length}
                     </Badge>
                     <span className="ml-auto flex items-center gap-1 text-[9px] normal-case">
-                      <Lock className="size-2.5" aria-hidden="true" /> local
+                      <Lock className="size-2.5" aria-hidden="true" /> {t("search.localChip")}
                     </span>
                   </h3>
                   <ul className="space-y-1.5">
@@ -283,7 +288,7 @@ export function GlobalSearch({ onOpenPost, onOpenMessage, hasIdentity }: GlobalS
                           </p>
                           <p className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
                             <Lock className="size-2.5" aria-hidden="true" />
-                            Conversation privée · {formatDistanceToNow(new Date(h.createdAt), { addSuffix: true, locale: fr })}
+                            {t("search.dmConversation")} · {fmt.fmtRelative(h.createdAt)}
                           </p>
                         </button>
                       </li>
@@ -294,14 +299,14 @@ export function GlobalSearch({ onOpenPost, onOpenMessage, hasIdentity }: GlobalS
 
               {empty && (
                 <p className="py-6 text-center text-xs text-muted-foreground">
-                  Aucun résultat pour « {debounced} ».
+                  {t("search.noResults", { q: debounced })}
                 </p>
               )}
 
               {/* recherche DM locale en cours (pas de skeleton serveur pour elle — instantanée) */}
               {hasIdentity && debounced.length >= 2 && localHits === null && (
                 <p className="flex items-center justify-center gap-2 py-2 text-[10px] text-muted-foreground">
-                  <Loader2 className="size-3 animate-spin" aria-hidden="true" /> Index local…
+                  <Loader2 className="size-3 animate-spin" aria-hidden="true" /> {t("search.localIndexing")}
                 </p>
               )}
             </div>
@@ -309,10 +314,10 @@ export function GlobalSearch({ onOpenPost, onOpenMessage, hasIdentity }: GlobalS
 
           <div className="flex items-center justify-between border-t p-2">
             <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-              Fermer
+              {t("common.close")}
             </Button>
             <span className="text-[10px] text-muted-foreground">
-              30 recherches/min (fil public)
+              {t("search.rateLimitNote")}
             </span>
           </div>
         </DialogContent>

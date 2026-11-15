@@ -153,6 +153,8 @@ try {
     fetch: () => new Response(HTML, { headers: { "Content-Type": "text/html" } }),
   });
   const page = await browser.newPage();
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await page.context().addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   await page.goto("http://127.0.0.1:3199/");
   const raw = (await page.evaluate("window.probe()")) as string;
   await browser.close();

@@ -31,6 +31,7 @@ import { apiSetFollow } from "@/lib/mbote/api";
 import { signPayload } from "@/lib/mbote/crypto";
 import { loadIdentity, type StoredIdentity } from "@/lib/mbote/identity";
 import { followProofMessage } from "@/lib/mbote/proof";
+import { useI18n } from "@/lib/mbote/i18n";
 import type { UserPublic } from "@/lib/mbote/types";
 import { MboteAvatar } from "./Avatar";
 import { BitChatBridge } from "./BitChatBridge";
@@ -38,11 +39,20 @@ import dynamic from "next/dynamic";
 
 // F-34 : la simulation (1 400+ lignes) ne voyage plus dans le bundle initial —
 // chargée uniquement quand l'utilisateur ouvre la vue Réseau.
+function MeshSimulationLoading() {
+  const { t } = useI18n();
+  return (
+    <div
+      className="h-64 rounded-xl border bg-card/50"
+      aria-busy="true"
+      aria-label={t("network.simulationLoading")}
+    />
+  );
+}
+
 const MeshSimulation = dynamic(() => import("./MeshSimulation"), {
   ssr: false,
-  loading: () => (
-    <div className="h-64 rounded-xl border bg-card/50" aria-busy="true" aria-label="Chargement de la simulation" />
-  ),
+  loading: MeshSimulationLoading,
 });
 
 // F-24 : les textes décrivent le VRAI transport internet de cette démo —
@@ -81,6 +91,7 @@ async function fetchUsersWithFollow(mePub: string): Promise<UserWithFollow[]> {
  * premier render). apiSetFollow / apiGetFollow de api.ts sont enfin consommées.
  */
 function FollowSuggestions() {
+  const { t, tp, fmt } = useI18n();
   const [me, setMe] = useState<StoredIdentity | null>(null);
   const [identityReady, setIdentityReady] = useState(false);
 
@@ -152,17 +163,17 @@ function FollowSuggestions() {
       else void qc.invalidateQueries({ queryKey: usersKey });
       toast.error(
         vars.action === "follow"
-          ? `Impossible de suivre ${vars.target.nickname}`
-          : `Impossible de ne plus suivre ${vars.target.nickname}`,
-        { description: error instanceof Error ? error.message : "Erreur inconnue" }
+          ? t("network.followFail", { name: vars.target.nickname })
+          : t("network.unfollowFail", { name: vars.target.nickname }),
+        { description: error instanceof Error ? error.message : t("network.errorUnknown") }
       );
     },
     onSuccess: (_data, vars) => {
       toast.success(
         vars.action === "follow"
-          ? `Tu suis désormais ${vars.target.nickname}`
-          : `Tu ne suis plus ${vars.target.nickname}`,
-        { description: "Preuve signée sur ton appareil ✓" }
+          ? t("network.followOk", { name: vars.target.nickname })
+          : t("network.unfollowOk", { name: vars.target.nickname }),
+        { description: t("network.proofOk") }
       );
     },
     onSettled: () => {
@@ -183,16 +194,13 @@ function FollowSuggestions() {
       <CardContent className="p-4">
         <h2 className="flex items-center gap-2 text-sm font-semibold">
           <UsersRound className="size-4 text-primary" aria-hidden="true" />
-          Identités à suivre
+          {t("network.followTitle")}
         </h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Le graphe de confiance local — tes abonnements alimentent l&apos;onglet
-          « Abonnements » du fil global.
-        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t("network.followSubtitle")}</p>
 
         <div className="mt-3">
           {!identityReady || users.isLoading ? (
-            <div className="space-y-2" aria-label="Chargement des identités">
+            <div className="space-y-2" aria-label={t("network.followLoading")}>
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 rounded-lg border p-2.5">
                   <Skeleton className="size-9 shrink-0 rounded-full" />
@@ -207,34 +215,32 @@ function FollowSuggestions() {
           ) : !me ? (
             <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-6 text-center">
               <KeyRound className="size-6 text-muted-foreground" aria-hidden="true" />
-              <p className="text-sm font-semibold">Crée ton identité pour suivre des identités</p>
+              <p className="text-sm font-semibold">{t("network.followNeedIdentity")}</p>
               <p className="text-xs text-muted-foreground">
-                Chaque abonnement est signé par ta clé locale — sans identité, pas de graphe de
-                confiance.
+                {t("network.followNeedIdentityHint")}
               </p>
             </div>
           ) : users.isError ? (
             <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-5 text-center">
               <p className="text-xs text-muted-foreground">
-                Impossible de charger les identités
+                {t("network.followLoadError")}
                 {users.error instanceof Error && users.error.message
                   ? ` — ${users.error.message}`
                   : ""}
                 .
               </p>
               <Button size="sm" variant="outline" onClick={() => void users.refetch()}>
-                Réessayer
+                {t("common.retry")}
               </Button>
             </div>
           ) : (users.data?.length ?? 0) === 0 ? (
             <p className="rounded-lg border border-dashed p-5 text-center text-xs text-muted-foreground">
-              Aucune autre identité enregistrée pour l&apos;instant — elles apparaîtront ici dès
-              leur première publication.
+              {t("network.followEmpty")}
             </p>
           ) : (
             <ul
               className="scrollbar-thin max-h-96 space-y-2 overflow-y-auto pr-1"
-              aria-label="Identités à suivre"
+              aria-label={t("network.followTitle")}
             >
               {users.data?.map((u) => (
                 <li key={u.id} className="flex items-center gap-3 rounded-lg border p-2.5">
@@ -247,13 +253,15 @@ function FollowSuggestions() {
                           variant="outline"
                           className="h-4 px-1 text-[9px] text-muted-foreground"
                         >
-                          démo
+                          {t("network.demoBadge")}
                         </Badge>
                       )}
                     </div>
                     <p className="truncate text-[11px] text-muted-foreground">
                       {u.bio?.trim() ? `${u.bio.trim()} · ` : ""}
-                      {postCount(u)} publication{postCount(u) > 1 ? "s" : ""}
+                      {tp("network.postCount", postCount(u), {
+                        count: fmt.fmtNumber(postCount(u)),
+                      })}
                     </p>
                   </div>
                   <Button
@@ -267,7 +275,9 @@ function FollowSuggestions() {
                       })
                     }
                     aria-label={
-                      u.isFollowing ? `Ne plus suivre ${u.nickname}` : `Suivre ${u.nickname}`
+                      u.isFollowing
+                        ? t("network.unfollowAria", { name: u.nickname })
+                        : t("network.followAria", { name: u.nickname })
                     }
                   >
                     {pendingPub === u.pubkey ? (
@@ -277,7 +287,7 @@ function FollowSuggestions() {
                     ) : (
                       <UserPlus className="size-3.5" aria-hidden="true" />
                     )}
-                    {u.isFollowing ? "Abonné(e)" : "Suivre"}
+                    {u.isFollowing ? t("network.following") : t("network.follow")}
                   </Button>
                 </li>
               ))}
@@ -290,22 +300,19 @@ function FollowSuggestions() {
 }
 
 const PROTOCOL_STATS = [
-  { icon: Hourglass, value: "7", label: "sauts TTL max", sub: "clampé à 5 en zone dense" },
-  { icon: Mail, value: "4 → 8", label: "budget de copies", sub: "courriers spray-and-wait" },
-  { icon: Archive, value: "3", label: "courriers / message", sub: "+ outbox local 24 h" },
-  { icon: Waves, value: "6 h", label: "fenêtre gossip", sub: "historique sync entre pairs" },
+  { icon: Hourglass, value: "7", labelKey: "network.statTtlLabel", subKey: "network.statTtlSub" },
+  { icon: Mail, value: "4 → 8", labelKey: "network.statCopiesLabel", subKey: "network.statCopiesSub" },
+  { icon: Archive, value: "3", labelKey: "network.statCouriersLabel", subKey: "network.statCouriersSub" },
+  { icon: Waves, value: "6 h", labelKey: "network.statGossipLabel", subKey: "network.statGossipSub" },
 ];
 
 export function NetworkView() {
+  const { t } = useI18n();
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-lg font-bold tracking-tight">Le réseau, en direct</h1>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Simulation fidèle des paramètres du protocole BitChat (whitepaper v2.0, domaine
-          public) : inondation contrôlée avec TTL et gigue, courriers « spray-and-wait » pour
-          joindre un pair hors de portée.
-        </p>
+        <h1 className="text-lg font-bold tracking-tight">{t("network.title")}</h1>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t("network.subtitle")}</p>
       </div>
 
       {/* F-12 : le graphe de confiance devient une UI — suivre / ne plus suivre */}
@@ -325,13 +332,13 @@ export function NetworkView() {
 
       {/* Chiffres clés du protocole */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {PROTOCOL_STATS.map(({ icon: Icon, value, label, sub }) => (
-          <Card key={label}>
+        {PROTOCOL_STATS.map(({ icon: Icon, value, labelKey, subKey }) => (
+          <Card key={labelKey}>
             <CardContent className="p-4">
               <Icon className="size-4 text-primary" aria-hidden="true" />
               <p className="mt-2 font-mono text-xl font-bold text-primary">{value}</p>
-              <p className="text-xs font-medium">{label}</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>
+              <p className="text-xs font-medium">{t(labelKey)}</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">{t(subKey)}</p>
             </CardContent>
           </Card>
         ))}
@@ -345,74 +352,59 @@ export function NetworkView() {
               <AccordionTrigger className="text-sm">
                 <span className="flex items-center gap-2">
                   <Waves className="size-4 text-primary" aria-hidden="true" />
-                  Architecture à double transport
+                  {t("network.archiTitle")}
                 </span>
               </AccordionTrigger>
               <AccordionContent className="text-xs leading-relaxed text-muted-foreground">
-                Chaque message tente d&apos;abord le <strong>mesh Bluetooth LE</strong> (portée
-                locale, multi-sauts, zéro infrastructure) puis bascule sur les{" "}
-                <strong>{TRANSPORT_INTERNET_LABEL}</strong> (pont VPS `/api/mesh/bridge` + relay
-                temps réel, canaux géohash) si personne n&apos;est à portée. Le routeur choisit
-                le meilleur transport automatiquement — ici, la file locale « courrier » joue
-                le rôle du store-and-forward.
+                {t("network.archiBodyA")} <strong>mesh Bluetooth LE</strong>{" "}
+                {t("network.archiBodyB")} <strong>{TRANSPORT_INTERNET_LABEL}</strong>{" "}
+                {t("network.archiBodyC")}
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="crypto">
               <AccordionTrigger className="text-sm">
                 <span className="flex items-center gap-2">
                   <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
-                  Chiffrement : Noise XX en session, Noise X hors-ligne
+                  {t("network.cryptoTitle")}
                 </span>
               </AccordionTrigger>
               <AccordionContent className="text-xs leading-relaxed text-muted-foreground">
-                Les pairs en direct établissent une session <strong>Noise XX</strong>
-                (Curve25519, ChaCha20-Poly1305) : authentification mutuelle et confidentialité
-                persistante. Le courrier hors-ligne est scellé en <strong>Noise X</strong> vers
-                la clé statique du destinataire — les relais ne portent que du ciphertext opaque.
-                Cette démo implémente l&apos;équivalent WebCrypto : ECDH P-256 + AES-GCM 256.
+                {t("network.cryptoBodyA")} <strong>Noise XX</strong>
+                {t("network.cryptoBodyB")} <strong>Noise X</strong> {t("network.cryptoBodyC")}
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="store">
               <AccordionTrigger className="text-sm">
                 <span className="flex items-center gap-2">
                   <Archive className="size-4 text-primary" aria-hidden="true" />
-                  Store-and-forward : outbox, courriers, gossip
+                  {t("network.storeTitle")}
                 </span>
               </AccordionTrigger>
               <AccordionContent className="text-xs leading-relaxed text-muted-foreground">
-                Quatre mécanismes couvrent « le destinataire n&apos;est pas là » : l&apos;outbox
-                persistante de l&apos;expéditeur, les <strong>courriers</strong> (3 pairs
-                transporteurs, budget de copies 4→8, tags rotatifs quotidiens), la
-                réconciliation d&apos;historique public par filtres de Golomb (GCS) toutes les
-                15 s, et les boîtes aux lettres {TRANSPORT_INTERNET_LABEL} avec rappel de 24 h.
+                {t("network.storeBodyA")} <strong>{t("network.storeCouriers")}</strong>{" "}
+                {t("network.storeBodyB")} {TRANSPORT_INTERNET_LABEL} {t("network.storeBodyC")}
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="geohash">
               <AccordionTrigger className="text-sm">
                 <span className="flex items-center gap-2">
                   <MapPinned className="size-4 text-primary" aria-hidden="true" />
-                  Canaux géohash : la carte devient un espace social
+                  {t("network.geohashTitle")}
                 </span>
               </AccordionTrigger>
               <AccordionContent className="text-xs leading-relaxed text-muted-foreground">
-                Un géohash encode lat/lng en cellules emboîtables : 7 caractères = un bloc
-                (~150 m), 5 = une ville (~5 km), 2 = un pays. Chaque cellule est un salon
-                public transporté par les relays ; les identités y sont éphémères par zone.
+                {t("network.geohashBody")}
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="meta">
               <AccordionTrigger className="text-sm">
                 <span className="flex items-center gap-2">
                   <Eye className="size-4 text-amber-500" aria-hidden="true" />
-                  Limites honnêtes (métadonnées)
+                  {t("network.metaTitle")}
                 </span>
               </AccordionTrigger>
               <AccordionContent className="text-xs leading-relaxed text-muted-foreground">
-                Le whitepaper le dit lui-même : l&apos;ID pair est stable et les annonces
-                publient les clés en clair — un observateur radio peut suivre un appareil dans
-                l&apos;espace-temps. Les identités rotatives sont listées en « travaux futurs ».
-                Et côté démo : l&apos;ECDH statique-statique des DM n&apos;offre pas de
-                confidentialité persistante (pas de prekeys). Transparence totale.
+                {t("network.metaBody")}
               </AccordionContent>
             </AccordionItem>
           </Accordion>

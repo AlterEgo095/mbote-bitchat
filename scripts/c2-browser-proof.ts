@@ -101,7 +101,11 @@ try {
   // ── E1. deux identités réelles ──
   console.log("[c2-browser] E1 — onboarding A + B");
   ctxA = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxA.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   ctxB = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxB.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   pageA = await ctxA.newPage();
   pageB = await ctxB.newPage();
   captureWire(pageA, "A");

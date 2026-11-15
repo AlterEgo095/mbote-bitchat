@@ -34,6 +34,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { callManager, type CallSnapshot, type CallType } from "@/lib/mbote/webrtc";
+import { useI18n } from "@/lib/mbote/i18n";
 
 function useCall(): CallSnapshot {
   return useSyncExternalStore(
@@ -63,10 +64,11 @@ function useElapsed(startedAt: number | null, active: boolean): string {
   return `${mm}:${ss}`;
 }
 
+/** Clés i18n résolues avec t() au rendu (vague G) — pas de texte FR au niveau module. */
 const TURN_LABEL: Record<CallSnapshot["turnMode"], string> = {
-  relay: "Relais TURN actif (CGNAT)",
-  direct: "Connexion directe",
-  unavailable: "TURN indisponible — connexion directe uniquement",
+  relay: "call.turnRelay",
+  direct: "call.turnDirect",
+  unavailable: "call.turnUnavailable",
 };
 
 const QUALITY_LABEL: Record<CallSnapshot["videoQuality"], string> = {
@@ -109,6 +111,7 @@ function callManagerStream(streamId: string): MediaStream | null {
 
 export function CallView() {
   const call = useCall();
+  const { t } = useI18n();
   const elapsed = useElapsed(call.startedAt, call.state === "active");
   const [expanded, setExpanded] = useState(false);
 
@@ -144,8 +147,10 @@ export function CallView() {
   }
 
   const isRingingIncoming = call.state === "ringing" && call.direction === "incoming";
-  const label = call.peerLabel ?? "Contact";
-  const dialogLabel = isVideo ? `Appel vidéo avec ${label}` : `Appel audio avec ${label}`;
+  const label = call.peerLabel ?? t("call.contact");
+  const dialogLabel = isVideo
+    ? t("call.dialogVideo", { name: label })
+    : t("call.dialogAudio", { name: label });
 
   return (
     <div
@@ -173,9 +178,9 @@ export function CallView() {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{label}</p>
           <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-            {call.state === "dialing" && (isVideo ? "Sonnerie (vidéo)…" : "Sonnerie…")}
-            {isRingingIncoming && (isVideo ? "Appel vidéo entrant" : "Appel entrant")}
-            {call.state === "connecting" && "Connexion…"}
+            {call.state === "dialing" && (isVideo ? t("call.dialingVideo") : t("call.dialing"))}
+            {isRingingIncoming && (isVideo ? t("call.incomingVideo") : t("call.incoming"))}
+            {call.state === "connecting" && t("call.connecting")}
             {call.state === "active" && (
               <>
                 <Volume2 className="size-3" aria-hidden="true" />
@@ -185,7 +190,7 @@ export function CallView() {
                 </span>
               </>
             )}
-            {call.state === "ending" && "Fin…"}
+            {call.state === "ending" && t("call.ending")}
           </p>
         </div>
         <Badge variant="outline" className="shrink-0 gap-1 px-2 py-0 text-[9px]">
@@ -198,7 +203,7 @@ export function CallView() {
             variant="ghost"
             className="size-11"
             onClick={() => setExpanded((v) => !v)}
-            aria-label={expanded ? "Réduire l'appel" : "Agrandir l'appel en plein écran"}
+            aria-label={expanded ? t("call.minimize") : t("call.expand")}
             aria-pressed={expanded}
             data-testid="call-expand"
           >
@@ -225,7 +230,7 @@ export function CallView() {
             playsInline
             autoPlay
             data-testid="remote-video"
-            aria-label={`Vidéo de ${label}`}
+            aria-label={t("call.remoteVideo", { name: label })}
           />
           {/* écran noir + indicateur quand la caméra DISTANTE est coupée */}
           {call.remoteCameraOn === false && (
@@ -236,7 +241,7 @@ export function CallView() {
             >
               <span className="flex items-center gap-2 text-xs text-muted-foreground">
                 <VideoOff className="size-4" aria-hidden="true" />
-                Caméra coupée
+                {t("call.remoteCameraOff")}
               </span>
             </div>
           )}
@@ -249,11 +254,11 @@ export function CallView() {
             autoPlay
             muted
             data-testid="local-video"
-            aria-label="Votre caméra"
+            aria-label={t("call.localCamera")}
           />
           {call.cameraOn === false && (
             <span className="absolute bottom-2 right-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] text-white">
-              Votre caméra est coupée
+              {t("call.yourCameraOff")}
             </span>
           )}
           {/* indicateurs réseau/qualité */}
@@ -264,7 +269,7 @@ export function CallView() {
               data-testid="call-unstable"
             >
               <WifiOff className="size-3" aria-hidden="true" />
-              Connexion instable
+              {t("call.unstable")}
             </span>
           )}
           <span
@@ -278,7 +283,7 @@ export function CallView() {
 
       {/* état TURN — transparence réseau (directive : TURN 不可用提示) */}
       <p className={`flex items-center gap-1 text-[10px] text-muted-foreground ${isVideo && expanded ? "px-4" : "mt-2"}`}>
-        {TURN_LABEL[call.turnMode]}
+        {t(TURN_LABEL[call.turnMode])}
       </p>
       {call.error && (
         <p role="alert" className={`text-[11px] text-destructive ${isVideo && expanded ? "px-4" : "mt-1"}`}>
@@ -294,19 +299,19 @@ export function CallView() {
               variant="destructive"
               className="h-12 rounded-full px-6"
               onClick={onReject}
-              aria-label="Rejeter l'appel"
+              aria-label={t("call.rejectAria")}
             >
               <PhoneOff className="size-5" aria-hidden="true" />
-              Rejeter
+              {t("call.reject")}
             </Button>
             <Button
               size="lg"
               className="h-12 rounded-full px-6"
               onClick={onAccept}
-              aria-label={isVideo ? "Répondre à l'appel vidéo" : "Répondre à l'appel"}
+              aria-label={isVideo ? t("call.acceptVideoAria") : t("call.acceptAria")}
             >
               <PhoneCall className="size-5" aria-hidden="true" />
-              Répondre
+              {t("call.accept")}
             </Button>
           </>
         ) : (
@@ -316,7 +321,7 @@ export function CallView() {
               variant={call.muted ? "destructive" : "outline"}
               className="h-12 rounded-full px-5"
               onClick={onMute}
-              aria-label={call.muted ? "Réactiver le micro" : "Couper le micro"}
+              aria-label={call.muted ? t("call.unmuteAria") : t("call.muteAria")}
               aria-pressed={call.muted}
               data-testid="call-mute"
             >
@@ -325,7 +330,7 @@ export function CallView() {
               ) : (
                 <Mic className="size-5" aria-hidden="true" />
               )}
-              {call.muted ? "Muet" : "Micro"}
+              {call.muted ? t("call.micMuted") : t("call.mic")}
             </Button>
             {isVideo && (
               <Button
@@ -333,7 +338,7 @@ export function CallView() {
                 variant={call.cameraOn ? "outline" : "destructive"}
                 className="h-12 rounded-full px-5"
                 onClick={onCamera}
-                aria-label={call.cameraOn ? "Couper la caméra" : "Réactiver la caméra"}
+                aria-label={call.cameraOn ? t("call.cameraDisableAria") : t("call.cameraEnableAria")}
                 aria-pressed={!call.cameraOn}
                 data-testid="call-camera"
               >
@@ -342,7 +347,7 @@ export function CallView() {
                 ) : (
                   <VideoOff className="size-5" aria-hidden="true" />
                 )}
-                {call.cameraOn ? "Caméra" : "Coupée"}
+                {call.cameraOn ? t("call.camera") : t("call.cameraOffShort")}
               </Button>
             )}
             {isVideo && call.cameraOn && (
@@ -351,7 +356,7 @@ export function CallView() {
                 variant="outline"
                 className="size-12 rounded-full"
                 onClick={onFlip}
-                aria-label="Pivoter la caméra (avant/arrière)"
+                aria-label={t("call.flipAria")}
                 data-testid="call-flip"
               >
                 <Camera className="size-5" aria-hidden="true" />
@@ -364,11 +369,11 @@ export function CallView() {
               onClick={onHangup}
               // F #49 — label-in-name (2.5.3, axe call-actif) : le nom
               // accessible contient le texte visible « Raccrocher ».
-              aria-label="Raccrocher"
+              aria-label={t("call.hangup")}
               data-testid="call-hangup"
             >
               <PhoneOff className="size-5" aria-hidden="true" />
-              Raccrocher
+              {t("call.hangup")}
             </Button>
           </>
         )}
@@ -376,8 +381,8 @@ export function CallView() {
       {(!isVideo || !expanded) && (
         <p className="mt-2 text-center text-[9px] text-muted-foreground">
           {isVideo
-            ? "Vidéo chiffrée DTLS-SRTP de bout en bout — le serveur ne transporte que la signalisation."
-            : "Audio chiffré DTLS-SRTP de bout en bout — le serveur ne transporte que la signalisation."}
+            ? t("call.encryptedVideo")
+            : t("call.encryptedAudio")}
         </p>
       )}
     </div>
@@ -397,11 +402,12 @@ export function CallButton({
   mode?: CallType;
 }) {
   const call = useCall();
+  const { t } = useI18n();
   const busy = call.state !== "idle";
   const onStart = useCallback(() => {
-    callManager.setLabel(peer, peerLabel ?? "Contact");
+    callManager.setLabel(peer, peerLabel ?? t("call.contact"));
     void callManager.startOutgoing(peer, peerLabel, mode);
-  }, [peer, peerLabel, mode]);
+  }, [peer, peerLabel, mode, t]);
   const isVideo = mode === "video";
   return (
     <Button
@@ -412,8 +418,8 @@ export function CallButton({
       onClick={onStart}
       aria-label={
         isVideo
-          ? `Appeler ${peerLabel ?? "ce contact"} en vidéo`
-          : `Appeler ${peerLabel ?? "ce contact"} en audio`
+          ? t("call.startVideoAria", { name: peerLabel ?? t("call.thisContact") })
+          : t("call.startAudioAria", { name: peerLabel ?? t("call.thisContact") })
       }
       data-testid={isVideo ? "call-button-video" : "call-button-audio"}
     >

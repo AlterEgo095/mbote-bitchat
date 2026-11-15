@@ -51,6 +51,8 @@ const browser = await chromium.launch({
 
 try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctx.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   const page = await ctx.newPage();
 
   // ── E1. onboarding réel avec PoW visible ──

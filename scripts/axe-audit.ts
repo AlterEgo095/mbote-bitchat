@@ -194,6 +194,8 @@ async function main(): Promise<void> {
     args: ["--no-sandbox", "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
   });
   const ctxA: BrowserContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxA.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   const pageA = await ctxA.newPage();
 
   // ── 1. Onboarding Alice (PoW visible) ───────────────────────────────────────
@@ -270,6 +272,8 @@ async function main(): Promise<void> {
   // ── 6. Flux DM réel Alice→Bob (2 identités) ────────────────────────────────
   console.log("[5] flux DM Alice↔Bob");
   const ctxB: BrowserContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxB.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   const pageB = await ctxB.newPage();
   try {
     await onboard(pageB, `Bob ${RUN}`);
@@ -429,6 +433,8 @@ async function main(): Promise<void> {
   console.log("[10] responsive 375");
   try {
     const ctxM = await browser.newContext({ viewport: { width: 375, height: 667 } });
+    // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+    await ctxM.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
     const pageM = await ctxM.newPage();
     // MÊME identité que ctxA ? NON — localStorage séparé = nouvel onboarding.
     // Garde D2 : 3 créations/h/IP — on ne dépense PAS une 3e identité ici :
@@ -460,6 +466,8 @@ async function main(): Promise<void> {
   // ── 12. Panneau admin : login TOTP réel + 5 vues ───────────────────────────
   console.log("[11] panneau admin");
   const ctxAdmin = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxAdmin.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   const pageAdm = await ctxAdmin.newPage();
   try {
     await adminLogin(pageAdm, prisma);

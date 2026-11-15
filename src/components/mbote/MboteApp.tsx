@@ -37,6 +37,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/mbote/i18n";
 
 import {
   apiCreatePost,
@@ -125,8 +126,9 @@ import { computePow, exposePowBenchmark } from "@/lib/mbote/pow-client";
 
 /** Squelette de chargement des vues découpées (F-34). */
 function ViewSkeleton() {
+  const { t } = useI18n();
   return (
-    <div className="space-y-3" aria-busy="true" aria-label="Chargement de la vue">
+    <div className="space-y-3" aria-busy="true" aria-label={t("view.skeletonAria")}>
       <Skeleton className="h-24 w-full" />
       <Skeleton className="h-40 w-full" />
       <Skeleton className="h-40 w-full" />
@@ -134,13 +136,16 @@ function ViewSkeleton() {
   );
 }
 
+// i18n vague G : `label` est une CLÉ de catalogue (« nav.* »), résolue via
+// t(label) AU RENDU dans MboteApp (les libellés ne peuvent pas vivre au
+// niveau module — le catalogue dépend de la locale courante).
 const NAV_ITEMS: { key: ViewKey; label: string; icon: typeof Newspaper }[] = [
-  { key: "feed", label: "Fil", icon: Newspaper },
-  { key: "channels", label: "Canaux", icon: MapPinned },
-  { key: "messages", label: "Messages", icon: MessageSquare },
-  { key: "groups", label: "Groupes", icon: UsersRound },
-  { key: "network", label: "Réseau", icon: Radio },
-  { key: "profile", label: "Profil", icon: UserRound },
+  { key: "feed", label: "nav.feed", icon: Newspaper },
+  { key: "channels", label: "nav.channels", icon: MapPinned },
+  { key: "messages", label: "nav.messages", icon: MessageSquare },
+  { key: "groups", label: "nav.groups", icon: UsersRound },
+  { key: "network", label: "nav.network", icon: Radio },
+  { key: "profile", label: "nav.profile", icon: UserRound },
 ];
 
 /** F-14 : allowlist des valeurs acceptées pour le raccourci PWA `?view=…` */
@@ -149,6 +154,7 @@ const VIEW_KEYS: readonly ViewKey[] = ["feed", "channels", "messages", "groups",
 export function MboteApp() {
   const qc = useQueryClient();
   const { resolvedTheme, setTheme } = useTheme();
+  const { t, tp, fmt } = useI18n();
 
   const [mounted, setMounted] = useState(false);
   const [identity, setIdentity] = useState<StoredIdentity | null>(null);
@@ -297,8 +303,8 @@ export function MboteApp() {
           if (isDefinitiveApiError(e)) {
             removeOutbox(item.id);
             setOutbox(loadOutbox());
-            toast.error("Élément rejeté — retiré de la file locale", {
-              description: e instanceof Error ? e.message : "erreur définitive",
+            toast.error(t("banner.rejected"), {
+              description: e instanceof Error ? e.message : t("banner.definitiveError"),
             });
           }
           // sinon : erreur de transport → l'enveloppe reste, reflush plus tard
@@ -306,14 +312,14 @@ export function MboteApp() {
       }
       if (synced > 0) {
         qc.invalidateQueries();
-        toast.success(`${synced} élément(s) synchronisé(s) depuis la file locale`, {
-          description: "Le courrier a rejoint le réseau.",
+        toast.success(tp("banner.outboxSynced", synced), {
+          description: t("banner.outboxSyncedDesc"),
         });
       }
     } finally {
       flushingRef.current = false;
     }
-  }, [qc]);
+  }, [qc, t, tp]);
 
   useEffect(() => {
     if (mounted && isOnline && !forceOffline && outbox.length > 0) {
@@ -410,8 +416,8 @@ export function MboteApp() {
       qc.invalidateQueries({ queryKey: ["dms"] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       if (identity && data.message.recipientKey === identity.pubkey) {
-        toast("🔓 Nouvelle enveloppe chiffrée", {
-          description: "Un message privé t'attend dans Messages.",
+        toast(t("banner.dmNew"), {
+          description: t("banner.dmNewDesc"),
         });
       }
     };
@@ -441,7 +447,7 @@ export function MboteApp() {
       s.off("dm:new", onDm);
       s.off("identity:new", onIdentity);
     };
-  }, [mounted, identity, qc]);
+  }, [mounted, identity, qc, t]);
 
   // ---------- F-33 : abonnement réel aux salles de canal ----------
   // Le relay diffuse post:new vers ["feed", "channel:<geohash>"] mais la
@@ -525,15 +531,17 @@ export function MboteApp() {
           // cause et la conséquence (le serveur refusera la création sans PoW
           // → l'identité restera dans la file courrier).
           setPowProgress(null);
-          toast.warning("Preuve de travail non calculée — publication refusée probable", {
-            description: `${powError instanceof Error ? powError.message : "calcul PoW indisponible"} — l'identité locale reste utilisable ; le serveur exigera la preuve avant de publier ton profil.`,
+          toast.warning(t("banner.powFailed"), {
+            description: t("banner.powFailedDesc", {
+              reason: powError instanceof Error ? powError.message : t("banner.powUnavailable"),
+            }),
           });
         }
         try {
           await apiUpsertIdentity(identityPayload);
           setIdentityPublishError(null);
-          toast.success("Identité créée et publiée", {
-            description: "Tes clés privées ne quitteront jamais cet appareil.",
+          toast.success(t("banner.identityCreated"), {
+            description: t("banner.identityCreatedDesc"),
           });
         } catch (e) {
           enqueueOutbox({ type: "identity", payload: identityPayload });
@@ -543,7 +551,7 @@ export function MboteApp() {
           // profil sera publié au retry ou au retour du réseau (outbox).
           const cause = describeApiError(e);
           setIdentityPublishError(cause);
-          toast.warning("Profil non publié — tes clés locales restent actives", {
+          toast.warning(t("banner.identityUnpublished"), {
             description: cause,
           });
         }
@@ -554,7 +562,7 @@ export function MboteApp() {
         setCreating(false);
       }
     },
-    [qc]
+    [qc, t]
   );
 
   const publish = useCallback(
@@ -579,8 +587,8 @@ export function MboteApp() {
         qc.invalidateQueries({ queryKey: ["feed"] });
         qc.invalidateQueries({ queryKey: ["channels"] });
         qc.invalidateQueries({ queryKey: ["stats"] });
-        toast.success(input.parentId ? "Réponse publiée" : "Publication diffusée", {
-          description: "Signée ECDSA sur ton appareil ✓",
+        toast.success(input.parentId ? t("banner.replyPublished") : t("banner.postPublished"), {
+          description: t("banner.publishedDesc"),
         });
         return;
       }
@@ -598,11 +606,11 @@ export function MboteApp() {
           queuedAt: ts,
         },
       ]);
-      toast.info(input.parentId ? "Réponse mise en file (courrier)" : "Mis en file locale (courrier)", {
-        description: "Le message partira dès le retour du réseau.",
+      toast.info(input.parentId ? t("banner.replyQueued") : t("banner.postQueued"), {
+        description: t("banner.queuedDesc"),
       });
     },
-    [identity, canSend, qc]
+    [identity, canSend, qc, t]
   );
 
   const like = useCallback(
@@ -618,7 +626,7 @@ export function MboteApp() {
           likeProofMessage(identity.pubkey, postId, ts)
         );
       } catch {
-        toast.error("Signature impossible — like non envoyé");
+        toast.error(t("banner.likeSignFailed"));
         return false;
       }
       const payload = { pubkey: identity.pubkey, postId, ts, signature };
@@ -632,25 +640,25 @@ export function MboteApp() {
           // l'état optimiste (l'ancien comportement mettait en outbox une
           // enveloppe condamnée, qui saturait la file de rejets 401).
           if (isDefinitiveApiError(e)) {
-            toast.error("Like refusé", {
-              description: e instanceof Error ? e.message : "rejet du serveur",
+            toast.error(t("banner.likeRejected"), {
+              description: e instanceof Error ? e.message : t("banner.serverRejection"),
             });
             return false;
           }
           // erreur de transport → comportement offline-first : file locale
           enqueueOutbox({ type: "like", payload });
           setOutbox(loadOutbox());
-          toast.info("J'aime mis en file locale (courrier)");
+          toast.info(t("banner.likeQueued"));
           return true;
         }
       } else {
         enqueueOutbox({ type: "like", payload });
         setOutbox(loadOutbox());
-        toast.info("J'aime en file locale — synchronisé plus tard");
+        toast.info(t("banner.likeQueuedOffline"));
         return true;
       }
     },
-    [identity, canSend, qc]
+    [identity, canSend, qc, t]
   );
 
   const publishManaged = useCallback(
@@ -677,10 +685,10 @@ export function MboteApp() {
   const queueDm = useCallback((payload: Record<string, unknown>) => {
     enqueueOutbox({ type: "dm", payload });
     setOutbox(loadOutbox());
-    toast.info("Message mis en file — partira au retour du réseau", {
-      description: "Le courrier chiffré attend dans la file locale, comme chez BitChat.",
+    toast.info(t("banner.dmQueued"), {
+      description: t("banner.dmQueuedDesc"),
     });
-  }, []);
+  }, [t]);
 
   const dismissPending = useCallback((clientRef: string) => {
     setPendingPosts((ps) => ps.filter((p) => p.clientRef !== clientRef));
@@ -706,10 +714,10 @@ export function MboteApp() {
     changeView("feed");
     qc.clear();
     setOnboardingOpen(true);
-    toast.success("Panic wipe exécuté", {
-      description: "Clés, file locale et état local détruits sur cet appareil.",
+    toast.success(t("wipe.done"), {
+      description: t("wipe.doneDesc"),
     });
-  }, [qc, changeView]);
+  }, [qc, changeView, t]);
 
   const openChannel = useCallback((channel: ActiveChannel) => {
     setActiveChannel(channel);
@@ -827,11 +835,11 @@ export function MboteApp() {
               changeView("feed");
               setActiveChannel(null);
             }}
-            aria-label="Accueil Mbote Mesh"
+            aria-label={t("header.homeAria")}
           >
             <Image
               src="/mbote/logo.png"
-              alt="Logo Mbote Mesh"
+              alt={t("header.logoAlt")}
               width={34}
               height={34}
               className="rounded-lg"
@@ -857,10 +865,10 @@ export function MboteApp() {
             ) : (
               <WifiOff className="size-3.5" aria-hidden="true" />
             )}
-            {canSend ? "En ligne" : "Mesh · file locale"}
+            {canSend ? t("common.online") : t("header.meshQueue")}
             {outbox.length > 0 && (
               <span className="flex size-4.5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-amber-950">
-                {outbox.length}
+                {fmt.fmtNumber(outbox.length)}
               </span>
             )}
           </div>
@@ -874,13 +882,13 @@ export function MboteApp() {
                 : "border-muted bg-muted/40 text-muted-foreground"
             )}
             role="status"
-            aria-label="Statut du hub temps réel"
+            aria-label={t("header.realtimeAria")}
           >
             <Radio
               className={cn("size-3.5", realtimeOk && "animate-pulse")}
               aria-hidden="true"
             />
-            {realtimeOk ? `${presence} en direct` : "relay…"}
+            {realtimeOk ? t("header.presenceLive", { count: fmt.fmtNumber(presence) }) : t("header.relay")}
           </div>
 
           {/* D1 : recherche globale (fil public serveur + DM local) */}
@@ -901,16 +909,16 @@ export function MboteApp() {
                 onCheckedChange={(v) => {
                   setForceOffline(v);
                   saveForceOffline(v);
-                  if (!v) toast.success("Réseau rétabli", { description: "La file locale va se synchroniser." });
-                  else toast.info("Mode mesh activé", { description: "Les publications attendent en file locale, comme des courriers." });
+                  if (!v) toast.success(t("banner.networkRestored"), { description: t("banner.networkRestoredDesc") });
+                  else toast.info(t("banner.meshOn"), { description: t("banner.meshOnDesc") });
                 }}
-                aria-label="Simuler une coupure réseau (mode mesh)"
+                aria-label={t("header.meshAria")}
               />
               <Label
                 htmlFor="mesh-mode"
                 className="hidden cursor-pointer text-[11px] text-muted-foreground md:inline"
               >
-                Mode mesh
+                {t("header.meshMode")}
               </Label>
             </div>
 
@@ -920,7 +928,7 @@ export function MboteApp() {
               size="icon"
               className="size-9"
               onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-              aria-label="Basculer le thème clair/sombre"
+              aria-label={t("header.themeAria")}
             >
               {resolvedTheme === "dark" ? (
                 <Sun className="size-4" aria-hidden="true" />
@@ -936,7 +944,7 @@ export function MboteApp() {
                   {/* a11y (2.5.3) : les initiales affichées par l'avatar sont le
                       texte visible — incluses telles quelles dans le nom (une
                       parenthèse casse la correspondance de mot d'axe). */}
-                  <button className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Menu de mon identité - ${identity.nickname.slice(0, 2).toUpperCase()}`}>
+                  <button className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={t("header.identityMenuAria", { initials: identity.nickname.slice(0, 2).toUpperCase() })}>
                     <MboteAvatar pubkey={identity.pubkey} nickname={identity.nickname} size={34} />
                   </button>
                 </DropdownMenuTrigger>
@@ -947,7 +955,7 @@ export function MboteApp() {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => changeView("profile")}>
                     <UserRound className="size-4" aria-hidden="true" />
-                    Mon profil
+                    {t("header.menuProfile")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => {
@@ -956,7 +964,7 @@ export function MboteApp() {
                     }}
                   >
                     <WifiOff className="size-4" aria-hidden="true" />
-                    Activer le mode mesh
+                    {t("header.menuMeshOn")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -964,13 +972,13 @@ export function MboteApp() {
                     className="text-destructive focus:text-destructive"
                   >
                     <Flame className="size-4" aria-hidden="true" />
-                    Panic wipe
+                    {t("header.menuPanicWipe")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
               <Button size="sm" className="h-9" onClick={() => setOnboardingOpen(true)}>
-                Créer mon identité
+                {t("cta.createIdentity")}
               </Button>
             )}
           </div>
@@ -986,10 +994,10 @@ export function MboteApp() {
           className="mx-auto mt-4 flex w-full max-w-6xl items-start justify-between gap-4 rounded-lg border border-amber-400 bg-amber-100 px-4 py-3 text-sm text-amber-950"
         >
           <div className="min-w-0">
-            <p className="font-semibold">Profil non publié — tes clés locales restent actives</p>
+            <p className="font-semibold">{t("banner.identityUnpublished")}</p>
             <p className="mt-0.5 break-words">{identityPublishError}</p>
             <p className="mt-0.5 text-xs text-amber-900">
-              Le profil rejoindra le réseau dès la publication réussie (bouton ci-contre ou retour du réseau).
+              {t("banner.identityUnpublishedHint")}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -1002,10 +1010,10 @@ export function MboteApp() {
                 });
               }}
             >
-              Réessayer la publication
+              {t("cta.retryPublish")}
             </Button>
             <Button size="sm" variant="ghost" className="h-11" onClick={() => setIdentityPublishError(null)}>
-              Masquer
+              {t("cta.hide")}
             </Button>
           </div>
         </div>
@@ -1015,7 +1023,7 @@ export function MboteApp() {
       <div className="mx-auto flex w-full max-w-6xl flex-1 gap-6 px-4 py-6 pb-24 lg:pb-6">
         {/* navigation latérale */}
         <aside className="sticky top-20 hidden h-fit w-56 shrink-0 space-y-4 lg:block">
-          <nav aria-label="Navigation principale" className="space-y-1">
+          <nav aria-label={t("nav.mainAria")} className="space-y-1">
             {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
@@ -1029,10 +1037,10 @@ export function MboteApp() {
                 )}
               >
                 <Icon className="size-4.5" aria-hidden="true" />
-                {label}
+                {t(label)}
                 {key === "messages" && unreadTotal > 0 && (
                   <span className="ml-auto flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
-                    {unreadTotal}
+                    {fmt.fmtNumber(unreadTotal)}
                   </span>
                 )}
               </button>
@@ -1042,7 +1050,7 @@ export function MboteApp() {
           <Card>
             <CardContent className="p-3">
               <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                Canaux actifs
+                {t("nav.activeChannels")}
               </p>
               <div className="space-y-1">
                 {(topChannels.data?.channels ?? []).slice(0, 4).map((ch) => (
@@ -1059,12 +1067,12 @@ export function MboteApp() {
                   >
                     <MapPinned className="size-3 shrink-0 text-primary" aria-hidden="true" />
                     <span className="truncate">#{ch.geohash}</span>
-                    <span className="ml-auto shrink-0 text-[10px]">{ch.postCount}</span>
+                    <span className="ml-auto shrink-0 text-[10px]">{fmt.fmtNumber(ch.postCount)}</span>
                   </button>
                 ))}
                 {(topChannels.data?.channels.length ?? 0) === 0 && (
                   <p className="px-1.5 py-1 text-[11px] text-muted-foreground">
-                    Aucun canal encore.
+                    {t("nav.noChannels")}
                   </p>
                 )}
               </div>
@@ -1075,28 +1083,28 @@ export function MboteApp() {
             <CardContent className="p-3">
               <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
                 <Users className="size-3" aria-hidden="true" />
-                Réseau
+                {t("nav.network")}
               </p>
               <div className="space-y-0.5 text-[11px] text-muted-foreground">
                 <p>
-                  <span className="font-mono font-semibold text-primary">{realtimeOk ? presence : "—"}</span>{" "}
-                  identités en direct
+                  <span className="font-mono font-semibold text-primary">{realtimeOk ? fmt.fmtNumber(presence) : "—"}</span>{" "}
+                  {t("view.liveIdentities")}
                 </p>
                 <p>
-                  <span className="font-mono font-semibold text-foreground">{stats.data?.users ?? "—"}</span>{" "}
-                  identités enregistrées
+                  <span className="font-mono font-semibold text-foreground">{stats.data?.users != null ? fmt.fmtNumber(stats.data.users) : "—"}</span>{" "}
+                  {t("view.registeredIdentities")}
                 </p>
                 <p>
-                  <span className="font-mono font-semibold text-foreground">{stats.data?.posts ?? "—"}</span>{" "}
-                  publications
+                  <span className="font-mono font-semibold text-foreground">{stats.data?.posts != null ? fmt.fmtNumber(stats.data.posts) : "—"}</span>{" "}
+                  {t("view.posts")}
                 </p>
                 <p>
-                  <span className="font-mono font-semibold text-foreground">{stats.data?.channels ?? "—"}</span>{" "}
-                  canaux
+                  <span className="font-mono font-semibold text-foreground">{stats.data?.channels != null ? fmt.fmtNumber(stats.data.channels) : "—"}</span>{" "}
+                  {t("view.channels")}
                 </p>
                 <p>
-                  <span className="font-mono font-semibold text-foreground">{stats.data?.dms ?? "—"}</span>{" "}
-                  enveloppes DM
+                  <span className="font-mono font-semibold text-foreground">{stats.data?.dms != null ? fmt.fmtNumber(stats.data.dms) : "—"}</span>{" "}
+                  {t("view.dmEnvelopes")}
                 </p>
               </div>
             </CardContent>
@@ -1113,8 +1121,8 @@ export function MboteApp() {
       <footer className="mt-auto border-t bg-background/60">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-1.5 px-4 py-4 text-center text-[11px] text-muted-foreground">
           <p>
-            <span className="font-semibold text-foreground">Mbote Mesh</span> — preuve de
-            concept fullstack inspirée du protocole{" "}
+            <span className="font-semibold text-foreground">Mbote Mesh</span>{" "}
+            {t("view.conceptPrefix")}{" "}
             <a
               href="https://github.com/permissionlesstech/bitchat"
               target="_blank"
@@ -1123,16 +1131,19 @@ export function MboteApp() {
             >
               BitChat
             </a>{" "}
-            (domaine public) · déployable sur VPS en un conteneur.
+            {t("view.conceptSuffix")}
           </p>
           <p className="flex flex-wrap items-center justify-center gap-x-2">
             <span>
-              {stats.data?.users ?? "—"} identités · {stats.data?.posts ?? "—"} publications ·{" "}
-              {stats.data?.channels ?? "—"} canaux · {stats.data?.dms ?? "—"} enveloppes
-              chiffrées
+              {t("view.footerStats", {
+                users: stats.data?.users != null ? fmt.fmtNumber(stats.data.users) : "—",
+                posts: stats.data?.posts != null ? fmt.fmtNumber(stats.data.posts) : "—",
+                channels: stats.data?.channels != null ? fmt.fmtNumber(stats.data.channels) : "—",
+                dms: stats.data?.dms != null ? fmt.fmtNumber(stats.data.dms) : "—",
+              })}
             </span>
             <Badge variant="outline" className="border-primary/40 px-1.5 py-0 text-[9px] text-primary">
-              zéro compte · zéro numéro
+              {t("view.noAccounts")}
             </Badge>
           </p>
         </div>
@@ -1141,7 +1152,7 @@ export function MboteApp() {
       {/* ---------- navigation mobile ---------- */}
       <nav
         className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur lg:hidden"
-        aria-label="Navigation mobile"
+        aria-label={t("nav.mobileAria")}
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="grid grid-cols-5">
@@ -1156,10 +1167,10 @@ export function MboteApp() {
               )}
             >
               <Icon className="size-5" aria-hidden="true" />
-              {label}
+              {t(label)}
               {key === "messages" && unreadTotal > 0 && (
                 <span className="absolute right-3 top-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
-                  {unreadTotal}
+                  {fmt.fmtNumber(unreadTotal)}
                 </span>
               )}
             </button>
@@ -1174,23 +1185,20 @@ export function MboteApp() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="size-5 text-destructive" aria-hidden="true" />
-              Confirmer le panic wipe ?
+              {t("wipe.confirmTitle")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Clés privées, identité, file « courrier » et préférences locales seront
-              détruites sur cet appareil. Tes publications déjà diffusées sur le serveur
-              resteront (publiques par nature) — mais plus personne ne pourra prouver
-              qu&apos;il détient encore ta clé.
+              {t("wipe.confirmDesc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => void doPanicWipe()}
               className="bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive"
             >
               <Flame className="size-4" aria-hidden="true" />
-              Effacer définitivement
+              {t("wipe.confirmAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1209,6 +1217,7 @@ export function MboteApp() {
 }
 
 function IdentityCta({ onOpen }: { onOpen: () => void }) {
+  const { t } = useI18n();
   return (
     <Card className="border-dashed">
       <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
@@ -1216,14 +1225,13 @@ function IdentityCta({ onOpen }: { onOpen: () => void }) {
           <UserRound className="size-5 text-primary" aria-hidden="true" />
         </div>
         <div>
-          <p className="text-sm font-semibold">Une identité locale est requise</p>
+          <p className="text-sm font-semibold">{t("cta.identityRequired")}</p>
           <p className="mt-0.5 max-w-sm text-xs text-muted-foreground">
-            Les messages privés sont chiffrés avec TA clé privée, qui ne quitte jamais cet
-            appareil. Générons-la en une seconde.
+            {t("cta.identityRequiredDesc")}
           </p>
         </div>
         <Button size="sm" onClick={onOpen}>
-          Créer mon identité
+          {t("cta.createIdentity")}
         </Button>
       </CardContent>
     </Card>

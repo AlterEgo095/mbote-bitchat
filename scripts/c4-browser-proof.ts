@@ -58,8 +58,14 @@ try {
   // ── N1. trois identités réelles ──
   console.log("[c4-browser] N1 — onboarding A + B + C");
   const ctxA = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxA.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   const ctxB = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxB.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   const ctxC = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxC.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   pageA = await ctxA.newPage();
   pageB = await ctxB.newPage();
   pageC = await ctxC.newPage();

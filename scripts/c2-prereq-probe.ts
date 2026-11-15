@@ -86,6 +86,8 @@ const browser = await chromium.launch({
   ],
 });
 const page = await (await browser.newContext()).newPage();
+// G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+await page.context().addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
 page.on("pageerror", (e) => console.error("[probe pageerror]", e.message.slice(0, 200)));
 
 // navigator.mediaDevices n'existe QUE dans un contexte sécurisé — sert une

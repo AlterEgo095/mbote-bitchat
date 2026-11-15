@@ -55,6 +55,8 @@ const browser = await chromium.launch({
 });
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctx.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   // camera + microphone : le fix B4 (camera=(self)) doit les laisser passer
   await ctx.grantPermissions(["camera", "microphone"], { origin: BASE_URL });
   const page = await ctx.newPage();

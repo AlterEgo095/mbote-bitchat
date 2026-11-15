@@ -182,7 +182,11 @@ try {
   // ── E1. deux identités réelles ──
   console.log("[c3-browser] E1 — onboarding A + B");
   const ctxA = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxA.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   const ctxB = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxB.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   pageA = await ctxA.newPage();
   pageB = await ctxB.newPage();
   captureWire(pageA, "A");
@@ -410,7 +414,11 @@ try {
   // ── F1. FALLBACK : caméra refusée → appel audio seul établi ──
   console.log("[c3-browser] F1 — caméra refusée → fallback audio seul");
   const ctxA2 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxA2.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   const ctxB2 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxB2.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   pageA2 = await ctxA2.newPage();
   pageB2 = await ctxB2.newPage();
   denyCamera(pageA2);

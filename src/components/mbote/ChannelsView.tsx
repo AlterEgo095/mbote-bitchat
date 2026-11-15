@@ -2,8 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
 import { MapPin, Plus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +17,7 @@ import {
 import { apiFetchChannels } from "@/lib/mbote/api";
 import { CITY_PRESETS } from "@/lib/mbote/constants";
 import { encodeGeohash, precisionLabel, precisionRadius } from "@/lib/mbote/geohash";
+import { useI18n } from "@/lib/mbote/i18n";
 import type { ActiveChannel, ChannelAgg } from "@/lib/mbote/types";
 
 const PRECISIONS = [7, 6, 5, 4, 2];
@@ -28,6 +27,7 @@ export function ChannelsView({
 }: {
   onOpenChannel: (channel: ActiveChannel) => void;
 }) {
+  const { t, tp, fmt } = useI18n();
   const [precisionFilter, setPrecisionFilter] = useState<number | null>(null);
 
   const channels = useQuery({
@@ -49,27 +49,26 @@ export function ChannelsView({
 
   const labelFor = (ch: ChannelAgg) =>
     labelMap.get(ch.geohash) ??
-    (ch.precision <= 2 ? `Région #${ch.geohash}` : `Zone inconnue · #${ch.geohash}`);
+    (ch.precision <= 2
+      ? t("channels.regionLabel", { geohash: ch.geohash })
+      : t("channels.unknownZone", { geohash: ch.geohash }));
 
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-lg font-bold tracking-tight">Canaux géographiques</h1>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Chaque cellule géohash est un salon public : bloc (~150 m), quartier (~1,2 km),
-          ville (~5 km), province (~40 km), pays (~800 km) — comme chez BitChat.
-        </p>
+        <h1 className="text-lg font-bold tracking-tight">{t("channels.title")}</h1>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t("channels.subtitle")}</p>
       </div>
 
       {/* Filtre précision */}
-      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrer par précision">
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("channels.filterAria")}>
         <Button
           size="sm"
           variant={precisionFilter === null ? "default" : "outline"}
           onClick={() => setPrecisionFilter(null)}
           className="h-8"
         >
-          Tous
+          {t("channels.filterAll")}
         </Button>
         {PRECISIONS.map((p) => (
           <Button
@@ -90,7 +89,7 @@ export function ChannelsView({
 
       {/* Grille des canaux */}
       {channels.isLoading ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Chargement des canaux">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label={t("channels.loading")}>
           {Array.from({ length: 6 }).map((_, i) => (
             <Card key={i}>
               <CardContent className="space-y-3 p-4">
@@ -105,10 +104,9 @@ export function ChannelsView({
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center gap-2 p-8 text-center">
             <MapPin className="size-8 text-muted-foreground" aria-hidden="true" />
-            <p className="text-sm font-semibold">Aucun canal actif à cette précision</p>
+            <p className="text-sm font-semibold">{t("channels.emptyTitle")}</p>
             <p className="max-w-sm text-xs text-muted-foreground">
-              Utilise le créateur de canal ci-dessus, puis publie le premier message — le canal
-              naîtra instantanément.
+              {t("channels.emptyHint")}
             </p>
           </CardContent>
         </Card>
@@ -149,26 +147,30 @@ export function ChannelsView({
                     </span>
                     <span className="inline-flex items-center gap-1">
                       <Users className="size-3" aria-hidden="true" />
-                      {ch.participantCount} voix
+                      {tp("channels.voices", ch.participantCount, {
+                        count: fmt.fmtNumber(ch.participantCount),
+                      })}
                     </span>
                   </div>
 
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <span className="text-[11px] text-muted-foreground">
-                      {ch.postCount} message{ch.postCount > 1 ? "s" : ""} · actif{" "}
-                      {formatDistanceToNow(new Date(ch.lastAt), {
-                        addSuffix: true,
-                        locale: fr,
+                      {tp("channels.activeMeta", ch.postCount, {
+                        count: fmt.fmtNumber(ch.postCount),
+                        when: fmt.fmtRelative(ch.lastAt),
                       })}
                     </span>
                     <Button
                       size="sm"
                       variant="secondary"
                       className="h-7 text-[11px]"
-                      aria-label={`Ouvrir le canal ${labelFor(ch)} (#${ch.geohash})`}
+                      aria-label={t("channels.openAria", {
+                        label: labelFor(ch),
+                        geohash: ch.geohash,
+                      })}
                       onClick={open}
                     >
-                      Ouvrir
+                      {t("channels.open")}
                     </Button>
                   </div>
                 </CardContent>
@@ -182,6 +184,7 @@ export function ChannelsView({
 }
 
 function CreateChannelCard({ onOpenChannel }: { onOpenChannel: (c: ActiveChannel) => void }) {
+  const { t } = useI18n();
   const [city, setCity] = useState<string>(CITY_PRESETS[0].name);
   const [precision, setPrecision] = useState<string>("5");
 
@@ -194,12 +197,12 @@ function CreateChannelCard({ onOpenChannel }: { onOpenChannel: (c: ActiveChannel
       <CardContent className="p-4">
         <div className="flex items-center gap-2">
           <Plus className="size-4 text-primary" aria-hidden="true" />
-          <p className="text-sm font-semibold">Créer / rejoindre un canal</p>
+          <p className="text-sm font-semibold">{t("channels.createTitle")}</p>
         </div>
         <div className="mt-3 grid gap-2.5 sm:grid-cols-[1fr_auto_auto]">
           <Select value={city} onValueChange={setCity}>
-            <SelectTrigger aria-label="Choisir la ville" className="h-11">
-              <SelectValue placeholder="Ville" />
+            <SelectTrigger aria-label={t("channels.cityAria")} className="h-11">
+              <SelectValue placeholder={t("channels.cityPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
               {CITY_PRESETS.map((c) => (
@@ -210,8 +213,8 @@ function CreateChannelCard({ onOpenChannel }: { onOpenChannel: (c: ActiveChannel
             </SelectContent>
           </Select>
           <Select value={precision} onValueChange={setPrecision}>
-            <SelectTrigger aria-label="Choisir la précision" className="h-11 w-full sm:w-40">
-              <SelectValue placeholder="Précision" />
+            <SelectTrigger aria-label={t("channels.precisionAria")} className="h-11 w-full sm:w-40">
+              <SelectValue placeholder={t("channels.precisionPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
               {PRECISIONS.map((p) => (
@@ -231,7 +234,7 @@ function CreateChannelCard({ onOpenChannel }: { onOpenChannel: (c: ActiveChannel
               })
             }
           >
-            Ouvrir <span className="font-mono">#{geohash}</span>
+            {t("channels.open")} <span className="font-mono">#{geohash}</span>
           </Button>
         </div>
       </CardContent>

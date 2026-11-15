@@ -22,6 +22,7 @@ import { Film, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { downloadImage, downloadVideoNote, sessionCekFor, MediaClientError } from "@/lib/mbote/media-client";
 import { signPayload } from "@/lib/mbote/crypto";
+import { useI18n } from "@/lib/mbote/i18n";
 
 /** Référence de la vignette dans le dm2 E2EE (image B2 complète). */
 export interface VideoThumbRef {
@@ -32,10 +33,11 @@ export interface VideoThumbRef {
   objectKey: string;
 }
 
-function humanBytes(n: number): string {
-  if (n < 1024) return `${n} o`;
-  if (n < 1048576) return `${(n / 1024).toFixed(0)} Ko`;
-  return `${(n / 1048576).toFixed(1)} Mo`;
+/** Octets humanisés — unités localisées via les clés video.bytes/kb/mb (t passé au rendu). */
+function humanBytes(n: number, t: (key: string, vars?: Record<string, string | number>) => string): string {
+  if (n < 1024) return t("video.bytes", { value: n });
+  if (n < 1048576) return t("video.kb", { value: (n / 1024).toFixed(0) });
+  return t("video.mb", { value: (n / 1048576).toFixed(1) });
 }
 
 export interface VideoBubbleProps {
@@ -55,6 +57,7 @@ export function VideoBubble({ media, thumb, durationMs, mine, me, signPriv }: Vi
   const [open, setOpen] = useState(false);
   const [loadingVideo, setLoadingVideo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { t, tp } = useI18n();
 
   // 1. vignette : download image B2 (lazy — même chemin que les bulles image)
   useEffect(() => {
@@ -104,10 +107,10 @@ export function VideoBubble({ media, thumb, durationMs, mine, me, signPriv }: Vi
     } catch (e) {
       setError(
         e instanceof MediaClientError && e.code === "download-failed" && e.message.includes("magic-bytes")
-          ? "Vidéo refusée — le contenu ne correspond pas au type annoncé (protection MIME spoofing)."
+          ? t("video.errorSpoofing")
           : e instanceof Error && e.message.includes("magic-bytes")
-            ? "Vidéo refusée — le contenu ne correspond pas au type annoncé (protection MIME spoofing)."
-            : "Vidéo indéchiffrable ou indisponible (CEK absent, objet altéré, réseau)."
+            ? t("video.errorSpoofing")
+            : t("video.errorUnavailable")
       );
     } finally {
       setLoadingVideo(false);
@@ -129,13 +132,13 @@ export function VideoBubble({ media, thumb, durationMs, mine, me, signPriv }: Vi
         type="button"
         onClick={() => void openPlayer()}
         className="relative block overflow-hidden rounded-lg"
-        aria-label={`Vidéo reçue${secs ? ` — ${secs} s` : ""} — ${humanBytes(media.bytes)} (${media.mediaType}). Lire`}
+        aria-label={`${t("video.received")}${secs ? ` — ${tp("video.seconds", secs)}` : ""} — ${humanBytes(media.bytes, t)} (${media.mediaType}). ${t("video.play")}`}
       >
         {thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- blob local déchiffré client, pas d'optimisation possible
           <img
             src={thumbUrl}
-            alt={`Vignette vidéo (${humanBytes(media.bytes)})`}
+            alt={t("video.thumbAlt", { size: humanBytes(media.bytes, t) })}
             className="max-h-44 w-auto max-w-[280px] rounded-lg object-cover"
             loading="lazy"
           />
@@ -160,7 +163,7 @@ export function VideoBubble({ media, thumb, durationMs, mine, me, signPriv }: Vi
         </span>
         {secs !== null && (
           <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white tabular-nums">
-            {secs} s
+            {tp("video.seconds", secs)}
           </span>
         )}
       </button>
@@ -170,11 +173,11 @@ export function VideoBubble({ media, thumb, durationMs, mine, me, signPriv }: Vi
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm">
               <Film className="size-4 text-primary" aria-hidden="true" />
-              Vidéo chiffrée · {humanBytes(media.bytes)} · {media.mediaType}
-              {secs !== null ? ` · ${secs} s` : ""}
+              {t("video.encryptedTitle")} · {humanBytes(media.bytes, t)} · {media.mediaType}
+              {secs !== null ? ` · ${tp("video.seconds", secs)}` : ""}
             </DialogTitle>
             <DialogDescription>
-              Déchiffrée localement (AES-256-GCM) — magic bytes vidéo vérifiés avant rendu.
+              {t("video.dialogDescription")}
             </DialogDescription>
           </DialogHeader>
           {error ? (
@@ -187,12 +190,12 @@ export function VideoBubble({ media, thumb, durationMs, mine, me, signPriv }: Vi
               controls
               preload="metadata"
               className="max-h-[70vh] w-full rounded-lg bg-black"
-              aria-label="Lecteur vidéo — contrôles natifs"
+              aria-label={t("video.playerAria")}
             />
           ) : (
             <div className="flex h-56 items-center justify-center gap-2 rounded-lg bg-muted text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              Téléchargement + déchiffrement ({humanBytes(media.bytes)})…
+              {t("video.loading", { size: humanBytes(media.bytes, t) })}
             </div>
           )}
         </DialogContent>

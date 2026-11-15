@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MAX_POST_LENGTH } from "@/lib/mbote/constants";
 import { describeApiError } from "@/lib/mbote/api";
 import { precisionLabel } from "@/lib/mbote/geohash";
+import { useI18n } from "@/lib/mbote/i18n";
 
 interface ComposerProps {
   canPost: boolean;
@@ -32,6 +33,7 @@ export function Composer({
   initialText,
   onSubmit,
 }: ComposerProps) {
+  const { t, fmt } = useI18n();
   const [text, setText] = useState(initialText ?? "");
   const remaining = MAX_POST_LENGTH - text.length;
   const valid = text.trim().length > 0 && remaining >= 0;
@@ -62,7 +64,7 @@ export function Composer({
       className={`rounded-xl border bg-card p-4 ${
         forceOffline && canPost ? "border-amber-500/40" : "border-border"
       }`}
-      aria-label="Composer une publication"
+      aria-label={t("composer.aria")}
     >
       {channelGeohash && (
         <div className="mb-2.5 flex flex-wrap items-center gap-2">
@@ -91,14 +93,14 @@ export function Composer({
           }}
           placeholder={
             channelGeohash
-              ? `Écris dans le canal ${channelGeohash}…`
-              : "Quoi de neuf ? Ton message sera signé sur ton appareil…"
+              ? t("composer.placeholderChannel", { geohash: channelGeohash })
+              : t("composer.placeholder")
           }
           rows={3}
           maxLength={MAX_POST_LENGTH}
           disabled={!canPost}
           className="min-h-[64px] resize-none text-sm"
-          aria-label="Message à publier"
+          aria-label={t("composer.textareaAria")}
         />
       </div>
 
@@ -107,11 +109,11 @@ export function Composer({
           {forceOffline && canPost ? (
             <span className="inline-flex items-center gap-1 text-[11px] text-amber-500">
               <Mail className="size-3.5" aria-hidden="true" />
-              mode mesh : mise en file locale (courrier)
+              {t("composer.meshHint")}
             </span>
           ) : (
             <span className="hidden text-[11px] text-muted-foreground sm:inline">
-              Ctrl+Entrée pour publier · signature ECDSA locale
+              {t("composer.ctrlHint")}
             </span>
           )}
         </div>
@@ -122,7 +124,7 @@ export function Composer({
             }`}
             aria-live="polite"
           >
-            {remaining}
+            {fmt.fmtNumber(remaining)}
           </span>
           <Button onClick={submit} disabled={!canPost || !valid || submitting} className="h-9">
             {submitting ? (
@@ -132,7 +134,7 @@ export function Composer({
             ) : (
               <Send className="size-4" aria-hidden="true" />
             )}
-            {forceOffline && canPost ? "Mettre en file" : "Publier"}
+            {forceOffline && canPost ? t("composer.queue") : t("composer.publish")}
           </Button>
         </div>
       </div>

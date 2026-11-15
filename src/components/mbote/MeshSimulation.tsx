@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { useI18n } from '@/lib/mbote/i18n';
 import { Mail, Pause, Play, Radio, RotateCcw, Signal, Zap } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -160,6 +161,7 @@ interface Hud {
   reachedPct: number;
   maxHops: number;
   packets: number;
+  winHops: number; // sauts de la copie gagnante (résout la note « livrée »)
   courierActive: boolean;
   hasRun: boolean;
   copies: number;
@@ -592,7 +594,8 @@ function checkCourierLost(sim: SimState): void {
   if (sim.envelopes.length > 0) return;
   sim.courier.active = false;
   sim.courier.lost = true;
-  sim.courier.note = '✗ Enveloppe perdue — TTL épuisé ou destination injoignable';
+  // i18n : la note stocke la CLEF, résolue au rendu HUD via t()
+  sim.courier.note = 'mesh.noteLostTtl';
   sim.courier.noteUntil = sim.time + 4500;
 }
 
@@ -613,12 +616,9 @@ function onEnvelopeArrive(sim: SimState, env: Envelope, idx: number): void {
     sim.courier.delivered = true;
     sim.courier.active = false;
     sim.courier.winHops = env.hop;
-    const copies = sim.courier.copies;
-    const copiesTxt =
-      copies > 0
-        ? `${copies} copie${copies > 1 ? 's' : ''} émise${copies > 1 ? 's' : ''}`
-        : 'sans duplication';
-    sim.courier.note = `✓ Enveloppe livrée en ${env.hop} saut${env.hop > 1 ? 's' : ''} — ${copiesTxt}`;
+    // i18n : la note stocke la CLEF ; {count} (sauts) et {copies} sont résolus
+    // au rendu HUD via tp()/t() (winHops et copies sont copiés dans le HUD).
+    sim.courier.note = 'mesh.noteDelivered';
     sim.courier.noteUntil = t + 4500;
     sim.pulses.push({ x: node.x, y: node.y, at: t });
     sim.envelopes.splice(idx, 1);
@@ -702,7 +702,8 @@ function triggerCourier(sim: SimState, ttl: number): void {
   if (first < 0) {
     sim.courier.active = false;
     sim.courier.lost = true;
-    sim.courier.note = '✗ Enveloppe perdue — destination injoignable';
+    // i18n : la note stocke la CLEF, résolue au rendu HUD via t()
+    sim.courier.note = 'mesh.noteLostUnreachable';
     sim.courier.noteUntil = t + 4500;
     return;
   }
@@ -767,7 +768,11 @@ function stepSim(
 // ---------------------------------------------------------------------------
 // Rendu Canvas 2D
 // ---------------------------------------------------------------------------
-function drawSim(ctx: CanvasRenderingContext2D, sim: SimState): void {
+function drawSim(
+  ctx: CanvasRenderingContext2D,
+  sim: SimState,
+  translate: (key: string) => string
+): void {
   const { w, h, time: t, nodes, edges } = sim;
   ctx.clearRect(0, 0, w, h);
 
@@ -919,7 +924,11 @@ function drawSim(ctx: CanvasRenderingContext2D, sim: SimState): void {
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = 'rgba(245,158,11,0.95)';
-      ctx.fillText(n.srcGlow ? 'Départ' : 'Arrivée', n.x, n.y - 15);
+      ctx.fillText(
+        n.srcGlow ? translate('mesh.canvasSrc') : translate('mesh.canvasDest'),
+        n.x,
+        n.y - 15
+      );
     }
   }
 
@@ -1004,6 +1013,7 @@ const INITIAL_HUD: Hud = {
   reachedPct: 0,
   maxHops: 0,
   packets: 0,
+  winHops: 0,
   courierActive: false,
   hasRun: false,
   copies: 0,
@@ -1024,6 +1034,7 @@ function snapshotHud(sim: SimState): Hud {
     reachedPct: pct,
     maxHops: sim.flood.maxHops,
     packets: sim.transits.length + sim.relays.length,
+    winHops: sim.courier.winHops,
     courierActive: sim.courier.active,
     hasRun: sim.courier.startedAt > 0,
     copies: sim.courier.copies,
@@ -1041,6 +1052,7 @@ function hudEqual(a: Hud, b: Hud): boolean {
     a.reachedPct === b.reachedPct &&
     a.maxHops === b.maxHops &&
     a.packets === b.packets &&
+    a.winHops === b.winHops &&
     a.courierActive === b.courierActive &&
     a.hasRun === b.hasRun &&
     a.copies === b.copies &&
@@ -1088,6 +1100,7 @@ function createSim(w: number, h: number): SimState {
 // Composant
 // ---------------------------------------------------------------------------
 export default function MeshSimulation({ className }: MeshSimulationProps) {
+  const { t, tp } = useI18n();
   const [paused, setPaused] = useState(false);
   const [nodeCount, setNodeCount] = useState(42);
   const [ttl, setTtl] = useState(7);
@@ -1184,7 +1197,7 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
       // La pause fige l'horloge simulée (le rendu continue, figé).
       if (!pausedRef.current) sim.time += dt;
       stepSim(sim, dt, { paused: pausedRef.current, ttl: ttlRef.current });
-      drawSim(ctx, sim);
+      drawSim(ctx, sim, t);
 
       if (sim.time - sim.lastHudAt >= HUD_INTERVAL_MS) {
         sim.lastHudAt = sim.time;
@@ -1194,7 +1207,7 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [t]);
 
   const handleFlood = useCallback((): void => {
     const sim = simRef.current;
@@ -1236,7 +1249,7 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
         <canvas
           ref={canvasRef}
           role="img"
-          aria-label="Simulation animée d'un réseau maillé sans fil Mbote : des paquets émeraude inondent le réseau de nœud en nœud avec une durée de vie TTL, et des enveloppes ambre sont livrées de la source vers la destination en mode courrier. Les boutons sous le canevas permettent de lancer, mettre en pause ou réinitialiser la simulation."
+          aria-label={t('mesh.canvasAria')}
           className="block h-full w-full select-none"
         />
 
@@ -1254,21 +1267,21 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
                     : 'text-emerald-400'
               )}
             />
-            <span>Nœuds&nbsp;: {hud.nodes}</span>
+            <span>{t('mesh.hudNodes')} {hud.nodes}</span>
             <span className="text-zinc-600">·</span>
-            <span>Liens&nbsp;: {hud.links}</span>
+            <span>{t('mesh.hudLinks')} {hud.links}</span>
             <span className="text-zinc-600">·</span>
             <span className="text-emerald-400">
-              Atteints&nbsp;: {hud.reachedPct}%
+              {t('mesh.hudReached')} {hud.reachedPct}%
             </span>
             <span className="text-zinc-600">·</span>
-            <span>Sauts max&nbsp;: {hud.maxHops > 0 ? hud.maxHops : '–'}</span>
+            <span>{t('mesh.hudMaxHops')} {hud.maxHops > 0 ? hud.maxHops : '–'}</span>
           </div>
 
           {hud.packets > 0 && (
             <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-zinc-900/80 px-2.5 py-1 text-emerald-300 shadow-lg shadow-black/20 backdrop-blur-sm">
               <Signal aria-hidden="true" className="h-3 w-3 shrink-0" />
-              <span>Paquets actifs&nbsp;: {hud.packets}</span>
+              <span>{t('mesh.hudPackets')} {hud.packets}</span>
             </div>
           )}
 
@@ -1276,7 +1289,7 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
             <div className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-zinc-900/80 px-2.5 py-1 text-amber-300 shadow-lg shadow-black/20 backdrop-blur-sm">
               <Mail aria-hidden="true" className="h-3 w-3 shrink-0" />
               <span>
-                Copies&nbsp;: {hud.copies}/{COURIER_MAX_COPIES} · Livré&nbsp;:{' '}
+                {t('mesh.hudCopies')} {hud.copies}/{COURIER_MAX_COPIES} · {t('mesh.hudDelivered')}{' '}
                 {hud.delivered ? '✓' : hud.lost ? '✗' : '…'}
               </span>
             </div>
@@ -1289,7 +1302,14 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
             role="status"
             className="pointer-events-none absolute bottom-3 left-1/2 z-10 max-w-[calc(100%-1.5rem)] -translate-x-1/2 truncate rounded-lg border border-amber-500/40 bg-zinc-900/90 px-3 py-1.5 font-mono text-[11px] text-amber-200 shadow-lg shadow-black/30 backdrop-blur-sm"
           >
-            {hud.note}
+            {hud.note === 'mesh.noteDelivered'
+              ? tp('mesh.noteDelivered', hud.winHops, {
+                  copies:
+                    hud.copies > 0
+                      ? tp('mesh.copiesIssued', hud.copies)
+                      : t('mesh.noDuplication'),
+                })
+              : t(hud.note)}
           </div>
         )}
       </div>
@@ -1304,7 +1324,7 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
           className={floodBtnCls}
         >
           <Zap aria-hidden="true" className="h-3.5 w-3.5" />
-          Inonder
+          {t('mesh.flood')}
         </Button>
 
         <Button
@@ -1315,7 +1335,7 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
           className={courierBtnCls}
         >
           <Mail aria-hidden="true" className="h-3.5 w-3.5" />
-          Courrier
+          {t('mesh.courier')}
         </Button>
 
         <Button
@@ -1331,7 +1351,7 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
           ) : (
             <Pause aria-hidden="true" className="h-3.5 w-3.5" />
           )}
-          {paused ? 'Reprendre' : 'Pause'}
+          {paused ? t('mesh.resume') : t('mesh.pause')}
         </Button>
 
         <Button
@@ -1342,12 +1362,12 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
           className={neutralBtnCls}
         >
           <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
-          Réinitialiser
+          {t('mesh.reset')}
         </Button>
 
         <div className="ml-1 flex items-center gap-2">
           <label htmlFor="mbote-slider-noeuds" className="text-xs text-zinc-400">
-            Nœuds
+            {t('mesh.nodesLabel')}
           </label>
           <Slider
             id="mbote-slider-noeuds"
@@ -1358,7 +1378,7 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
             onValueChange={(v) => setNodeCount(v[0] ?? 42)}
             // a11y : le nom accessible est porté par le pouce (role=slider) et
             // contient le texte visible « Nœuds » (règle 2.5.3 Label in Name)
-            aria-label="Nœuds du réseau simulé"
+            aria-label={t('mesh.a11yNodes')}
             className="w-24"
           />
           <span className="w-6 text-right font-mono text-xs text-zinc-300">
@@ -1377,7 +1397,7 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
             step={1}
             value={[ttl]}
             onValueChange={(v) => setTtl(v[0] ?? 7)}
-            aria-label="TTL des paquets (en sauts)"
+            aria-label={t('mesh.a11yTtl')}
             className="w-28"
           />
           <span className="w-6 text-right font-mono text-xs text-zinc-300">
@@ -1387,7 +1407,7 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
 
         {/* Légende */}
         <div
-          aria-label="Légende de la simulation"
+          aria-label={t('mesh.legendAria')}
           className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-400 md:ml-auto"
         >
           <span className="flex items-center gap-1.5">
@@ -1395,35 +1415,35 @@ export default function MeshSimulation({ className }: MeshSimulationProps) {
               aria-hidden="true"
               className="h-2 w-2 rounded-full bg-emerald-500"
             />
-            Inondation
+            {t('mesh.legendFlood')}
           </span>
           <span className="flex items-center gap-1.5">
             <span
               aria-hidden="true"
               className="h-2 w-2 rounded-full bg-amber-500"
             />
-            Courrier
+            {t('mesh.legendCourier')}
           </span>
           <span className="flex items-center gap-1.5">
             <span
               aria-hidden="true"
               className="h-2 w-2 rounded-full bg-zinc-500"
             />
-            Nœud
+            {t('mesh.legendNode')}
           </span>
           <span className="flex items-center gap-1.5">
             <span
               aria-hidden="true"
               className="h-2.5 w-2.5 rounded-full border-2 border-amber-500/80"
             />
-            Passerelle
+            {t('mesh.legendGateway')}
           </span>
           <span className="flex items-center gap-1.5">
             <span
               aria-hidden="true"
               className="h-2 w-2 rounded-full bg-red-500/70"
             />
-            Hors ligne
+            {t('mesh.legendOffline')}
           </span>
         </div>
       </div>

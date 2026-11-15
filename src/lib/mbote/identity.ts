@@ -15,7 +15,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { LS_IDENTITY, LS_OUTBOX, LS_FORCE_OFFLINE } from "./constants";
+import { LS_IDENTITY, LS_OUTBOX, LS_FORCE_OFFLINE, LS_LOCALE } from "./constants";
 import { importLegacyKeyBundle, type KeyBundle } from "./crypto";
 import { clearSecureKeys, getSecureKeys, putSecureKeys } from "./secure-keys";
 
@@ -178,6 +178,7 @@ export async function panicWipe(): Promise<void> {
   localStorage.removeItem(LS_FORCE_OFFLINE);
   localStorage.removeItem("theme"); // next-themes (storageKey par défaut)
   localStorage.removeItem("mbote.outbox.packets.v1"); // repli LS de l'outbox binaire
+  localStorage.removeItem(LS_LOCALE); // G : préférence de locale = état local
   // Ordre important (F-11) : purge du record AVANT la suppression des bases —
   // clearSecureKeys ré-ouvrirait sinon la base juste après deleteDatabase.
   await clearSecureKeys();

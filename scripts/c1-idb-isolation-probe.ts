@@ -76,7 +76,11 @@ const srv = Bun.serve({
 const ORIGIN = `http://127.0.0.1:${srv.port}`;
 
 const ctx1 = await browser.newContext();
+// G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+await ctx1.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
 const ctx2 = await browser.newContext();
+// G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+await ctx2.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
 const p1 = await ctx1.newPage();
 const p2 = await ctx2.newPage();
 await p1.goto(ORIGIN, { waitUntil: "domcontentloaded" });

@@ -22,6 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { apiFetchFeed, apiGetPost, describeApiError, type FeedScope } from "@/lib/mbote/api";
+import { useI18n } from "@/lib/mbote/i18n";
 import type { ActiveChannel, PendingPost, PostWithMeta } from "@/lib/mbote/types";
 import { Composer } from "./Composer";
 import { PendingPostCard, PostCard } from "./PostCard";
@@ -69,6 +70,8 @@ export function FeedView({
   focusPostId,
   onFocusPostConsumed,
 }: FeedViewProps) {
+  const { t, fmt } = useI18n();
+
   // F-12.3 : portée du fil global — « Tous » ou « Abonnements » (scope
   // "following" du backend, consommé ici pour la première fois).
   const [feedScope, setFeedScope] = useState<"global" | "following">("global");
@@ -212,7 +215,7 @@ export function FeedView({
           <div
             className="relative flex h-44 flex-col justify-end p-5 md:h-52"
             role="img"
-            aria-label="Illustration : skyline africaine connectée par un réseau mesh lumineux"
+            aria-label={t("feed.heroAria")}
           >
             {/* F-54 : hero priorisé via next/image (LCP) au lieu d'un background-image CSS */}
             <Image
@@ -229,17 +232,17 @@ export function FeedView({
                 Mbote Mesh
               </h1>
               <p className="mt-0.5 max-w-md text-xs text-muted-foreground md:text-sm">
-                Le réseau social qui survit aux coupures — sans compte, sans numéro.
+                {t("feed.tagline")}
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <Badge className="gap-1 bg-primary/90 text-[10px]">
-                  <ShieldCheck className="size-3" aria-hidden="true" /> signature locale
+                  <ShieldCheck className="size-3" aria-hidden="true" /> {t("feed.badgeSignature")}
                 </Badge>
                 <Badge className="gap-1 bg-amber-500/90 text-[10px] text-amber-950">
-                  <MapPin className="size-3" aria-hidden="true" /> canaux géohash
+                  <MapPin className="size-3" aria-hidden="true" /> {t("feed.badgeGeohash")}
                 </Badge>
                 <Badge className="gap-1 bg-primary/90 text-[10px]">
-                  <WifiOff className="size-3" aria-hidden="true" /> file hors-ligne
+                  <WifiOff className="size-3" aria-hidden="true" /> {t("feed.badgeOffline")}
                 </Badge>
               </div>
             </div>
@@ -249,7 +252,7 @@ export function FeedView({
 
       {/* F-12.3 : bascule Tous / Abonnements (fil global uniquement) */}
       {!activeChannel && (
-        <div role="group" aria-label="Portée du fil" className="flex items-center">
+        <div role="group" aria-label={t("feed.scopeAria")} className="flex items-center">
           <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
             <Button
               size="sm"
@@ -259,7 +262,7 @@ export function FeedView({
               className="min-h-11 rounded-md px-3 text-xs"
             >
               <Globe className="size-3.5" aria-hidden="true" />
-              Tous
+              {t("feed.scopeAll")}
             </Button>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -269,12 +272,12 @@ export function FeedView({
                     variant={scope === "following" ? "default" : "ghost"}
                     aria-pressed={scope === "following"}
                     // a11y (2.5.3) : le nom contient le texte visible « Abonnements »
-                    aria-label="Abonnements — n'afficher que leurs publications"
+                    aria-label={t("feed.scopeFollowingAria")}
                     onClick={() => setFeedScope("following")}
                     className="min-h-11 rounded-md px-3 text-xs"
                   >
                     <UsersRound className="size-3.5" aria-hidden="true" />
-                    Abonnements
+                    {t("feed.scopeFollowing")}
                   </Button>
                 ) : (
                   <span tabIndex={0} className="inline-flex rounded-md">
@@ -282,19 +285,19 @@ export function FeedView({
                       size="sm"
                       variant={scope === "following" ? "default" : "ghost"}
                       disabled
-                      aria-label="Abonnements : crée ton identité pour suivre des identités"
+                      aria-label={t("feed.scopeFollowingDisabledAria")}
                       className="min-h-11 rounded-md px-3 text-xs"
                     >
                       <UsersRound className="size-3.5" aria-hidden="true" />
-                      Abonnements
+                      {t("feed.scopeFollowing")}
                     </Button>
                   </span>
                 )}
               </TooltipTrigger>
               <TooltipContent>
                 {myPub
-                  ? "Publications des identités que tu suis"
-                  : "Crée ton identité pour suivre des identités."}
+                  ? t("feed.scopeFollowingTooltip")
+                  : t("feed.scopeFollowingTooltipOff")}
               </TooltipContent>
             </Tooltip>
           </div>
@@ -305,7 +308,7 @@ export function FeedView({
       {activeChannel && (
         <div
           className="flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3"
-          aria-label="Canal géographique actif"
+          aria-label={t("feed.channelAria")}
         >
           <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15">
@@ -316,7 +319,10 @@ export function FeedView({
                   canal devient le h1 de la page (page-has-heading-one) */}
               <h1 className="truncate text-sm font-semibold">{activeChannel.label}</h1>
               <p className="truncate font-mono text-[11px] text-muted-foreground">
-                #{activeChannel.geohash} · précision {activeChannel.precision}
+                {t("feed.channelMeta", {
+                  geohash: activeChannel.geohash,
+                  precision: fmt.fmtNumber(activeChannel.precision),
+                })}
               </p>
             </div>
           </div>
@@ -324,7 +330,7 @@ export function FeedView({
             variant="ghost"
             size="icon"
             onClick={onClearChannel}
-            aria-label="Quitter le canal, revenir au fil global"
+            aria-label={t("feed.leaveChannelAria")}
           >
             <X className="size-4" aria-hidden="true" />
           </Button>
@@ -357,13 +363,13 @@ export function FeedView({
               <KeyRound className="size-5 text-primary" aria-hidden="true" />
             </div>
             <div>
-              <p className="text-sm font-semibold">Crée ton identité locale pour publier</p>
+              <p className="text-sm font-semibold">{t("feed.ctaTitle")}</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Tes clés restent sur ton appareil — aucun email, aucun numéro.
+                {t("feed.ctaBody")}
               </p>
             </div>
             <Button size="sm" onClick={onOpenOnboarding}>
-              Générer mes clés
+              {t("feed.ctaButton")}
             </Button>
           </CardContent>
         </Card>
@@ -372,7 +378,7 @@ export function FeedView({
       {/* File d'attente locale */}
       {focusMissing && (
         <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-600 dark:text-amber-400">
-          Le post trouvé par la recherche n&apos;est plus visible publiquement.
+          {t("feed.focusMissing")}
         </p>
       )}
       {focusPost && !showFocusCard && (
@@ -380,10 +386,10 @@ export function FeedView({
         <span className="hidden" aria-hidden="true" data-search-focus={focusPost.id} />
       )}
       {showFocusCard && (
-        <section aria-label="Résultat de recherche" className="space-y-1">
+        <section aria-label={t("feed.searchResult")} className="space-y-1">
           <div data-search-focus={showFocusCard.id} className="space-y-1">
             <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-              <Search className="size-3" aria-hidden="true" /> Résultat de recherche
+              <Search className="size-3" aria-hidden="true" /> {t("feed.searchResult")}
             </p>
             <PostCard
               post={showFocusCard}
@@ -396,7 +402,7 @@ export function FeedView({
         </section>
       )}
       {visiblePending.length > 0 && (
-        <section aria-label="File d'attente locale" className="space-y-2">
+        <section aria-label={t("feed.queueAria")} className="space-y-2">
           {visiblePending.map((p) => (
             <PendingPostCard
               key={p.clientRef}
@@ -411,7 +417,7 @@ export function FeedView({
 
       {/* Fil */}
       {feed.isLoading ? (
-        <div className="space-y-3" aria-label="Chargement du fil">
+        <div className="space-y-3" aria-label={t("feed.loadingAria")}>
           {Array.from({ length: 4 }).map((_, i) => (
             <Card key={i}>
               <CardContent className="flex gap-3 p-4">
@@ -431,18 +437,17 @@ export function FeedView({
         <Card className="border-red-300 bg-red-50" data-testid="feed-error">
           <CardContent className="flex flex-col items-start gap-3 p-6" role="alert">
             <p className="text-sm font-semibold text-red-900">
-              Impossible de charger le fil
+              {t("feed.errorTitle")}
             </p>
             <p className="text-sm text-red-800">
-              {describeApiError(feed.error)} — le contenu affiché précédemment peut être
-              périmé. Ta connexion ou le serveur est en cause, pas l&apos;absence de messages.
+              {t("feed.errorDetail", { error: describeApiError(feed.error) })}
             </p>
             <Button
               size="sm"
               className="h-11 bg-red-700 text-white hover:bg-red-800"
               onClick={() => void feed.refetch()}
             >
-              Réessayer
+              {t("common.retry")}
             </Button>
           </CardContent>
         </Card>
@@ -451,10 +456,9 @@ export function FeedView({
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center gap-2 p-8 text-center">
               <UsersRound className="size-8 text-muted-foreground" aria-hidden="true" />
-              <p className="text-sm font-semibold">Tu ne suis personne encore</p>
+              <p className="text-sm font-semibold">{t("feed.emptyFollowingTitle")}</p>
               <p className="max-w-sm text-xs text-muted-foreground">
-                Passe par l&apos;onglet Réseau pour suivre des identités — leurs publications
-                apparaîtront ici.
+                {t("feed.emptyFollowingBody")}
               </p>
             </CardContent>
           </Card>
@@ -468,13 +472,13 @@ export function FeedView({
               )}
               <p className="text-sm font-semibold">
                 {activeChannel
-                  ? `Canal ${activeChannel.geohash} silencieux pour l'instant`
-                  : "Le fil global attend ton premier message"}
+                  ? t("feed.emptyChannelTitle", { geohash: activeChannel.geohash })
+                  : t("feed.emptyGlobalTitle")}
               </p>
               <p className="max-w-sm text-xs text-muted-foreground">
                 {activeChannel
-                  ? "Ouvre le bal : ton message deviendra l'historique du quartier, synchronisé entre voisins."
-                  : "Publie, like, répond — ou explore les canaux géohash pour trouver ta communauté locale."}
+                  ? t("feed.emptyChannelBody")
+                  : t("feed.emptyGlobalBody")}
               </p>
             </CardContent>
           </Card>
@@ -495,7 +499,7 @@ export function FeedView({
           {feed.isFetching && !feed.isLoading && !feed.isFetchingNextPage && (
             <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-              Synchronisation du fil…
+              {t("feed.syncing")}
             </div>
           )}
           {/* F-13 : pied de pagination — spinner, fallback clavier, fin de fil */}
@@ -505,7 +509,7 @@ export function FeedView({
               aria-live="polite"
             >
               <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-              Chargement de la suite du fil…
+              {t("feed.loadingMore")}
             </div>
           ) : feed.hasNextPage ? (
             <div className="flex justify-center pt-1">
@@ -513,15 +517,15 @@ export function FeedView({
                 variant="outline"
                 size="sm"
                 onClick={() => void feed.fetchNextPage()}
-                aria-label="Charger plus — suite du fil"
+                aria-label={t("feed.loadMoreAria")}
               >
-                Charger plus
+                {t("feed.loadMore")}
               </Button>
             </div>
           ) : (
             posts.length > 0 && (
               <p className="pt-1 text-center text-[11px] text-muted-foreground">
-                Tu as atteint le début du fil
+                {t("feed.endOfFeed")}
               </p>
             )
           )}

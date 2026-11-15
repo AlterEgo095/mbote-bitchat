@@ -37,6 +37,7 @@ import { toast } from "sonner";
 import { signPayload, shortKey } from "@/lib/mbote/crypto";
 import { describeApiError, describeApiStatus } from "@/lib/mbote/api";
 import { getSocket } from "@/lib/mbote/socket";
+import { useI18n } from "@/lib/mbote/i18n";
 import {
   setMlsIdentity,
   publishKeyPackages,
@@ -74,6 +75,7 @@ async function authQuery(signPriv: CryptoKey, pubkey: string, message: string): 
 }
 
 export function GroupsView({ identity }: { identity: StoredIdentity }) {
+  const { t, tp } = useI18n();
   const [groups, setGroups] = useState<GroupInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -121,11 +123,11 @@ export function GroupsView({ identity }: { identity: StoredIdentity }) {
       /* hors ligne — le poll suivant retentera ; l'état est dit (F #42) */
       setListingError(
         e instanceof DOMException && e.name === "AbortError"
-          ? "Délai dépassé — vérifie ta connexion puis réessaie."
-          : "Réseau injoignable — la liste se rechargera au retour du réseau."
+          ? t("groups.listTimeout")
+          : t("groups.listOffline")
       );
     }
-  }, [identity]);
+  }, [identity, t]);
 
   useEffect(() => {
     // tick asynchrone initial (règle set-state-in-effect) + poll périodique
@@ -183,12 +185,12 @@ export function GroupsView({ identity }: { identity: StoredIdentity }) {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-3 md:p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Groupes privés</h1>
+        <h1 className="text-lg font-semibold">{t("groups.title")}</h1>
         <div className="flex items-center gap-2">
           {!kpPublished && (
             <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
               <Loader2 className="size-3 animate-spin" aria-hidden="true" />
-              préparation MLS…
+              {t("groups.preparingMls")}
             </Badge>
           )}
           <CreateGroupDialog
@@ -206,10 +208,10 @@ export function GroupsView({ identity }: { identity: StoredIdentity }) {
         // F #42 — échec de listing rendu avec action (réseau HS ≠ aucun groupe)
         <Card className="border-red-300 bg-red-50" data-testid="groups-listing-error">
           <CardContent className="flex flex-col items-start gap-3 p-6" role="alert">
-            <p className="text-sm font-semibold text-red-900">Impossible de charger tes groupes</p>
+            <p className="text-sm font-semibold text-red-900">{t("groups.listErrorTitle")}</p>
             <p className="text-sm text-red-800">{listingError}</p>
             <Button size="sm" className="h-11 bg-red-700 text-white hover:bg-red-800" onClick={() => void refreshGroups()}>
-              Réessayer
+              {t("common.retry")}
             </Button>
           </CardContent>
         </Card>
@@ -217,11 +219,8 @@ export function GroupsView({ identity }: { identity: StoredIdentity }) {
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center gap-2 p-8 text-center text-sm text-muted-foreground">
             <Users className="size-8 text-muted-foreground/50" aria-hidden="true" />
-            <p className="font-medium text-foreground">Aucun groupe</p>
-            <p className="text-xs">
-              Les groupes sont chiffrés de bout en bout (MLS, RFC 9420) — le serveur
-              ne voit que le nom et la liste des membres, jamais les messages.
-            </p>
+            <p className="font-medium text-foreground">{t("groups.emptyTitle")}</p>
+            <p className="text-xs">{t("groups.emptyBody")}</p>
           </CardContent>
         </Card>
       ) : (
@@ -258,8 +257,8 @@ export function GroupsView({ identity }: { identity: StoredIdentity }) {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">{g.name}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {g.members.length} membre{g.members.length > 1 ? "s" : ""} ·{" "}
-                      {g.creatorKey === identity.pubkey ? "vous administrez" : `créé par ${shortKey(g.creatorKey)}`}
+                      {tp("groups.memberCount", g.members.length)} ·{" "}
+                      {g.creatorKey === identity.pubkey ? t("groups.youAdmin") : t("groups.createdBy", { key: shortKey(g.creatorKey) })}
                     </p>
                   </div>
                   <Badge variant="outline" className="shrink-0 gap-1 text-[10px] text-primary">
@@ -295,6 +294,7 @@ function CreateGroupDialog({
   kpPublished: boolean;
   onCreated: (groupId: string) => void;
 }) {
+  const { t, tp } = useI18n();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -314,17 +314,17 @@ function CreateGroupDialog({
     setCreating(true);
     try {
       const created = await createGroupMls(name.trim(), Array.from(picked));
-      toast.success(`Groupe créé — ${picked.size + 1} membre(s), MLS actif`);
+      toast.success(tp("groups.createdToast", picked.size + 1));
       onCreated(created.serverGroupId);
       setOpen(false);
       setName("");
       setPicked(new Set());
     } catch (e) {
-      toast.error(`Création impossible — ${describeApiError(e)}`);
+      toast.error(t("groups.createError", { error: describeApiError(e) }));
     } finally {
       setCreating(false);
     }
-  }, [name, picked, creating, onCreated]);
+  }, [name, picked, creating, onCreated, t, tp]);
 
   return (
     <>
@@ -338,27 +338,24 @@ function CreateGroupDialog({
         data-testid="create-group"
       >
         <UserPlus className="size-4" aria-hidden="true" />
-        Nouveau groupe
+        {t("groups.newGroup")}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Nouveau groupe privé</DialogTitle>
-            <DialogDescription>
-              Chiffré de bout en bout via MLS. Les contacts doivent avoir publié
-              une key package (ils doivent s&apos;être connectés une fois).
-            </DialogDescription>
+            <DialogTitle>{t("groups.newGroupTitle")}</DialogTitle>
+            <DialogDescription>{t("groups.newGroupDesc")}</DialogDescription>
           </DialogHeader>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Nom du groupe"
+            placeholder={t("groups.groupName")}
             maxLength={60}
-            aria-label="Nom du groupe"
+            aria-label={t("groups.groupName")}
           />
           <div className="max-h-56 space-y-1 overflow-y-auto" data-testid="contact-picker">
             {contacts.length === 0 && (
-              <p className="py-4 text-center text-xs text-muted-foreground">Aucun contact enregistré</p>
+              <p className="py-4 text-center text-xs text-muted-foreground">{t("groups.noContacts")}</p>
             )}
             {contacts.map((c) => (
               <label
@@ -370,7 +367,7 @@ function CreateGroupDialog({
                   checked={picked.has(c.pubkey)}
                   onChange={() => toggle(c.pubkey)}
                   className="size-4"
-                  aria-label={`Inviter ${c.nickname}`}
+                  aria-label={t("groups.inviteAria", { name: c.nickname })}
                   // testid déterministe par nickname (les scripts de preuve
                   // ciblent le testid, pas l'accessible name)
                   data-testid={`invite-check-${c.nickname}`}
@@ -386,11 +383,11 @@ function CreateGroupDialog({
             <Button
               onClick={() => void onCreate()}
               disabled={creating || !name.trim() || picked.size === 0}
-              aria-label="Créer le groupe"
+              aria-label={t("groups.createAria")}
               data-testid="confirm-create-group"
             >
               {creating && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
-              Créer ({picked.size + 1} membres)
+              {tp("groups.createCount", picked.size + 1)}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -417,6 +414,7 @@ function GroupConversation({
   contacts: Contact[];
   onGroupChanged: () => void;
 }) {
+  const { t, fmt } = useI18n();
   const [messages, setMessages] = useState<DecryptedGroupMessage[]>([]);
   const [systemLines, setSystemLines] = useState<SystemLine[]>([]);
   const [draft, setDraft] = useState("");
@@ -429,8 +427,8 @@ function GroupConversation({
 
   const nicknameOf = useCallback(
     (pk: string) =>
-      pk === identity.pubkey ? "vous" : (contacts.find((c) => c.pubkey === pk)?.nickname ?? shortKey(pk)),
-    [contacts, identity.pubkey]
+      pk === identity.pubkey ? t("groups.you") : (contacts.find((c) => c.pubkey === pk)?.nickname ?? shortKey(pk)),
+    [contacts, identity.pubkey, t]
   );
 
   // détection membres ajoutés/retirés (annuaire public — messages système)
@@ -438,14 +436,14 @@ function GroupConversation({
     const current = new Set(group.members.map((m) => m.userKey));
     const lines: SystemLine[] = [];
     for (const pk of current) {
-      if (!prevMembers.current.has(pk)) lines.push({ id: `join-${pk}-${Date.now()}`, text: `${nicknameOf(pk)} a rejoint le groupe` });
+      if (!prevMembers.current.has(pk)) lines.push({ id: `join-${pk}-${Date.now()}`, text: t("groups.memberJoined", { name: nicknameOf(pk) }) });
     }
     for (const pk of prevMembers.current) {
-      if (!current.has(pk)) lines.push({ id: `leave-${pk}-${Date.now()}`, text: `${nicknameOf(pk)} a été retiré du groupe` });
+      if (!current.has(pk)) lines.push({ id: `leave-${pk}-${Date.now()}`, text: t("groups.memberRemoved", { name: nicknameOf(pk) }) });
     }
     if (lines.length > 0) setSystemLines((prev) => [...prev, ...lines]);
     prevMembers.current = current;
-  }, [group.members, nicknameOf]);
+  }, [group.members, nicknameOf, t]);
 
   // sync : handshakes puis messages (poll + à l'ouverture)
   const syncAll = useCallback(async () => {
@@ -491,40 +489,40 @@ function GroupConversation({
         { id: `self-${Date.now()}`, senderKey: identity.pubkey, text, createdAt: new Date().toISOString(), epoch: 0 },
       ]);
     } catch (e) {
-      toast.error(`Envoi impossible — ${describeApiError(e)}`);
+      toast.error(t("groups.sendError", { error: describeApiError(e) }));
     } finally {
       setSending(false);
     }
-  }, [draft, sending, group.id, identity.pubkey]);
+  }, [draft, sending, group.id, identity.pubkey, t]);
 
   const onInvite = useCallback(
     async (userKey: string) => {
       setInviting(true);
       try {
         await inviteMember(group.id, userKey);
-        toast.success("Membre invité — commit diffusé, welcome envoyé");
+        toast.success(t("groups.invitedToast"));
         onGroupChanged();
       } catch (e) {
-        toast.error(`Invitation impossible — ${describeApiError(e)}`);
+        toast.error(t("groups.inviteError", { error: describeApiError(e) }));
       } finally {
         setInviting(false);
       }
     },
-    [group.id, onGroupChanged]
+    [group.id, onGroupChanged, t]
   );
 
   const onRemove = useCallback(
     async (userKey: string, nickname: string) => {
-      if (!window.confirm(`Retirer ${nickname} du groupe ? Il ne pourra plus lire les messages d'après.`)) return;
+      if (!window.confirm(t("groups.removeConfirm", { name: nickname }))) return;
       try {
         await removeMember(group.id, userKey);
-        toast.success("Membre retiré — nouvelle epoch, forward secrecy appliquée");
+        toast.success(t("groups.removedToast"));
         onGroupChanged();
       } catch (e) {
-        toast.error(`Retrait impossible — ${describeApiError(e)}`);
+        toast.error(t("groups.removeError", { error: describeApiError(e) }));
       }
     },
-    [group.id, onGroupChanged]
+    [group.id, onGroupChanged, t]
   );
 
   const inviteCandidates = contacts.filter(
@@ -535,7 +533,7 @@ function GroupConversation({
   const allLines = [
     ...systemLines,
     ...group.members.map(
-      (m) => ({ id: `joined-${m.userKey}-${m.joinedAt}`, text: `${nicknameOf(m.userKey)} a rejoint le groupe` }) as SystemLine
+      (m) => ({ id: `joined-${m.userKey}-${m.joinedAt}`, text: t("groups.memberJoined", { name: nicknameOf(m.userKey) }) }) as SystemLine
     ),
   ];
 
@@ -563,7 +561,7 @@ function GroupConversation({
                 // F #44 — cible 44×44 (l'action est IRRÉVERSIBLE : forward secrecy)
                 className="ml-1 inline-flex size-11 items-center justify-center rounded-full hover:bg-muted"
                 onClick={() => void onRemove(m.userKey, nicknameOf(m.userKey))}
-                aria-label={`Retirer ${nicknameOf(m.userKey)} du groupe`}
+                aria-label={t("groups.removeAria", { name: nicknameOf(m.userKey) })}
                 data-testid={`remove-${shortKey(m.userKey)}`}
               >
                 <UserMinus className="size-4" aria-hidden="true" />
@@ -573,7 +571,7 @@ function GroupConversation({
         ))}
         <span className="ml-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
           <ShieldCheck className="size-3" aria-hidden="true" />
-MLS actif
+          {t("groups.mlsActive")}
         </span>
       </div>
 
@@ -589,10 +587,10 @@ MLS actif
               className="min-h-11 gap-1 px-3 text-xs"
               disabled={inviting}
               onClick={() => void onInvite(c.pubkey)}
-              aria-label={`Inviter ${c.nickname} dans le groupe`}
+              aria-label={t("groups.inviteGroupAria", { name: c.nickname })}
             >
               <UserPlus className="size-4" aria-hidden="true" />
-              Inviter {c.nickname}
+              {t("groups.inviteBtn", { name: c.nickname })}
             </Button>
           ))}
         </div>
@@ -603,7 +601,7 @@ MLS actif
         ref={listRef}
         className="max-h-96 space-y-2 overflow-y-auto rounded-lg border bg-muted/20 p-3"
         data-testid="group-messages"
-        aria-label={`Messages du groupe ${group.name}`}
+        aria-label={t("groups.messagesAria", { name: group.name })}
       >
         {allLines.map((l) => (
           <p key={l.id} className="text-center text-[10px] italic text-muted-foreground">
@@ -611,9 +609,7 @@ MLS actif
           </p>
         ))}
         {sorted.length === 0 && (
-          <p className="py-4 text-center text-xs text-muted-foreground">
-            Aucun message encore déchiffré.
-          </p>
+          <p className="py-4 text-center text-xs text-muted-foreground">{t("groups.noMessages")}</p>
         )}
         {sorted.map((m) => (
           <div
@@ -635,7 +631,7 @@ MLS actif
               <p className="whitespace-pre-wrap break-words">{m.text}</p>
             </div>
             <span className="mt-0.5 text-[9px] text-muted-foreground">
-              {new Date(m.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+              {fmt.fmtTime.format(new Date(m.createdAt))}
             </span>
           </div>
         ))}
@@ -652,8 +648,8 @@ MLS actif
               void onSend();
             }
           }}
-          placeholder="Message chiffré (MLS)…"
-          aria-label="Message de groupe"
+          placeholder={t("groups.composerPlaceholder")}
+          aria-label={t("groups.composerAria")}
           data-testid="group-composer"
         />
         <Button
@@ -661,7 +657,7 @@ MLS actif
           className="size-11"
           onClick={() => void onSend()}
           disabled={sending || !draft.trim()}
-          aria-label="Envoyer le message de groupe"
+          aria-label={t("groups.sendAria")}
           data-testid="group-send"
         >
           {sending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <LogOut className="size-4 rotate-180" aria-hidden="true" />}
@@ -671,7 +667,7 @@ MLS actif
           variant="ghost"
           className="size-11"
           onClick={() => void syncAll()}
-          aria-label="Rafraîchir les messages du groupe"
+          aria-label={t("groups.refreshAria")}
           data-testid="group-refresh"
         >
           <RefreshCw className="size-4" aria-hidden="true" />

@@ -52,6 +52,8 @@ const browser = await chromium.launch({
 });
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctx.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   // ceinture-bretelles : le fake-ui flag auto-grante, on explicite le grant
   // (l'app autorise désormais microphone=(self) — next.config.ts, B3)
   await ctx.grantPermissions(["microphone"], { origin: BASE_URL });

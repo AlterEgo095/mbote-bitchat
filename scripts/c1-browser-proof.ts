@@ -53,6 +53,8 @@ const browser = await chromium.launch({
 /** Onboarding + retour de la page (un contexte par scénario de permission). */
 async function onboard(name: string, grant: boolean) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctx.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   if (grant) await ctx.grantPermissions(["notifications"], { origin: BASE_URL });
   const page = await ctx.newPage();
   await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });

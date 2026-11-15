@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Pause, Play } from "lucide-react";
+import { useI18n } from "@/lib/mbote/i18n";
 
 const SPEEDS = [1, 1.5, 2] as const;
 
@@ -49,6 +50,7 @@ export function VoiceNote({
   bytes,
   downloadable = false,
 }: VoiceNoteProps) {
+  const { t } = useI18n();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
   const [positionMs, setPositionMs] = useState(0);
@@ -128,7 +130,7 @@ export function VoiceNote({
         type="button"
         onClick={togglePlay}
         disabled={!objectUrl}
-        aria-label={playing ? "Pause" : "Lecture"}
+        aria-label={playing ? t("voice.pause") : t("voice.play")}
         className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
       >
         {playing ? <Pause className="size-4" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
@@ -140,7 +142,7 @@ export function VoiceNote({
           className="flex h-8 cursor-pointer items-center gap-[1.5px]"
           onClick={seekFromEvent}
           role="slider"
-          aria-label="Barre de progression (cliquer pour naviguer)"
+          aria-label={t("voice.progressAria")}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(progress * 100)}
@@ -181,17 +183,17 @@ export function VoiceNote({
             type="button"
             onClick={cycleSpeed}
             className="rounded border border-current px-1 font-semibold"
-            aria-label={`Vitesse de lecture ${SPEEDS[speedIdx]}x — changer`}
+            aria-label={t("voice.speedAria", { speed: SPEEDS[speedIdx] })}
           >
             {SPEEDS[speedIdx]}x
           </button>
-          {typeof bytes === "number" && <span className="tabular-nums">{Math.max(1, Math.round(bytes / 1024))} Ko</span>}
+          {typeof bytes === "number" && <span className="tabular-nums">{t("voice.kb", { count: Math.max(1, Math.round(bytes / 1024)) })}</span>}
           {downloadable && (
             <button
               type="button"
               onClick={download}
               disabled={!objectUrl}
-              aria-label="Télécharger la note vocale"
+              aria-label={t("voice.downloadAria")}
               className="ml-auto disabled:opacity-40"
             >
               <Download className="size-3" aria-hidden="true" />

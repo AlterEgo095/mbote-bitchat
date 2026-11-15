@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useI18n } from "@/lib/mbote/i18n";
 
 export function OnboardingDialog({
   open,
@@ -32,6 +33,7 @@ export function OnboardingDialog({
 }) {
   const [nickname, setNickname] = useState("");
   const [bio, setBio] = useState("");
+  const { t } = useI18n();
   const valid = nickname.trim().length >= 2;
   const powPct = powProgress != null ? Math.round(Math.min(1, Math.max(0, powProgress)) * 100) : null;
 
@@ -45,42 +47,42 @@ export function OnboardingDialog({
           className="h-28 w-full bg-cover bg-center"
           style={{ backgroundImage: "url(/mbote/hero.png)" }}
           role="img"
-          aria-label="Bannière réseau mesh au-dessus d'une ville africaine"
+          aria-label={t("onboarding.heroAlt")}
         />
         <div className="p-6 pt-4">
           <DialogHeader className="text-left">
             <DialogTitle className="flex items-center gap-2 text-xl">
               <KeyRound className="size-5 text-primary" aria-hidden="true" />
-              Crée ton identité locale
+              {t("onboarding.title")}
             </DialogTitle>
             <DialogDescription className="pt-1 text-sm leading-relaxed">
-              Aucun email, aucun numéro, aucun serveur d&apos;inscription. Une paire de
-              clés est générée <strong>sur ton appareil</strong> : ECDSA P-256 pour signer
-              tes publications, ECDH P-256 pour chiffrer tes messages privés de bout en bout.
+              {t("onboarding.descLead")}{" "}
+              <strong>{t("onboarding.descOnDevice")}</strong>
+              {t("onboarding.descTail")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="mt-4 space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="onb-nick">Pseudo visible</Label>
+              <Label htmlFor="onb-nick">{t("onboarding.nickLabel")}</Label>
               <Input
                 id="onb-nick"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
-                placeholder="ex. Mapendo"
+                placeholder={t("onboarding.nickPlaceholder")}
                 maxLength={32}
                 autoComplete="off"
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="onb-bio">
-                Bio <span className="text-muted-foreground">(optionnel)</span>
+                {t("onboarding.bioLabel")} <span className="text-muted-foreground">{t("onboarding.bioOptional")}</span>
               </Label>
               <Textarea
                 id="onb-bio"
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                placeholder="Qui es-tu ? Quel canal géohash animes-tu ?"
+                placeholder={t("onboarding.bioPlaceholder")}
                 rows={2}
                 maxLength={240}
               />
@@ -98,7 +100,7 @@ export function OnboardingDialog({
                 <div className="flex items-center justify-between text-xs font-medium text-foreground">
                   <span className="inline-flex items-center gap-1.5" data-testid="pow-progress-label">
                     <Hammer className="size-3.5 text-primary" aria-hidden="true" />
-                    Préparation du compte… {powPct}%
+                    {t("onboarding.powPreparing", { pct: powPct })}
                   </span>
                 </div>
                 <div
@@ -107,7 +109,7 @@ export function OnboardingDialog({
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={powPct}
-                  aria-label="Progression de la preuve de travail"
+                  aria-label={t("onboarding.powAria")}
                 >
                   <div
                     className="h-full rounded-full bg-primary transition-[width] duration-200 ease-linear"
@@ -115,9 +117,7 @@ export function OnboardingDialog({
                   />
                 </div>
                 <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
-                  Preuve de travail anti-spam (20 bits) : un petit calcul sur ton
-                  appareil qui rend la création de faux comptes coûteuse pour les
-                  fermes à spambots — pas pour toi.
+                  {t("onboarding.powExplainer")}
                 </p>
               </div>
             )}
@@ -131,20 +131,20 @@ export function OnboardingDialog({
               {creating ? (
                 <>
                   <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  Génération des clés…
+                  {t("onboarding.creating")}
                 </>
               ) : (
-                "Générer mes clés et entrer"
+                t("onboarding.cta")
               )}
             </Button>
             <div className="flex items-center justify-center gap-4 text-[11px] text-muted-foreground">
               <span className="inline-flex items-center gap-1">
                 <ShieldCheck className="size-3.5 text-primary" aria-hidden="true" />
-                Clés privées jamais envoyées
+                {t("onboarding.badgeKeysNeverSent")}
               </span>
               <span className="inline-flex items-center gap-1">
                 <WifiOff className="size-3.5 text-amber-500" aria-hidden="true" />
-                Fonctionne hors-ligne
+                {t("onboarding.badgeOffline")}
               </span>
             </div>
           </DialogFooter>

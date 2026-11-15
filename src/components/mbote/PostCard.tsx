@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
+import { useI18n } from "@/lib/mbote/i18n";
 import {
   BadgeCheck,
   Bluetooth,
@@ -48,6 +47,7 @@ export function PostCard({
   const [replyText, setReplyText] = useState("");
   const [replying, setReplying] = useState(false);
   const qc = useQueryClient();
+  const { t, tp, fmt } = useI18n();
 
   const replies = useQuery({
     queryKey: ["feed", "replies", post.id, myPub],
@@ -92,7 +92,7 @@ export function PostCard({
       className={`rounded-xl border bg-card transition-colors hover:border-primary/30 ${
         compact ? "p-3" : "p-4"
       } ${isMine ? "border-primary/25" : "border-border"}`}
-      aria-label={`Publication de ${post.author.nickname}`}
+      aria-label={t("post.ariaPostBy", { name: post.author.nickname })}
     >
       <div className="flex items-start gap-3">
         <MboteAvatar pubkey={post.author.pubkey} nickname={post.author.nickname} size={compact ? 32 : 40} />
@@ -101,12 +101,12 @@ export function PostCard({
             <span className="truncate text-sm font-semibold">{post.author.nickname}</span>
             {post.author.isBot && (
               <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                bot
+                {t("post.badgeBot")}
               </Badge>
             )}
             {isMine && (
               <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-primary">
-                toi
+                {t("post.badgeYou")}
               </Badge>
             )}
             <span className="truncate font-mono text-[11px] text-muted-foreground">
@@ -114,20 +114,20 @@ export function PostCard({
             </span>
             {post.signature && (
               <span
-                title="Publication signée côté appareil (ECDSA P-256)"
+                title={t("post.signedTitle")}
                 className="inline-flex items-center gap-0.5 text-[11px] text-primary"
               >
                 <BadgeCheck className="size-3.5" aria-hidden="true" />
-                <span className="sr-only">signée</span>
+                <span className="sr-only">{t("post.signedSr")}</span>
               </span>
             )}
             <span className="text-[11px] text-muted-foreground">·</span>
             <time
               dateTime={post.createdAt}
               className="text-[11px] text-muted-foreground"
-              title={new Date(post.createdAt).toLocaleString("fr-FR")}
+              title={fmt.fmtDateTime.format(new Date(post.createdAt))}
             >
-              {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true, locale: fr })}
+              {fmt.fmtRelative(post.createdAt)}
             </time>
           </div>
 
@@ -140,10 +140,10 @@ export function PostCard({
               <Badge
                 variant="outline"
                 className="cursor-default gap-1 border-emerald-500/50 bg-emerald-500/5 text-[10px] text-emerald-500"
-                title="Ce message a voyagé hors-ligne sur le mesh Bluetooth BitChat avant d'être remonté par une passerelle"
+                title={t("post.meshTitle")}
               >
                 <Bluetooth className="size-3" aria-hidden="true" />
-                via mesh · {post.meshHops ?? "?"} saut{(post.meshHops ?? 0) > 1 ? "s" : ""}
+                {tp("post.meshHops", post.meshHops ?? 0, { hops: post.meshHops ?? "?" })}
               </Badge>
             )}
             {post.geohash && (
@@ -170,8 +170,8 @@ export function PostCard({
               // texte visible (le compteur) — sinon lecteurs d'écran divisés.
               aria-label={
                 liked
-                  ? `Retirer mon j'aime · ${likeCount}`
-                  : `J'aime · ${likeCount}`
+                  ? t("post.likeRemove", { count: fmt.fmtNumber(likeCount) })
+                  : t("post.likeAdd", { count: fmt.fmtNumber(likeCount) })
               }
               className={`min-h-11 gap-1.5 px-2 text-xs ${
                 liked ? "text-amber-500 hover:text-amber-500" : "text-muted-foreground"
@@ -187,7 +187,7 @@ export function PostCard({
               >
                 <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
               </svg>
-              {likeCount}
+              {fmt.fmtNumber(likeCount)}
             </Button>
             {!compact && (
               <Button
@@ -198,7 +198,7 @@ export function PostCard({
                 className="min-h-11 gap-1.5 px-2 text-xs text-muted-foreground"
               >
                 <MessageCircle className="size-4" aria-hidden="true" />
-                {post.replyCount > 0 ? post.replyCount : "Répondre"}
+                {post.replyCount > 0 ? fmt.fmtNumber(post.replyCount) : t("post.reply")}
               </Button>
             )}
           </div>
@@ -210,11 +210,11 @@ export function PostCard({
                   <Textarea
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
-                    placeholder="Répondre… (chiffré nulle part, signé partout)"
+                    placeholder={t("post.replyPlaceholder")}
                     rows={2}
                     maxLength={500}
                     className="min-h-[44px] text-sm"
-                    aria-label="Votre réponse"
+                    aria-label={t("post.replyAria")}
                   />
                   <Button
                     size="sm"
@@ -227,7 +227,7 @@ export function PostCard({
                     ) : (
                       <Send className="size-4" aria-hidden="true" />
                     )}
-                    <span className="sr-only">Envoyer la réponse</span>
+                    <span className="sr-only">{t("post.sendReplySr")}</span>
                   </Button>
                 </div>
               )}
@@ -235,11 +235,11 @@ export function PostCard({
               {replies.isLoading ? (
                 <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
                   <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                  Chargement du fil…
+                  {t("post.threadLoading")}
                 </div>
               ) : (replies.data?.posts.length ?? 0) === 0 ? (
                 <p className="py-1 text-xs text-muted-foreground">
-                  Aucune réponse — sois le premier à réagir.
+                  {t("post.threadEmpty")}
                 </p>
               ) : (
                 <ul className="max-h-96 space-y-2 overflow-y-auto scrollbar-thin">
@@ -270,7 +270,7 @@ export function PostCard({
             size="icon"
             className="size-11"
             onClick={() => setThreadOpen(false)}
-            aria-label="Fermer le fil"
+            aria-label={t("post.closeThread")}
           >
             <X className="size-3.5" aria-hidden="true" />
           </Button>
@@ -292,10 +292,11 @@ export function PendingPostCard({
   precision?: number | null;
   onDismiss?: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <article
       className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4"
-      aria-label="Publication en attente dans la file locale"
+      aria-label={t("post.pendingAria")}
     >
       <div className="flex items-start gap-3">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-500/15">
@@ -303,10 +304,10 @@ export function PendingPostCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold">Toi</span>
+            <span className="text-sm font-semibold">{t("post.pendingYou")}</span>
             <Badge variant="outline" className="gap-1 border-amber-500/50 text-[10px] text-amber-500">
               <Clock className="size-3" aria-hidden="true" />
-              en attente — courrier local
+              {t("post.pendingBadge")}
             </Badge>
             {geohash && (
               <Badge variant="outline" className="gap-1 border-primary/40 bg-primary/5 font-mono text-[10px] text-primary">
@@ -330,7 +331,7 @@ export function PendingPostCard({
             size="icon"
             className="size-11 shrink-0"
             onClick={onDismiss}
-            aria-label="Abandonner ce message en file"
+            aria-label={t("post.pendingDismiss")}
           >
             <X className="size-3.5" aria-hidden="true" />
           </Button>

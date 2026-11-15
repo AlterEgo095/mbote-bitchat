@@ -39,6 +39,8 @@ const verdict: Record<string, unknown> = {};
 
 try {
   const page = await (await browser.newContext()).newPage();
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await page.context().addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   page.on("pageerror", (e) => console.error("[probe pageerror]", e.message.slice(0, 200)));
   // navigator.mediaDevices n'existe QUE dans un contexte sécurisé (leçon C2) —
   // sert une page dummy sur http://127.0.0.1 (localhost = contexte sécurisé natif)

@@ -19,6 +19,7 @@ import {
   type RouteDecision,
   type TransportHealth,
 } from "@/lib/mbote/transports";
+import { useI18n } from "@/lib/mbote/i18n";
 
 const ACTION_LABEL: Record<RouteAction, string> = {
   ble: "BLE",
@@ -35,6 +36,7 @@ const ACTION_CLASS: Record<RouteAction, string> = {
 const JOURNAL_MAX = 30;
 
 export function RouteurPanel() {
+  const { t, fmt } = useI18n();
   const [health, setHealth] = useState<TransportHealth[]>([]);
   const [decisions, setDecisions] = useState<RouteDecision[]>([]);
 
@@ -81,19 +83,17 @@ export function RouteurPanel() {
           <div>
             <h3 className="flex items-center gap-2 text-base font-bold tracking-tight">
               <Router className="size-4 text-primary" aria-hidden="true" />
-              Routeur de transports (DORS) — décisions en direct
+              {t("router.title")}
             </h3>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
-              Chaque paquet sortant est évalué par la politique §3.1 :{" "}
-              <strong>BLE si ≥ 1 voisin</strong> (avec copie outbox), sinon{" "}
-              <strong>Internet</strong> si la sonde RTT est OK, sinon le paquet{" "}
-              <strong>dort dans l&apos;outbox</strong> (spray-and-wait). Le journal
-              ci-dessous trace chaque décision — rien n&apos;est opaque.
+              {t("router.policyA")} <strong>{t("router.policyBle")}</strong>{" "}
+              {t("router.policyB")} <strong>Internet</strong> {t("router.policyC")}{" "}
+              <strong>{t("router.policyQueued")}</strong> {t("router.policyD")}
             </p>
           </div>
           <Badge variant="outline" className="gap-1.5 py-1">
             <Clock className="size-3.5" aria-hidden="true" />
-            journal · {decisions.length}
+            {t("router.journal")} · {fmt.fmtNumber(decisions.length)}
           </Badge>
         </div>
 
@@ -107,7 +107,7 @@ export function RouteurPanel() {
                 ) : (
                   <Wifi className="size-4 text-primary" aria-hidden="true" />
                 )}
-                Internet → pont VPS
+                {t("router.internetTitle")}
               </p>
               <Badge
                 variant="outline"
@@ -117,14 +117,14 @@ export function RouteurPanel() {
                     : "border-amber-500/40 text-amber-500"
                 }
               >
-                {internet?.available ? "prêt" : "attente sonde"}
+                {internet?.available ? t("router.ready") : t("router.probeWaiting")}
               </Badge>
             </div>
             <p className="mt-1.5 font-mono text-[11px] text-muted-foreground">
-              {internet?.detail ?? "sonde en cours…"}
+              {internet?.detail ?? t("router.probePending")}
             </p>
             <p className="mt-1 text-[10px] text-muted-foreground">
-              priorité 10 · canal confirmé (accusé accepted/duplicate)
+              {t("router.internetDetail")}
             </p>
           </div>
 
@@ -137,34 +137,32 @@ export function RouteurPanel() {
                 Mesh BLE
               </p>
               <Badge variant="outline" className="text-muted-foreground">
-                natif mobile
+                {t("router.bleBadge")}
               </Badge>
             </div>
             <p className="mt-1.5 font-mono text-[11px] text-muted-foreground">
-              transport priorité 0 de l&apos;app native (module mbote-ble) — hors scope
-              navigateur
+              {t("router.bleDetail")}
             </p>
             <p className="mt-1 text-[10px] text-muted-foreground">
-              livraison « au mieux » + copie outbox jusqu&apos;à confirmation
+              {t("router.bleMode")}
             </p>
           </div>
         </div>
 
         {/* journal des décisions */}
         <div className="mt-4">
-          <h4 className="text-sm font-semibold">Journal de routage</h4>
+          <h4 className="text-sm font-semibold">{t("router.journalTitle")}</h4>
           {decisions.length === 0 ? (
             <div className="mt-2 flex min-h-[96px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-center">
               <Router className="size-5 text-muted-foreground" aria-hidden="true" />
               <p className="text-xs text-muted-foreground">
-                Aucune décision encore — encapsulez puis transmettez un paquet dans le
-                tunnel ci-dessous : chaque paquet sera routé individuellement.
+                {t("router.journalEmpty")}
               </p>
             </div>
           ) : (
             <ul
               className="mt-2 max-h-56 space-y-1.5 overflow-y-auto scrollbar-thin pr-1 font-mono text-[11px]"
-              aria-label="Journal des décisions de routage"
+              aria-label={t("router.journalAria")}
             >
               {decisions.map((d) => (
                 <li
@@ -180,22 +178,22 @@ export function RouteurPanel() {
                     <XCircle className="mt-0.5 size-3.5 shrink-0 text-amber-500" aria-hidden="true" />
                   )}
                   <span className="text-muted-foreground">
-                    {new Date(d.at).toLocaleTimeString()}
+                    {fmt.fmtTime.format(new Date(d.at))}
                   </span>
                   <Badge variant="outline" className={`shrink-0 px-1.5 py-0 text-[10px] ${ACTION_CLASS[d.action]}`}>
                     {ACTION_LABEL[d.action]}
                   </Badge>
                   <span className="min-w-0 flex-1 break-words text-muted-foreground">
-                    {d.bytes} o{d.trace ? ` · ${d.trace}` : ""} · {d.detail}
-                    {d.latencyMs !== undefined ? ` · ${d.latencyMs} ms` : ""}
+                    {fmt.fmtNumber(d.bytes)} {t("router.bytesUnit")}
+                    {d.trace ? ` · ${d.trace}` : ""} · {d.detail}
+                    {d.latencyMs !== undefined ? ` · ${fmt.fmtNumber(d.latencyMs)} ms` : ""}
                   </span>
                 </li>
               ))}
             </ul>
           )}
           <p className="mt-2 text-[10px] text-muted-foreground">
-            OUTBOX = le paquet attend un canal (store-and-forward, purge par ack du pont —
-            la file durable expo-sqlite / IndexedDB arrive en P2).
+            {t("router.outboxLegend")}
           </p>
         </div>
       </CardContent>

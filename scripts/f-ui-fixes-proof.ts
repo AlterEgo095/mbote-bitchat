@@ -119,7 +119,11 @@ async function main(): Promise<number> {
   // ── identités réelles (A créateur, B invité — réutilisées par P4/P6/axe) ──
   console.log("[f-proof] N1 — onboarding A + B (identités réelles)");
   const ctxA = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxA.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   const ctxB = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+  // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+  await ctxB.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
   const pageA = await ctxA.newPage();
   const pageB = await ctxB.newPage();
   await onboard(pageA, "F-Alice");
@@ -130,6 +134,8 @@ async function main(): Promise<number> {
   console.log("[f-proof]       l'identité du contexte : pageA la garde pour la suite)");
   {
     const ctxW = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+    // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+    await ctxW.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
     const pageW = await ctxW.newPage();
     await onboard(pageW, "F-Ephemere");
     await pageW.locator('[aria-label^="Menu de mon identité"]').click();
@@ -172,6 +178,8 @@ async function main(): Promise<number> {
   console.log("[f-proof] P2 — publication identité 429 (#2)");
   {
     const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+    // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+    await ctx2.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
     const page2 = await ctx2.newPage();
     const identityPosts: number[] = [];
     // avant la publication : chaque POST /api/identity → 429 (même corps que le serveur D2)
@@ -348,6 +356,8 @@ async function main(): Promise<number> {
       { email: string; password: string; totpSecret: string; role: string }
     >;
     const ctxM = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+    // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+    await ctxM.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
     const pageM = await ctxM.newPage();
     await adminLogin(pageM, secrets["mod@f-proof.test"].email, secrets["mod@f-proof.test"].password, secrets["mod@f-proof.test"].totpSecret);
     await pageM.goto(`${PANEL}/pending-actions`, { waitUntil: "domcontentloaded" });
@@ -359,6 +369,8 @@ async function main(): Promise<number> {
     await ctxM.close();
 
     const ctxS = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+    // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+    await ctxS.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
     const pageS = await ctxS.newPage();
     await adminLogin(pageS, secrets["sa@f-proof.test"].email, secrets["sa@f-proof.test"].password, secrets["sa@f-proof.test"].totpSecret, 1);
     await pageS.goto(`${PANEL}/pending-actions`, { waitUntil: "domcontentloaded" });
@@ -424,6 +436,8 @@ async function main(): Promise<number> {
     // réelle au fil — le PostCard est GARANTI dans le DOM avant l'audit.
     {
       const ctxF = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+      // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+      await ctxF.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
       const pageF = await ctxF.newPage();
       await onboard(pageF, "F-Feed");
       await pageF.goto(`${MAIN}/?view=feed`, { waitUntil: "domcontentloaded" });
@@ -453,6 +467,8 @@ async function main(): Promise<number> {
     await snap(pageB, "axe-groups.png");
     // onboarding dialog (contexte frais)
     const ctxO = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+    // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+    await ctxO.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
     const pageO = await ctxO.newPage();
     await pageO.goto(`${MAIN}/`, { waitUntil: "domcontentloaded" });
     await pageO.getByText("Crée ton identité locale").first().waitFor({ timeout: 30000 });
@@ -476,6 +492,8 @@ async function main(): Promise<number> {
     // hors-ligne → bulle « En attente » GARANTIE dans le DOM avant l'audit.
     {
       const ctxMsg = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+      // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+      await ctxMsg.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
       const pageM = await ctxMsg.newPage();
       await onboard(pageM, "F-Offline");
       await pageM.goto(`${MAIN}/?view=messages`, { waitUntil: "domcontentloaded" });
@@ -540,6 +558,8 @@ async function main(): Promise<number> {
       { email: string; password: string; totpSecret: string; role: string }
     >;
     const ctxM2 = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
+    // G : locale épinglée fr — l'app détecte sinon le navigateur (CI = en-US)
+    await ctxM2.addInitScript(() => { try { localStorage.setItem("mbote_locale", "fr"); } catch { /* ignore */ } });
     const pageM2 = await ctxM2.newPage();
     // offsetWindows=1 : le login P5 de mod a consommé le compteur TOTP courant
     // (anti-rejeu §É3 — un même compteur ≤ est un rejeu) ; la fenêtre suivante
