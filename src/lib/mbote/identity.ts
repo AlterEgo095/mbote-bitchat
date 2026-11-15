@@ -186,6 +186,12 @@ export async function panicWipe(): Promise<void> {
   // n'importe que des utilitaires purs).
   const { clearDmSearchIndex } = await import("./dm-search-index");
   await clearDmSearchIndex();
+  // MLS (C4, vague G) : purge du store « mls » ET des singletons mémoire
+  // (runtimes, kpCache) — défaut connexe #47 : wipeMls existait mais n'était
+  // jamais appelé, l'état MLS en mémoire survivait donc au wipe (seul le
+  // disque était purgé).
+  const { wipeMls } = await import("./mls/client");
+  await wipeMls();
   await Promise.all([deleteDb("mbote-secure"), deleteDb("mbote-outbox")]);
 }
 

@@ -32,7 +32,7 @@
 
 import type { ClientState } from "ts-mls";
 import { signPayload } from "../crypto";
-import { loadGroupState, saveGroupState, loadKpCache, saveKpCache } from "./store";
+import { loadGroupState, saveGroupState, loadKpCache, saveKpCache, setStoreIdentity } from "./store";
 import { decodeValue } from "./state-codec";
 
 // ── chargement paresseux du module MLS ──────────────────────────────────────
@@ -90,6 +90,14 @@ let identity: MlsIdentity | null = null;
 /** Injecté par l'UI (MboteApp) dès que l'identité est prête. */
 export function setMlsIdentity(id: MlsIdentity | null): void {
   identity = id;
+  // Défaut connexe #47 (vague G) : le store scelle le cache des key packages
+  // avec l'identité ECDH-soi. SANS cet injecteur, loadKpCache/saveKpCache
+  // étaient des no-ops de facto (setStoreIdentity jamais appelé) → le cache
+  // KP n'a JAMAIS survécu à un rechargement — cause du « key package
+  // correspondant absent (rechargé ? reconnectez-vous pour republier) » après
+  // tout reload entre la publication et la jointure. Branchement : le cache
+  // KP est désormais réellement persisté (scellé) et rechargé au reload.
+  setStoreIdentity(() => (identity ? { ecdhPriv: identity.ecdhPriv, ecdhPub: identity.ecdhPub } : null));
 }
 
 function requireIdentity(): MlsIdentity {

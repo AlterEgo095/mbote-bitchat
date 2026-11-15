@@ -19,9 +19,8 @@
 import type { SealedPayload } from "../crypto";
 import { sealMessage, openMessage } from "../crypto";
 import { serializeGroupState, deserializeGroupState } from "./state-codec";
+import { openSecureDb } from "../secure-db";
 
-const DB_NAME = "mbote-secure";
-const DB_VERSION = 2; // +1 : store « mls » (secure-keys.ts est v1)
 const STORE = "mls";
 
 export interface MlsStateRecord {
@@ -32,24 +31,10 @@ export interface MlsStateRecord {
   savedAt: number;
 }
 
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (typeof indexedDB === "undefined") {
-      reject(new Error("indexedDB indisponible"));
-      return;
-    }
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error("ouverture IndexedDB échouée"));
-    req.onblocked = () => reject(new Error("IndexedDB bloquée par un autre onglet"));
-  });
-}
+// BUG FAMILLE #47 (vague G) : l'ouverture locale v2 est SUPPRIMÉE — tout
+// passe par l'ouvreur unique openSecureDb() (../secure-db.ts). La version
+// locale 2, conjuguée à la v1 de secure-keys.ts, provoquait le VersionError
+// qui perdait l'identité au reload post-MLS (docs/proofs/G-i18n.md §1).
 
 function txDone(tx: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -65,7 +50,7 @@ export async function loadGroupState(
   ownEcdhPubB64: string
 ): Promise<Record<string, unknown> | null> {
   try {
-    const db = await openDb();
+    const db = await openSecureDb();
     try {
       const rec = await new Promise<MlsStateRecord | null>((resolve, reject) => {
         const tx = db.transaction(STORE, "readonly");
@@ -94,7 +79,7 @@ export async function saveGroupState(
   const plaintext = serializeGroupState(state);
   const sealed = await sealMessage(ecdhPriv, ownEcdhPubB64, plaintext);
   const epoch = (state.groupContext as Record<string, unknown> | undefined)?.epoch;
-  const db = await openDb();
+  const db = await openSecureDb();
   try {
     const tx = db.transaction(STORE, "readwrite");
     const rec: MlsStateRecord = {
@@ -113,7 +98,7 @@ export async function saveGroupState(
 
 export async function deleteGroupState(serverGroupId: string): Promise<void> {
   try {
-    const db = await openDb();
+    const db = await openSecureDb();
     try {
       const tx = db.transaction(STORE, "readwrite");
       tx.objectStore(STORE).delete(serverGroupId);
@@ -129,7 +114,7 @@ export async function deleteGroupState(serverGroupId: string): Promise<void> {
 /** Panique : efface TOUT le store MLS (wipe global de l'app). */
 export async function clearAllGroupStates(): Promise<void> {
   try {
-    const db = await openDb();
+    const db = await openSecureDb();
     try {
       const tx = db.transaction(STORE, "readwrite");
       tx.objectStore(STORE).clear();
@@ -151,7 +136,7 @@ export async function loadKpCache(): Promise<Array<{ wire: string; pub: unknown;
   try {
     const me = identityHandle();
     if (!me) return null;
-    const db = await openDb();
+    const db = await openSecureDb();
     try {
       const rec = await new Promise<{ id: string; sealed: SealedPayload } | null>((resolve, reject) => {
         const tx = db.transaction(STORE, "readonly");
@@ -174,7 +159,7 @@ export async function saveKpCache(entries: Array<{ wire: string; pub: unknown; p
   const me = identityHandle();
   if (!me) return; // identité absente — pas de persistence (reconnect obligatoire)
   const sealed = await sealMessage(me.ecdhPriv, me.ecdhPub, JSON.stringify(entries));
-  const db = await openDb();
+  const db = await openSecureDb();
   try {
     const tx = db.transaction(STORE, "readwrite");
     tx.objectStore(STORE).put({ id: KP_CACHE_ID, sealed });

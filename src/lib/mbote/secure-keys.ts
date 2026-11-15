@@ -20,9 +20,8 @@
  */
 
 import type { KeyBundle } from "./crypto";
+import { openSecureDb } from "./secure-db";
 
-const DB_NAME = "mbote-secure";
-const DB_VERSION = 1;
 const STORE = "keys";
 const RECORD_ID = "identity";
 
@@ -31,24 +30,10 @@ export interface SecureKeyRecord extends KeyBundle {
   savedAt: number;
 }
 
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (typeof indexedDB === "undefined") {
-      reject(new Error("indexedDB indisponible (navigation privée stricte ?)"));
-      return;
-    }
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error("ouverture IndexedDB échouée"));
-    req.onblocked = () => reject(new Error("IndexedDB bloquée par un autre onglet"));
-  });
-}
+// BUG FAMILLE #47 (vague G) : l'ouverture locale v1 est SUPPRIMÉE — tout
+// passe par l'ouvreur unique openSecureDb() (version 2, stores idempotents).
+// Une ouverture v1 après un upgrade MLS v2 levait VersionError, avalée par le
+// catch ci-dessous → identité perdue au reload (docs/proofs/G-i18n.md §1).
 
 function txDone(tx: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -61,7 +46,7 @@ function txDone(tx: IDBTransaction): Promise<void> {
 /** Lit le record de clés (null si absent). Ne lève jamais pour un simple absent. */
 export async function getSecureKeys(): Promise<SecureKeyRecord | null> {
   try {
-    const db = await openDb();
+    const db = await openSecureDb();
     try {
       const rec = await new Promise<SecureKeyRecord | null>((resolve, reject) => {
         const tx = db.transaction(STORE, "readonly");
@@ -73,14 +58,19 @@ export async function getSecureKeys(): Promise<SecureKeyRecord | null> {
     } finally {
       db.close();
     }
-  } catch {
+  } catch (err) {
+    // « Jamais silencieux » : un null ici signifie « pas de clés → onboarding »
+    // — comportement fail-closed voulu, mais la CAUSE doit rester diagnosable
+    // (un catch muet a masqué le VersionError #47 des semaines durant —
+    // cf. secure-db.ts).
+    console.warn("[secure-keys] coffre illisible — identité non restaurée", err);
     return null;
   }
 }
 
 /** Persiste le bundle de clés (CryptoKeys clonables). */
 export async function putSecureKeys(bundle: KeyBundle): Promise<void> {
-  const db = await openDb();
+  const db = await openSecureDb();
   try {
     const tx = db.transaction(STORE, "readwrite");
     tx.objectStore(STORE).put({
@@ -100,7 +90,7 @@ export async function putSecureKeys(bundle: KeyBundle): Promise<void> {
 /** Supprime le record de clés (panic wipe). */
 export async function clearSecureKeys(): Promise<void> {
   try {
-    const db = await openDb();
+    const db = await openSecureDb();
     try {
       const tx = db.transaction(STORE, "readwrite");
       tx.objectStore(STORE).delete(RECORD_ID);
