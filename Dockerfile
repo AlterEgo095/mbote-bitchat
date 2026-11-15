@@ -28,6 +28,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # fournie par docker-compose (build.args) / CI en prod VPS.
 ARG NEXT_PUBLIC_SOCKET_URL=""
 ENV NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL}
+# DATABASE_URL au BUILD (déploiement 2026-11-15) : next build collecte les
+# modules des routes — @/lib/db.ts:29 instancie PrismaClient au chargement,
+# qui exige une datasource valide (PrismaClientConstructorValidationError
+# « Invalid value undefined » sinon). Aucune requête ne s'exécute à la
+# collecte : la valeur ci-dessous n'est jamais lue au disque. La CI n'écrit
+# que 6 variables dans le .env VPS (sans DATABASE_URL) — cf. deploy-vps.yml.
+ENV DATABASE_URL="file:/app/db/custom.db"
 RUN bun run db:generate && bun run build
 
 # ------------------------------------------------------------
