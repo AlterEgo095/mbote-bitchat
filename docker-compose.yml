@@ -35,6 +35,15 @@ services:
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@mbotemesh.aenews.online}
+      # C2 — TURN (appels WebRTC, schéma REST coturn). URLs NON sensibles :
+      # IP publique VPS + port 3478 TCP+UDP (décision O-A 2026-11-16 : 443 est
+      # occupé par nginx ; le domaine est proxifié Cloudflare qui ne route pas
+      # 3478 → IP directe). Le SECRET, lui, ne vit JAMAIS dans le repo : il
+      # arrive via le .env écrit par deploy-vps.yml (secret GitHub
+      # TURN_SHARED_SECRET) — sans lui, /api/turn-credentials répond
+      # available:false (mode dégradé ICE host/srflx, fallback notes vocales).
+      - TURN_URLS=turn:95.111.226.63:3478?transport=udp,turn:95.111.226.63:3478?transport=tcp
+      - TURN_SHARED_SECRET=${TURN_SHARED_SECRET:-}
     volumes:
       - mbote-data:/app/db
     # ── D3 — durcissement runtime (docs/DOCKER-HARDENING.md) ──
