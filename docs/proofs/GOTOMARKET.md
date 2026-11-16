@@ -94,7 +94,7 @@ Téléchargement complet 72.4 MB en ≈ 6.3 s (≈ 11 MB/s). URL publique anonym
 | `ADMIN_INTERNAL_TOKEN` | **Actif** — idem (nécessaire au BFF admin pour `/api/internal/admin/*`, RBAC §8 ; était **absent** avant cette session — le panneau n'aurait jamais pu s'authentifier) |
 | `.env` VPS | 10 variables confirmées : `ADMIN_API_KEY`, `ADMIN_BASE_PATH`, `ADMIN_INTERNAL_TOKEN`, `MBOTE_BOT_KEY`, `NEXT_PUBLIC_ADMIN_BASE_PATH`, `NEXT_PUBLIC_SOCKET_URL`, `RELAY_ALLOWED_ORIGIN`, `RELAY_EMIT_TOKEN`, `SEED_SECRET`, `TURN_SHARED_SECRET` |
 | Super-admin | **Créé en prod** via `scripts/admin-bootstrap.ts` dans le conteneur `mbote-mesh` (`--allow-prod`) : rôle `super-admin`, `totpEnrolled=false` → **enrôlement TOTP forcé au premier login** ; 2 codes de secours générés (stockés hashés) ; `AdminAudit{action:'bootstrap'}` écrit dans la même transaction |
-| Credentials opérateur | **`/opt/mbote-bitchat/ADMIN-CREDENTIALS.txt` (0600, sur le VPS)** — contient l'UNIQUE sortie du bootstrap : email, mot de passe temporaire, secret TOTP (otpauth), 2 codes break-glass. **Aucun secret dans ce rapport ni dans le chat.** |
+| Credentials opérateur | **`/opt/mbote-bitchat/ADMIN-CREDENTIALS.txt` (0600, sur le VPS)** — contient l'UNIQUE sortie du bootstrap : email, mot de passe temporaire, secret TOTP (otpauth), 2 codes break-glass **+ la section Basic Auth nginx** (utilisateur `mbote` + mot de passe en clair, ajoutée par rotation post-déploiement). **Aucun secret dans ce rapport ni dans le chat.** |
 
 DB vérifiée : `AdminUser total=2` (pseudo-user `system@mbote.internal` de la migration + le compte opérateur `super-admin`) ; `AdminAudit` = `bootstrap:1, login_failed:1` (ce dernier = la sonde volontaire à mauvais identifiants, §4.3).
 
@@ -185,8 +185,8 @@ $ curl -sk --resolve mbotemesh.aenews.online:443:95.111.226.63 -o /dev/null -w "
 
 ## 8. Prochaines étapes opérateur (hors périmètre session)
 
-1. **Premier login admin** : lire `/opt/mbote-bitchat/ADMIN-CREDENTIALS.txt` sur le VPS (`cat` en SSH) → ouvrir `https://mbotemesh.aenews.online/console-16bd6307` (Basic Auth `mbote` / mot de passe stocké dans ce même fichier — voir §4.1) → saisir email + mot de passe temporaire → **enrôlement TOTP forcé** (scanner le secret otpauth depuis un authentificateur) → noter les 2 codes break-glass hors ligne.
-2. **Rotation recommandée** : mot de passe Basic Auth (`htpasswd` sur le VPS) après première connexion ; éventuellement renouveler le token GitHub utilisé (scopes repo/workflows).
+1. **Premier login admin** : lire `/opt/mbote-bitchat/ADMIN-CREDENTIALS.txt` sur le VPS (`cat` en SSH) — il contient le mot de passe temporaire, le secret TOTP (otpauth), les 2 codes break-glass **et les identifiants Basic Auth nginx** → ouvrir `https://mbotemesh.aenews.online/console-16bd6307` (Basic Auth utilisateur `mbote`) → saisir email + mot de passe temporaire → **enrôlement TOTP forcé** (scanner le secret otpauth depuis un authentificateur) → noter les 2 codes break-glass hors ligne.
+2. **Rotation recommandée** : mot de passe Basic Auth (`htpasswd` sur le VPS) après première connexion — ⚠️ noter qu'après la session GTM, le mot de passe Basic Auth livré figure EN CLAIR dans `ADMIN-CREDENTIALS.txt` (section « Basic Auth ») : le changer à la première occasion. Éventuellement renouveler le token GitHub utilisé (scopes repo/workflows).
 3. **Optionnel — sous-domaine dédié** : créer le CNAME proxifié chez Cloudflare (zone aenews.online) → `certbot certonly --nginx -d <sous-domaine>` → activer le MODE B dans `deploy/nginx/admin.conf` (vhost prêt) → retirer le bloc chemin secret du vhost principal.
 4. **Optionnel — Cloudflare Access (Zero Trust)** : barrière primaire idéale sur ce chemin (décision audit §4.5) — l'activer depuis le dashboard CF quand l'accès API/dashboard est disponible.
 5. **Comblement d'écart docs** : wire `admin:create` (script npm) ou corriger le RUNBOOK §3.1 (cf. §5.5).
