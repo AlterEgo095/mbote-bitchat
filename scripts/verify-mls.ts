@@ -48,13 +48,6 @@ function randomBytes(n: number): Uint8Array<ArrayBuffer> {
   return u;
 }
 
-/** Copie stricte vers ArrayBuffer (BufferSource TS). */
-function ab(u: Uint8Array): ArrayBuffer {
-  const out = new ArrayBuffer(u.byteLength);
-  new Uint8Array(out).set(u);
-  return out;
-}
-
 async function signMessage(priv: CryptoKey, message: string): Promise<string> {
   const sig = new Uint8Array(await subtle.sign({ name: "ECDSA", hash: "SHA-256" }, priv, enc.encode(message)));
   return b64url(sig);
