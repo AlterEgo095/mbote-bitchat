@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { apiFetch } from "@/lib/api-base";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DashboardMetrics — les 4 métriques du pilotage (Étape 5).
@@ -134,7 +135,7 @@ export function DashboardMetrics({ role, initial }: { role: string; initial: Das
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const res = await fetch("/api/dashboard", { cache: "no-store" });
+      const res = await apiFetch("/api/dashboard", { cache: "no-store" });
       if (res.status === 502) {
         setState({ kind: "error", code: "backend-unreachable", httpStatus: res.status });
         return;

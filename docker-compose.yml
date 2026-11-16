@@ -123,6 +123,12 @@ services:
     build:
       context: ./admin
       dockerfile: Dockerfile
+      args:
+        # Go-to-Market 2026-11 — chemin secret du panneau (obscurcissement) :
+        # basePath Next (routage serveur) + base des fetch client. MÊME valeur
+        # que l'env runtime ci-dessous — provient du .env VPS écrit par la CI.
+        ADMIN_BASE_PATH: ${ADMIN_BASE_PATH:-}
+        NEXT_PUBLIC_ADMIN_BASE_PATH: ${NEXT_PUBLIC_ADMIN_BASE_PATH:-}
     container_name: mbote-admin
     ports:
       - "127.0.0.1:3001:3001"
@@ -133,6 +139,9 @@ services:
       - HOSTNAME=0.0.0.0
       - BACKEND_INTERNAL_URL=http://mbote:3000
       - ADMIN_INTERNAL_TOKEN=${ADMIN_INTERNAL_TOKEN:-}
+      # Chemin secret au RUNTIME : scope du cookie de session admin (RBAC —
+      # le cookie n'est plus émis vers les routes publiques du domaine).
+      - ADMIN_BASE_PATH=${ADMIN_BASE_PATH:-}
     # ── D3 — durcissement : BFF sans état (cache Next en tmpfs)
     read_only: true
     tmpfs:

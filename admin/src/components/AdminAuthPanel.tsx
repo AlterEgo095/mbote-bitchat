@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useRef, useState } from "react";
+import { apiFetch } from "@/lib/api-base";
 
 export interface AuthPanelInitial {
   authenticated: boolean;
@@ -42,7 +43,7 @@ export function AdminAuthPanel({ initial }: { initial: AuthPanelInitial }) {
     setError(null);
     const form = new FormData(e.currentTarget);
     try {
-      const res = await fetch("/api/admin/auth/login", {
+      const res = await apiFetch("/api/admin/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -78,7 +79,7 @@ export function AdminAuthPanel({ initial }: { initial: AuthPanelInitial }) {
     setError(null);
     const form = new FormData(e.currentTarget);
     try {
-      const res = await fetch("/api/admin/auth/break-glass", {
+      const res = await apiFetch("/api/admin/auth/break-glass", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -113,7 +114,7 @@ export function AdminAuthPanel({ initial }: { initial: AuthPanelInitial }) {
     setError(null);
     const form = new FormData(e.currentTarget);
     try {
-      const res = await fetch("/api/admin/auth/totp-enroll", {
+      const res = await apiFetch("/api/admin/auth/totp-enroll", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-csrf": csrfRef.current },
         body: JSON.stringify({ code: String(form.get("enroll-code") ?? "").replace(/\s+/g, "") }),
@@ -134,7 +135,7 @@ export function AdminAuthPanel({ initial }: { initial: AuthPanelInitial }) {
   async function handleLogout() {
     setBusy(true);
     try {
-      const res = await fetch("/api/admin/auth/logout", {
+      const res = await apiFetch("/api/admin/auth/logout", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-csrf": csrfRef.current },
       });

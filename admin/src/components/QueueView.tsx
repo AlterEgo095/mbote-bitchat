@@ -23,6 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useState } from "react";
+import { apiFetch } from "@/lib/api-base";
 
 const CATEGORIES = ["SPAM", "HARASSMENT", "SCAM", "CSAM", "OTHER"] as const;
 
@@ -139,7 +140,7 @@ export function QueueView({
       try {
         const qs = new URLSearchParams({ period: f.period, type: f.type, status: f.status });
         if (c) qs.set("cursor", c);
-        const res = await fetch(`/api/queue?${qs.toString()}`, { cache: "no-store" });
+        const res = await apiFetch(`/api/queue?${qs.toString()}`, { cache: "no-store" });
         if (res.status === 502) {
           setState({ kind: "error", code: "backend-unreachable", httpStatus: res.status });
           return;
@@ -204,7 +205,7 @@ export function QueueView({
           setActingId(null);
           return;
         }
-        const res = await fetch("/api/pending-actions", {
+        const res = await apiFetch("/api/pending-actions", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-admin-csrf": csrfToken },
           body: JSON.stringify({
@@ -260,7 +261,7 @@ export function QueueView({
         setFormError("Cible introuvable (auteur inconnu) — rechargez la file.");
         return;
       }
-      const res = await fetch("/api/admin/moderation/action", {
+      const res = await apiFetch("/api/admin/moderation/action", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-csrf": csrfToken },
         body: JSON.stringify(body),

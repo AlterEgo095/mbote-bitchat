@@ -15,6 +15,7 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api-base";
 
 export interface PendingActionItem {
   id: number;
@@ -104,7 +105,7 @@ export function PendingActionsView({
 
   const refetch = useCallback(async () => {
     try {
-      const res = await fetch("/api/pending-actions", { cache: "no-store" });
+      const res = await apiFetch("/api/pending-actions", { cache: "no-store" });
       if (res.status === 401 || res.status === 403) {
         setState({ kind: "error", code: res.status === 403 ? "forbidden" : "unauthorized" });
         return;
@@ -129,7 +130,7 @@ export function PendingActionsView({
     setActing(true);
     setActionError(null);
     try {
-      const res = await fetch(`/api/pending-actions/${id}/approve`, {
+      const res = await apiFetch(`/api/pending-actions/${id}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-csrf": csrfToken },
         body: JSON.stringify({}),
@@ -162,7 +163,7 @@ export function PendingActionsView({
     setActing(true);
     setActionError(null);
     try {
-      const res = await fetch(`/api/pending-actions/${id}/cancel`, {
+      const res = await apiFetch(`/api/pending-actions/${id}/cancel`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-csrf": csrfToken },
         body: JSON.stringify({}),

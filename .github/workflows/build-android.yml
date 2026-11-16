@@ -13,6 +13,7 @@ on:
     tags: ["v*.*.*"]
   pull_request:
     branches: [main]
+    paths: ["mobile/**", ".github/workflows/build-android.yml"]
   workflow_dispatch:
 
 permissions:
@@ -129,6 +130,29 @@ jobs:
           name: mbote-android-v${{ steps.version.outputs.version }}-r${{ github.run_number }}
           path: mbote-v*-android.apk
           retention-days: 14
+
+      # GTM 2026-11 — distribution directe (l'utilisateur final ne passe PAS
+      # par GitHub) : l'APK est publié sous un NOM STABLE mbote-latest.apk sur
+      # la release « latest » → URL permanente
+      # https://github.com/<repo>/releases/download/latest/mbote-latest.apk
+      # consommée par deploy-vps.yml (copiée vers public/downloads/ de l'app
+      # Next → https://mbotemesh.aenews.online/downloads/mbote-latest.apk).
+      - name: Publier mbote-latest.apk (release « latest » — lien stable)
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=$(ls mbote-v*-android.apk | head -n1)
+          cp "$APK" mbote-latest.apk
+          if ! gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create latest \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Build Android — lien stable" \
+              --notes "APK Android le plus récent, publié sous le nom stable mbote-latest.apk. URL permanente : https://github.com/$GITHUB_REPOSITORY/releases/download/latest/mbote-latest.apk — consommée par deploy-vps.yml et la landing page (/downloads/mbote-latest.apk)." || true
+          fi
+          gh release upload latest mbote-latest.apk --repo "$GITHUB_REPOSITORY" --clobber
+          echo "→ release « latest » mise à jour : mbote-latest.apk ($APK)"
 
       - name: Préparer les notes de release
         if: startsWith(github.ref, 'refs/tags/v')

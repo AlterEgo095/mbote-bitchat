@@ -18,6 +18,14 @@ RUN bun install --frozen-lockfile
 # sources (le contexte est ./admin — voir docker-compose.yml)
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# Go-to-Market 2026-11 — chemin secret du panneau (obscurcissement) :
+# basePath Next figé à la BUILD (routage) + base client (fetch) — cf.
+# next.config.ts (ADMIN_BASE_PATH) et lib/api-base.ts (NEXT_PUBLIC_…).
+# Vide = racine — comportement historique inchangé.
+ARG ADMIN_BASE_PATH=""
+ARG NEXT_PUBLIC_ADMIN_BASE_PATH=""
+ENV ADMIN_BASE_PATH=${ADMIN_BASE_PATH} \
+    NEXT_PUBLIC_ADMIN_BASE_PATH=${NEXT_PUBLIC_ADMIN_BASE_PATH}
 RUN bun run build
 
 # ------------------------------------------------------------

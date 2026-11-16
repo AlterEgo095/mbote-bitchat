@@ -45,6 +45,12 @@ const nextConfig: NextConfig = {
   turbopack: { root: racineProjet },
   outputFileTracingRoot: racineProjet,
   reactStrictMode: true,
+  // Go-to-Market 2026-11 — obscurcissement de l'URL admin : le panneau peut
+  // être servi sous un CHEMIN SECRET du domaine principal (ex. /console-xxxx/).
+  // ADMIN_BASE_PATH est injecté par le compose depuis le .env VPS (et passé
+  // aussi à NEXT_PUBLIC_ADMIN_BASE_PATH pour le client — cf. lib/api-base.ts).
+  // Vide/absent = racine : comportement historique (dev, sous-domaine dédié).
+  basePath: process.env.ADMIN_BASE_PATH || undefined,
   async headers() {
     return [
       {

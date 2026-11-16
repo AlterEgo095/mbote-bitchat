@@ -77,3 +77,9 @@ backups/
 
 # D3 : généré par security.yml (npm audit) — bun.lock est la source de vérité
 package-lock.json
+
+# GTM 2026-11 — distribution APK : l'APK est téléchargé par deploy-vps.yml
+# (release GitHub « latest », asset mbote-latest.apk) — JAMAIS versionné dans
+# le dépôt (32-72 MB par build). En local, placer un APK dans ce dossier pour
+# tester le bouton de la landing page.
+/public/downloads/

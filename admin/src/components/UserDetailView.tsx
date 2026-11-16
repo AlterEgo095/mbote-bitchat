@@ -23,6 +23,7 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api-base";
 
 const CATEGORIES = ["SPAM", "HARASSMENT", "SCAM", "CSAM", "OTHER"] as const;
 
@@ -128,7 +129,7 @@ export function UserDetailView({
   const refetch = useCallback(async (pubkey: string) => {
     setRefreshing(true);
     try {
-      const res = await fetch(`/api/users/${encodeURIComponent(pubkey)}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/users/${encodeURIComponent(pubkey)}`, { cache: "no-store" });
       if (res.status === 404) {
         setState({ kind: "error", code: "notfound", httpStatus: res.status });
         return;
@@ -170,7 +171,7 @@ export function UserDetailView({
     setFormError(null);
     setActing(true);
     try {
-      const res = await fetch("/api/pending-actions", {
+      const res = await apiFetch("/api/pending-actions", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-csrf": csrfToken },
         body: JSON.stringify({
@@ -225,7 +226,7 @@ export function UserDetailView({
         justification: formText,
       };
       if (form === "suspend") body.duration = formDuration;
-      const res = await fetch(`/api/users/${encodeURIComponent(pubkey)}/${form}`, {
+      const res = await apiFetch(`/api/users/${encodeURIComponent(pubkey)}/${form}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-csrf": csrfToken },
         body: JSON.stringify(body),

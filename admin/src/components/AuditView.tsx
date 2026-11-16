@@ -22,6 +22,7 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api-base";
 
 export interface AuditItem {
   id: number;
@@ -144,7 +145,7 @@ export function AuditView({ initial }: { initial: AuditLoadState }) {
     setRefreshing(true);
     setNotice(null);
     try {
-      const res = await fetch(`/api/audit?${filterQs(f, cursor)}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/audit?${filterQs(f, cursor)}`, { cache: "no-store" });
       if (res.status === 502) {
         setState({ kind: "error", code: "backend-unreachable", httpStatus: res.status });
         return;
@@ -188,7 +189,7 @@ export function AuditView({ initial }: { initial: AuditLoadState }) {
     if (!nextCursor) return;
     setLoadingMore(true);
     try {
-      const res = await fetch(`/api/audit?${filterQs(filters, nextCursor)}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/audit?${filterQs(filters, nextCursor)}`, { cache: "no-store" });
       if (!res.ok) {
         setNotice(
           res.status === 502
@@ -230,7 +231,7 @@ export function AuditView({ initial }: { initial: AuditLoadState }) {
     setExporting(true);
     setNotice(null);
     try {
-      const res = await fetch(`/api/audit/export.csv?${filterQs(filters, null)}`, {
+      const res = await apiFetch(`/api/audit/export.csv?${filterQs(filters, null)}`, {
         cache: "no-store",
       });
       if (res.status === 422) {

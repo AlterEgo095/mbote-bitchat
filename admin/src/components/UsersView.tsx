@@ -20,6 +20,7 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api-base";
 
 export interface UserRow {
   pubkey: string;
@@ -100,7 +101,7 @@ export function UsersView({
       try {
         const qs = new URLSearchParams({ status: f.status, period: f.period, sort: f.sort });
         if (c) qs.set("cursor", c);
-        const res = await fetch(`/api/users?${qs.toString()}`, { cache: "no-store" });
+        const res = await apiFetch(`/api/users?${qs.toString()}`, { cache: "no-store" });
         if (res.status === 502) {
           setState({ kind: "error", code: "backend-unreachable", httpStatus: res.status });
           return;
@@ -144,7 +145,7 @@ export function UsersView({
     setRefreshing(true);
     setSearchActive(true);
     try {
-      const res = await fetch(`/api/users?q=${encodeURIComponent(q)}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/users?q=${encodeURIComponent(q)}`, { cache: "no-store" });
       if (res.status === 502) {
         setState({ kind: "error", code: "backend-unreachable", httpStatus: res.status });
         return;

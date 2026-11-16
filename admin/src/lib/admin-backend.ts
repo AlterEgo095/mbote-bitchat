@@ -59,17 +59,27 @@ export async function callBackend(path: string, opts: InternalCallOptions = {}):
   return { status: res.status, body };
 }
 
-/** Flags du cookie de session — HttpOnly, SameSite=Strict, Path=/, Secure en prod. */
+/**
+ * Chemin du panneau sous le domaine (Go-to-Market 2026-11 — obscurcissement).
+ * ADMIN_BASE_PATH est l'équivalent RUNTIME de NEXT_PUBLIC_ADMIN_BASE_PATH
+ * (build) — même valeur, injectée par le compose depuis le .env VPS. Vide =
+ * racine (dev sandbox / sous-domaine dédié).
+ * Le cookie de session est SCOPÉ à ce chemin : servi sous /console-xxxx/, il
+ * n'est plus émis vers les routes publiques du même domaine (app principale).
+ */
+export const ADMIN_BASE_PATH: string = process.env.ADMIN_BASE_PATH || "";
+
+/** Flags du cookie de session — HttpOnly, SameSite=Strict, Path=<base>/, Secure en prod. */
 export function cookieFlags(): {
   httpOnly: true;
   sameSite: "strict";
-  path: "/";
+  path: string;
   secure: boolean;
 } {
   return {
     httpOnly: true,
     sameSite: "strict",
-    path: "/",
+    path: ADMIN_BASE_PATH || "/",
     secure: process.env.NODE_ENV === "production",
   };
 }

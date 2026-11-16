@@ -19,11 +19,21 @@
 #  ─ Secrets temps réel (F-09, à créer dans GitHub → Settings → Secrets) :
 #    NEXT_PUBLIC_SOCKET_URL, RELAY_ALLOWED_ORIGIN, SEED_SECRET,
 #    RELAY_EMIT_TOKEN (F-51), MBOTE_BOT_KEY (F-29), ADMIN_API_KEY (A3 —
-#    modération admin ; absente = modération OFF, 403 uniforme, défaut sûr)
-#    et TURN_SHARED_SECRET (C2 — appels WebRTC : schéma REST coturn,
+#    modération admin ; absente = modération OFF, 403 uniforme, défaut sûr),
+#    TURN_SHARED_SECRET (C2 — appels WebRTC : schéma REST coturn,
 #    credentials éphémères 600 s ; absente = /api/turn-credentials répond
 #    available:false, appels dégradés ICE host/srflx + fallback notes vocales)
+#    ADMIN_INTERNAL_TOKEN (ADM Étape 4 — RBAC §8 : identifie le panneau BFF
+#    auprès de l'app principale ; absent = endpoints /api/internal/admin/*
+#    refusés) et ADMIN_BASE_PATH + NEXT_PUBLIC_ADMIN_BASE_PATH (Go-to-Market
+#    2026-11 — obscurcissement : chemin secret du panneau admin, ex.
+#    /console-xxxx/ ; MÊME valeur pour les deux ; vide = racine)
 #    — écrits dans le .env VPS. Voir docs/RUNBOOK-ADMIN-KEY.md.
+#  ─ Distribution APK (Go-to-Market 2026-11) : le workflow télécharge sur le
+#    VPS l'APK de la release GitHub « latest » (asset mbote-latest.apk, mis à
+#    jour par build-android.yml) vers public/downloads/ — servi par Next et
+#    nginx sur /downloads/mbote-latest.apk. Le dossier est exclu du rsync
+#    (la version déjà présente sur le VPS survit à un échec de téléchargement).
 #  ─ Le rsync PRÉSERVE le .env et docker-compose.override.yml du serveur
 #    (bindings 127.0.0.1 selon la convention nginx-hôte, ports non standards).
 # ─────────────────────────────────────────────────────────────────────────────
@@ -157,6 +167,7 @@ jobs:
             --exclude 'tests' \
             --exclude 'db' \
             --exclude 'download' \
+            --exclude 'public/downloads' \
             --exclude 'tool-results' \
             --exclude '.zscripts' \
             --exclude '.claude' \
@@ -171,7 +182,23 @@ jobs:
             ./ "$VPS_USER@$VPS_HOST:$VPS_DIR/"
           echo "✅ code synchronisé (commit $(cat .deploy-commit))"
 
-      - name: Environnement de build (.env sur le VPS — 7 variables critiques)
+      - name: APK Android — téléchargement sur le VPS (distribution directe)
+        if: steps.gate.outputs.ok == 'true'
+        run: |
+          APK_URL="https://github.com/${{ github.repository }}/releases/download/latest/mbote-latest.apk"
+          ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" \
+            "mkdir -p '$VPS_DIR/public/downloads' && \
+             if curl -fsSL --connect-timeout 15 --max-time 600 '$APK_URL' -o '$VPS_DIR/public/downloads/mbote-latest.apk.new'; then \
+               mv '$VPS_DIR/public/downloads/mbote-latest.apk.new' '$VPS_DIR/public/downloads/mbote-latest.apk'; \
+               echo '✅ APK mbote-latest.apk téléchargé sur le VPS (release « latest »)'; \
+             elif [ -f '$VPS_DIR/public/downloads/mbote-latest.apk' ]; then \
+               rm -f '$VPS_DIR/public/downloads/mbote-latest.apk.new'; \
+               echo '::warning::Téléchargement APK échoué — conservation de la version déjà présente sur le VPS'; \
+             else \
+               echo '::warning::APK indisponible (release « latest » absente du dépôt) — /downloads/mbote-latest.apk répondra 404'; \
+             fi"
+
+      - name: Environnement de build (.env sur le VPS — 10 variables critiques)
         if: steps.gate.outputs.ok == 'true'
         run: |
           if [ -z "$ADMIN_API_KEY" ]; then
@@ -179,6 +206,12 @@ jobs:
           fi
           if [ -z "$TURN_SHARED_SECRET" ]; then
             echo "::warning::Secret TURN_SHARED_SECRET absent — /api/turn-credentials répondra available:false (appels dégradés ICE host/srflx, fallback notes vocales). Provisionner : gh secret set TURN_SHARED_SECRET --repo AlterEgo095/mbote-bitchat (valeur = static-auth-secret de /etc/turnserver.conf)"
+          fi
+          if [ -z "$ADMIN_INTERNAL_TOKEN" ]; then
+            echo "::warning::Secret ADMIN_INTERNAL_TOKEN absent — les endpoints /api/internal/admin/* refuseront le panneau (défaut sûr). Provisionner : gh secret set ADMIN_INTERNAL_TOKEN --repo AlterEgo095/mbote-bitchat"
+          fi
+          if [ -z "$ADMIN_BASE_PATH" ]; then
+            echo "::notice::Secret ADMIN_BASE_PATH absent — panneau admin servi à la racine (URL non obscurcie). Provisionner : gh secret set ADMIN_BASE_PATH --repo AlterEgo095/mbote-bitchat (ex. /console-xxxxxxxx)"
           fi
           {
             echo "NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL}"
@@ -188,12 +221,15 @@ jobs:
             echo "MBOTE_BOT_KEY=${MBOTE_BOT_KEY}"
             echo "ADMIN_API_KEY=${ADMIN_API_KEY}"
             echo "TURN_SHARED_SECRET=${TURN_SHARED_SECRET}"
+            echo "ADMIN_INTERNAL_TOKEN=${ADMIN_INTERNAL_TOKEN}"
+            echo "ADMIN_BASE_PATH=${ADMIN_BASE_PATH}"
+            echo "NEXT_PUBLIC_ADMIN_BASE_PATH=${NEXT_PUBLIC_ADMIN_BASE_PATH}"
           } | ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "cat > '$VPS_DIR/.env'"
           ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "chmod 600 '$VPS_DIR/.env'"
           if [ -n "$ADMIN_API_KEY" ]; then
-            echo "✅ .env écrit sur le VPS (F-09/F-51/F-29/F-02/A3/C2-TURN — 7 variables, ADMIN_API_KEY incluse)"
+            echo "✅ .env écrit sur le VPS (F-09/F-51/F-29/F-02/A3/C2-TURN/ADM-4/GTM — 10 variables, ADMIN_API_KEY incluse)"
           else
-            echo "✅ .env écrit sur le VPS (6 variables — ADMIN_API_KEY absente : modération admin OFF)"
+            echo "✅ .env écrit sur le VPS (9 variables — ADMIN_API_KEY absente : modération admin OFF)"
           fi
         env:
           NEXT_PUBLIC_SOCKET_URL: ${{ secrets.NEXT_PUBLIC_SOCKET_URL }}
@@ -203,6 +239,9 @@ jobs:
           MBOTE_BOT_KEY: ${{ secrets.MBOTE_BOT_KEY }}
           ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
           TURN_SHARED_SECRET: ${{ secrets.TURN_SHARED_SECRET }}
+          ADMIN_INTERNAL_TOKEN: ${{ secrets.ADMIN_INTERNAL_TOKEN }}
+          ADMIN_BASE_PATH: ${{ secrets.ADMIN_BASE_PATH }}
+          NEXT_PUBLIC_ADMIN_BASE_PATH: ${{ secrets.NEXT_PUBLIC_ADMIN_BASE_PATH }}
 
       - name: Build & démarrage
         if: steps.gate.outputs.ok == 'true'

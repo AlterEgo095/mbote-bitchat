@@ -30,12 +30,16 @@
  * « Mbote — Nouveau message de <fromLabel> », clic → focus + navigation
  * vers la vue messages (SPA ?view=messages). Badge compteur si supporté.
  */
-const VERSION = "mbote-v7";
+const VERSION = "mbote-v8";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
+// GTM 2026-11 : la racine « / » est désormais la LANDING PAGE (vitrine),
+// l'app vit sous « /chat ». Le shell pré-caché inclut les deux — le repli
+// hors-ligne privilégie « /chat » (le mode courrier doit ouvrir L'APP).
 const SHELL_ASSETS = [
   "/",
+  "/chat",
   "/manifest.webmanifest",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
@@ -255,16 +259,20 @@ self.addEventListener("fetch", (event) => {
       fetch(req)
         .then((res) => {
           const copy = res.clone();
-          caches.open(SHELL_CACHE).then((c) => c.put("/", copy)).catch(() => undefined);
+          // GTM 2026-11 : cache PAR URL (plus d'écrasement « / ») — la
+          // landing et l'app coexistent dans le cache shell.
+          caches.open(SHELL_CACHE).then((c) => c.put(req, copy)).catch(() => undefined);
           return res;
         })
         .catch(() =>
-          // v5 : repli hors-ligne — l'app shell « / » d'abord (le shell est
-          // pré-caché à l'install et les chunks /_next/ vus en ligne sont en
-          // RUNTIME_CACHE → l'app démarre réellement sans réseau, mode courrier
-          // inclus). offline.html ne sert qu'en dernier recours (shell absent).
+          // v8 : repli hors-ligne — l'app shell « /chat » d'abord (pré-cachée
+          // à l'install ; les chunks /_next/ vus en ligne sont en
+          // RUNTIME_CACHE → l'app démarre réellement sans réseau, mode
+          // courrier inclus), puis la landing « / », puis offline.html en
+          // dernier recours.
           caches
-            .match("/")
+            .match("/chat")
+            .then((shell) => shell ?? caches.match("/"))
             .then((shell) => shell ?? caches.match("/offline.html"))
             .then((fallback) => fallback ?? new Response("Hors ligne", { status: 503 }))
         )

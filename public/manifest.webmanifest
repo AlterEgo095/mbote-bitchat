@@ -3,7 +3,7 @@
   "short_name": "Mbote Mesh",
   "description": "Réseau social inspiré de BitChat : canaux géohash, DM chiffrés de bout en bout, file courrier hors-ligne, passerelle mesh ↔ VPS.",
   "id": "/",
-  "start_url": "/",
+  "start_url": "/chat",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
@@ -33,7 +33,7 @@
     }
   ],
   "share_target": {
-    "action": "/",
+    "action": "/chat",
     "method": "GET",
     "enctype": "application/x-www-form-urlencoded",
     "params": {
@@ -45,12 +45,12 @@
   "shortcuts": [
     {
       "name": "Fil global",
-      "url": "/?view=feed",
+      "url": "/chat?view=feed",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Passerelle BitChat",
-      "url": "/?view=network",
+      "url": "/chat?view=network",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]

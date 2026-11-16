@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api-base";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Badge vivant de l'état backend, alimenté par /api/health (2 états réels :
@@ -24,7 +25,7 @@ export function BackendStatus() {
   const check = useCallback(async () => {
     const started = Date.now();
     try {
-      const res = await fetch("/api/health", { cache: "no-store" });
+      const res = await apiFetch("/api/health", { cache: "no-store" });
       const body = (await res.json().catch(() => ({}))) as HealthBody;
       if (res.ok) {
         setState({ kind: "up", latencyMs: Date.now() - started });
