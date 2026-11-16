@@ -91,7 +91,7 @@ export default async function DashboardPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-zinc-200 bg-white">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-4 sm:px-6">
           <div className="flex items-baseline gap-3">
             <h1 className="text-lg font-semibold tracking-tight text-zinc-900">
               Tableau de bord
@@ -100,12 +100,20 @@ export default async function DashboardPage() {
               {session ? `${session.email} · ${session.role}` : "liaison app principale perdue"}
             </span>
           </div>
-          <Link
-            href="/"
-            className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
-          >
-            Retour
-          </Link>
+          <nav className="flex flex-wrap items-center gap-2" aria-label="Navigation panneau">
+            <Link
+              href="/posts"
+              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+            >
+              Contenus
+            </Link>
+            <Link
+              href="/"
+              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+            >
+              Retour
+            </Link>
+          </nav>
         </div>
       </header>
 
@@ -145,8 +153,9 @@ export default async function DashboardPage() {
 
       <footer className="mt-auto border-t border-zinc-200 bg-white pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
         <p className="mx-auto w-full max-w-6xl px-4 text-xs text-zinc-500 sm:px-6">
-          mbote-admin · port 3001 · publié uniquement sur 127.0.0.1 (réseau
-          Docker interne) · données agrégées uniquement (preuves ADM-step5.md)
+          mbote-admin · conteneur 3001 · publié sur l&apos;hôte uniquement sur
+          127.0.0.1:3392 (boucle locale — réseau Docker interne) · données
+          agrégées uniquement (preuves ADM-step5.md)
         </p>
       </footer>
     </div>
