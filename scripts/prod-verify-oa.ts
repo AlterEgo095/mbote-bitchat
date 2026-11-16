@@ -333,7 +333,7 @@ async function main(): Promise<void> {
     const mlsGroupId = Array.from(randomBytes(16)).map((b) => b.toString(16).padStart(2, "0")).join(""); // hex LOWERCASE strict — contrat serveur /^[0-9a-f]{32,128}$/ (le filtre case-insensitive laissait des A-F majuscules = 400)
     const t = ts();
     const name = `Vérif O-A ${stamp}`;
-    const signature = await signMessage(alice.priv, `${alice.pubkey}|group-create|${mlsGroupId}`);
+    const signature = await signMessage(alice.priv, `${alice.pubkey}|group-create|${mlsGroupId}|${t}`); // défaut latent #3 : le ts FINAL fait partie de la chaîne signée (verifyGroupProof → verifySignedMessage `${msg}|${ts}`, aucun fallback — 401 sinon, découvert au re-test MLS réel 2026-11-15)
     const cr = await post("/api/groups", { me: alice.pubkey, mlsGroupId, name, ts: t, signature });
     if (cr.status === 200 || cr.status === 201) {
       record("Groupe MLS création (signée)", "PASS", `status ${cr.status} — group ${mlsGroupId.slice(0, 8)}…`);
@@ -343,7 +343,7 @@ async function main(): Promise<void> {
         record("Message de groupe", "WARN", `id de groupe absent de la réponse (${JSON.stringify(cr.json)?.slice(0, 120)}) — POST message non tenté`);
       } else {
         const tg = ts();
-        const gsig = await signMessage(alice.priv, `${alice.pubkey}|group-msg|${gid}`);
+        const gsig = await signMessage(alice.priv, `${alice.pubkey}|group-msg|${gid}|${tg}`); // même contrat : `${msg}|${ts}` final
         const gm = await post(`/api/groups/${encodeURIComponent(gid)}/messages`, {
           me: alice.pubkey,
           ciphertext: b64url(randomBytes(64)), // wire MLS opaque — le serveur ne voit AUCUN plaintext (C4)

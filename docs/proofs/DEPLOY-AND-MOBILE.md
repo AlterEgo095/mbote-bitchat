@@ -310,3 +310,30 @@ Le mbote principal et l'admin utilisaient le même pattern addgroup → corrigé
 1. `MEDIA_S3_*` : provisionner le stockage objet (R2/S3) puis re-run `prod-verify-oa.ts` (médias passent).
 2. Push `feat/mbote-v1` → `main` (FF vérifié : 117/0) quand le feu vert tombe — la CI redéploiera identiquement.
 3. Re-test MLS (script corrigé) après libération du plafond Sybil (fenêtre 1 h glissante).
+
+---
+
+## 9.5 RE-TEST MLS RÉEL 2026-11-15 (post-fenêtre Sybil) — VERDICT : PASS 4/4
+
+Script focalisé `scripts/verify-mls.ts` (reconstruit fidèlement aux contrats serveur relus sur `feat/mbote-v1`),
+exécuté contre `https://mbotemesh.aenews.online` (prod `e970f0e`, saine : `/api/stats` 200, uptime ~1,3 h) :
+
+| Étape | Requête réelle | Résultat |
+|---|---|---|
+| 1. Identité de test unique `probe-M-<stamp>` | `POST /api/identity` (PoW Sybil 20 bits + ECDSA P-256, nonce PoW en STRING décimale) | **200** |
+| 2. Groupe MLS | `POST /api/groups` — `mlsGroupId` hex lowercase 32, commit/welcome opaques (relais aveugle C4), invité = identité EXISTANTE recueillie du feed public (aucune 2ᵉ création Sybil) | **201** |
+| 3. Message de groupe | `POST /api/groups/{id}/messages` — ciphertext MLS opaque 64 o, `mlsEpoch=1` | **201** |
+| 4. Relecture membre actif | `GET /api/groups/{id}/messages` (preuve `group-msgs`) — ciphertext rendu IDENTIQUE | **200** |
+
+**Défaut latent #3 découvert et corrigé** (après les #1 nonce PoW string et #2 regex lowercase, tous deux d02813c) :
+`verifyGroupProof` vérifie la signature sur `${message}|${ts}` — le `ts` FINAL fait partie de la chaîne signée
+(`proof.ts verifySignedMessage`, aucun fallback sans `ts`). Les scripts signaient `${pubkey}|group-create|${gid}`
+SANS le `|${ts}` final → 401 « Preuve invalide ou absente » au run 1 (l'étape 1 passant, la divergence était purement
+dans la chaîne canonique groupe). Run 1 (401) et run 2 (PASS 4/4) documentés ; correctif appliqué aux DEUX scripts
+(`verify-mls.ts` + `prod-verify-oa.ts` §7 group-create/group-msg) avec auto-vérification pré-vol des signatures
+(`subtle.verify` côté client sur la chaîne canonique exacte — plus aucun envoi production si le contrat diverge).
+
+Effets de bord documentés : 1 identité `probe-M-` créée (2ᵉ créneau Sybil de l'heure), 1 groupe, 1 message de groupe,
+1 welcome adressé à l'invité existant. Aucune donnée réelle d'utilisateur lue ni modifiée.
+Fichiers temporaires de session (`/home/z/verify-mls.ts`, sondes ob/post-deploy, override compose, logs, credentials)
+supprimés/shreddés en fin de run — la copie réutilisable vit dans `scripts/verify-mls.ts`.
