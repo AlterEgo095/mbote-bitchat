@@ -158,12 +158,15 @@ services:
     healthcheck:
       # 2 états testés (preuve ADM-step1-2.md) : 200 ok / 503 degraded —
       # un backend mort rend ce conteneur visiblement unhealthy.
+      # GTM 2026-11 : le panneau peut être servi sous ADMIN_BASE_PATH
+      # (obscurcissement /console-xxxx/) — la route /api/health vit alors sous
+      # ce chemin ; la sonde est basePath-aware (défaut racine inchangé).
       test:
         [
           "CMD",
           "bun",
           "-e",
-          "await fetch('http://localhost:3001/api/health').then(r => { if (!r.ok) throw new Error('unhealthy: ' + r.status); })",
+          "const b = process.env.ADMIN_BASE_PATH || ''; await fetch('http://localhost:3001' + b + '/api/health').then(r => { if (!r.ok) throw new Error('unhealthy: ' + r.status); })",
         ]
       interval: 30s
       timeout: 8s
