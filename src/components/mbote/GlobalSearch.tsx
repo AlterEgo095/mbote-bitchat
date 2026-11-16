@@ -316,9 +316,6 @@ export function GlobalSearch({ onOpenPost, onOpenMessage, hasIdentity }: GlobalS
             <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
               {t("common.close")}
             </Button>
-            <span className="text-[10px] text-muted-foreground">
-              {t("search.rateLimitNote")}
-            </span>
           </div>
         </DialogContent>
       </Dialog>

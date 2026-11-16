@@ -4,11 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
+  Binary,
   Bluetooth,
-  CheckCircle2,
   ClipboardCopy,
   CloudUpload,
-  Hash,
   PackageOpen,
   RefreshCw,
   Router,
@@ -115,9 +114,6 @@ export function BitChatBridge() {
   const [channel, setChannel] = useState<string>(CANAL_NONE);
   const [queue, setQueue] = useState<QueuedPacket[]>([]);
   const [outboxKind, setOutboxKind] = useState<string>("");
-  const [journal, setJournal] = useState<
-    { hash: string; status: string; detail?: string }[]
-  >([]);
   const [downlink, setDownlink] = useState<BridgeDownlink | null>(null);
   const [sending, setSending] = useState(false);
   const [showHex, setShowHex] = useState<string | null>(null);
@@ -267,7 +263,6 @@ export function BitChatBridge() {
         },
       }))
     );
-    setShowHex(newPkts[0].id);
     setDraft("");
     const totalBytes = newPkts.reduce((a, p) => a + p.bytes, 0);
     toast.success(
@@ -320,7 +315,6 @@ export function BitChatBridge() {
         }
       }
 
-      setJournal(results);
       const accepted = results.filter((r) => r.status === "accepted").length;
       const duplicates = results.filter((r) => r.status === "duplicate").length;
       const queuedN = results.filter((r) => r.status === "outbox").length;
@@ -350,10 +344,6 @@ export function BitChatBridge() {
       toast.error(e instanceof Error ? e.message : t("bridge.downlinkFailed"));
     }
   };
-
-  const q = queue[queue.length - 1];
-  // F-48 : l'en-tête du paquet affiché n'est décodé qu'une fois par rendu
-  const qHeader = q ? describePacket(base64ToBytes(q.base64)).header : null;
 
   return (
     <Card className="border-primary/25">
@@ -507,63 +497,81 @@ export function BitChatBridge() {
               </div>
             ) : (
               <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto scrollbar-thin pr-1" aria-label={t("bridge.a11yQueue")}>
-                {queue.map((p, i) => (
-                  <li key={p.id} className="rounded-lg border bg-background/60 p-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                        <Badge variant="outline" className="font-mono text-[10px]">
-                          #{i + 1} {p.typeName}
-                          {p.fragLabel ? ` · ${p.fragLabel}` : ""}
-                        </Badge>
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          {tp("bridge.pktMeta", p.hops, {
-                            bytes: fmt.fmtNumber(p.bytes),
-                            hash: p.hash.slice(0, 8),
-                          })}
-                        </span>
+                {queue.map((p, i) => {
+                  // F-48 : l'en-tête n'est décodé que si le dump hex est ouvert
+                  const expanded = showHex === p.id;
+                  const pHeader = expanded
+                    ? describePacket(base64ToBytes(p.base64)).header
+                    : null;
+                  return (
+                    <li key={p.id} className="rounded-lg border bg-background/60 p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          <Badge variant="outline" className="font-mono text-[10px]">
+                            #{i + 1} {p.typeName}
+                            {p.fragLabel ? ` · ${p.fragLabel}` : ""}
+                          </Badge>
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {tp("bridge.pktMeta", p.hops, {
+                              bytes: fmt.fmtNumber(p.bytes),
+                              hash: p.hash.slice(0, 8),
+                            })}
+                          </span>
+                        </div>
+                        <div className="flex shrink-0 items-center">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6"
+                            onClick={() => setShowHex(expanded ? null : p.id)}
+                            aria-label={t("bridge.a11yHexToggle", { n: i + 1 })}
+                            aria-expanded={expanded}
+                          >
+                            <Binary className="size-3.5" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6"
+                            onClick={() => void outbox.purge([p.id])}
+                            aria-label={t("bridge.a11yRemove", { n: i + 1 })}
+                          >
+                            <Trash2 className="size-3.5" aria-hidden="true" />
+                          </Button>
+                        </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-6"
-                        onClick={() => void outbox.purge([p.id])}
-                        aria-label={t("bridge.a11yRemove", { n: i + 1 })}
-                      >
-                        <Trash2 className="size-3.5" aria-hidden="true" />
-                      </Button>
-                    </div>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {t("bridge.previewLine", { preview: p.preview || t("bridge.previewOpaque") })}
-                    </p>
-                    {p.attempts > 0 && (
-                      <p className="mt-1 font-mono text-[10px] text-amber-500">
-                        {tp("bridge.backoff", p.attempts, {
-                          when:
-                            p.nextAttemptAt > Date.now()
-                              ? t("bridge.reflushIn", { s: Math.ceil((p.nextAttemptAt - Date.now()) / 1000) })
-                              : t("bridge.reflushSoon"),
-                        })}
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {t("bridge.previewLine", { preview: p.preview || t("bridge.previewOpaque") })}
                       </p>
-                    )}
-                    {showHex === p.id && (
-                      <pre className="mt-2 max-h-32 overflow-auto scrollbar-thin rounded bg-zinc-950 p-2 font-mono text-[10px] leading-relaxed text-emerald-300">
+                      {p.attempts > 0 && (
+                        <p className="mt-1 font-mono text-[10px] text-amber-500">
+                          {tp("bridge.backoff", p.attempts, {
+                            when:
+                              p.nextAttemptAt > Date.now()
+                                ? t("bridge.reflushIn", { s: Math.ceil((p.nextAttemptAt - Date.now()) / 1000) })
+                                : t("bridge.reflushSoon"),
+                          })}
+                        </p>
+                      )}
+                      {expanded && (
+                        <div className="mt-2">
+                          <pre className="max-h-32 overflow-auto scrollbar-thin rounded bg-zinc-950 p-2 font-mono text-[10px] leading-relaxed text-emerald-300">
 {hexDump(base64ToBytes(p.base64))}
-                      </pre>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {q && (
-              <p className="mt-2 font-mono text-[10px] text-muted-foreground">
-                {t("bridge.headerDecoded", {
-                  version: qHeader?.version ?? "?",
-                  sender: q.senderId,
-                  ttl: qHeader?.ttl ?? "?",
-                  type: PACKET_TYPE_NAMES[PKT_PUBLIC],
+                          </pre>
+                          <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+                            {t("bridge.headerDecoded", {
+                              version: pHeader?.version ?? "?",
+                              sender: p.senderId,
+                              ttl: pHeader?.ttl ?? "?",
+                              type: PACKET_TYPE_NAMES[PKT_PUBLIC],
+                            })}
+                          </p>
+                        </div>
+                      )}
+                    </li>
+                  );
                 })}
-              </p>
+              </ul>
             )}
 
             <div className="mt-3 flex gap-2">
@@ -591,35 +599,6 @@ export function BitChatBridge() {
             </p>
           </section>
         </div>
-
-        {/* journal d'ingestion */}
-        {journal.length > 0 && (
-          <section className="mt-4 rounded-xl border p-4" aria-label={t("bridge.a11yJournal")}>
-            <h4 className="flex items-center gap-1.5 text-sm font-semibold">
-              <Hash className="size-4 text-primary" aria-hidden="true" />
-              {t("bridge.journalTitle")}
-            </h4>
-            <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto scrollbar-thin font-mono text-[11px]">
-              {journal.map((r, i) => (
-                <li key={`${r.hash}-${i}`} className="flex items-start gap-2">
-                  {r.status === "accepted" ? (
-                    <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
-                  ) : (
-                    <RefreshCw className="mt-0.5 size-3.5 shrink-0 text-amber-500" aria-hidden="true" />
-                  )}
-                  <span className="text-muted-foreground">{r.hash.slice(0, 12)}…</span>
-                  <span className={r.status === "accepted" ? "text-emerald-500" : "text-amber-500"}>
-                    {r.status}
-                  </span>
-                  {r.detail && <span className="text-muted-foreground">· {r.detail}</span>}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2 text-[10px] text-muted-foreground">
-              {t("bridge.journalNote")}
-            </p>
-          </section>
-        )}
 
         {/* downlink + stats */}
         <section className="mt-4 rounded-xl border p-4" aria-label={t("bridge.a11yDownlink")}>

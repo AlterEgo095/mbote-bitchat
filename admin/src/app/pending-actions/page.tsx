@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PendingActionsView, type PendingLoadState, type PendingActionItem } from "@/components/PendingActionsView";
 import { ADMIN_COOKIE, callBackend, getPanelSessionServer, type PanelSession } from "@/lib/admin-backend";
+import { AdminNav } from "@/components/AdminNav";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // /pending-actions — file des intentions FOUR-EYES (ADM Étape 9).
@@ -85,26 +85,7 @@ export default async function PendingActionsPage() {
               {session ? `${session.email} · ${session.role}` : "liaison app principale perdue"}
             </span>
           </div>
-          <nav className="flex flex-wrap items-center gap-2" aria-label="Navigation panneau">
-            <Link
-              href="/posts"
-              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
-            >
-              Contenus
-            </Link>
-            <Link
-              href="/dashboard"
-              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
-            >
-              ← Tableau
-            </Link>
-            <Link
-              href="/"
-              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
-            >
-              Retour
-            </Link>
-          </nav>
+          <AdminNav />
         </div>
       </header>
 

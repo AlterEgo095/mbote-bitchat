@@ -14,7 +14,8 @@
  *  CYCLE (100 % audité — 2 lignes AdminAudit pour un cycle nominal) :
  *    request  → status=pending + audit `pendingaction_created`
  *    approve  → EXÉCUTION TRANSACTIONNELLE de la vraie action
- *               (applyUserBan | purgePostWithAudit — ligne `ban` | `purge`)
+ *               (applyUserBan | purgePostWithAudit | purgeDmPairWithAudit |
+ *               purgeGroupMessagesWithAudit — ligne `ban` | `purge`)
  *               + status=executed, approvedById/at, executedAt
  *    cancel   → (demandeur UNIQUEMENT) status=cancelled + audit `_cancelled`
  *    expire   → évaluée PARESSEUSEMENT (approbation → 410 ; GET liste marque
@@ -25,7 +26,10 @@
  *      SESSION (double garde — 2 sessions du même admin sont refusées aussi) ;
  *    - expiresAt = createdAt + 1 h, refus 410 Gone au-delà ;
  *    - refus si action disponible à un seul modérateur (warn/suspend) —
- *      actionType fermé : `ban_user` | `purge_post` UNIQUEMENT ;
+ *      actionType fermé : `ban_user` | `purge_post` | `purge_dm_pair` |
+ *      `purge_group_messages` UNIQUEMENT (back-office 2026-11 : les purges
+ *      de contenus E2EE — DM par paire, contenus MLS de groupe — passent par
+ *      le MÊME cycle four-eyes que la purge post, exécuteurs e2ee-purge.ts) ;
  *    - refus 409 si une PENDING existe déjà pour (actionType, targetId) ;
  *    - RBAC : create/approve/cancel = super-admin (tranché 2026-11-06 —
  *      directive É9, matrice §4 #9-11 réalignée) ; liste = moderator min
@@ -44,8 +48,21 @@ import type { Justification } from "@/lib/mbote/justification";
 import type { PurgeActor } from "@/lib/mbote/moderation";
 import { withWriteLock } from "@/lib/mbote/write-mutex";
 
-export const PENDING_ACTION_TYPES = ["ban_user", "purge_post"] as const;
+export const PENDING_ACTION_TYPES = [
+  "ban_user",
+  "purge_post",
+  "purge_dm_pair", // back-office 2026-11 — ciphertext DM d'une paire (e2ee-purge.ts)
+  "purge_group_messages", // back-office 2026-11 — ciphertexts MLS d'un groupe
+] as const;
 export type PendingActionType = (typeof PENDING_ACTION_TYPES)[number];
+
+/** targetType AdminAudit / PendingAction par actionType (audit + figeage). */
+export const PENDING_TARGET_TYPE: Record<PendingActionType, string> = {
+  ban_user: "user",
+  purge_post: "post",
+  purge_dm_pair: "dm_pair",
+  purge_group_messages: "group",
+};
 
 export const PENDING_ACTION_STATUSES = [
   "pending",
@@ -61,6 +78,8 @@ export const PENDING_ACTION_TTL_MS = 3600_000;
 export const FOUR_EYES_ACTION_LABEL: Record<PendingActionType, string> = {
   ban_user: "ban",
   purge_post: "purge",
+  purge_dm_pair: "purge",
+  purge_group_messages: "purge",
 };
 
 type Tx = Parameters<Parameters<typeof import("@/lib/db").db.$transaction>[0]>[0];
@@ -207,7 +226,7 @@ export interface RequestPendingActionArgs {
 
 export type RequestPendingActionResult =
   | { ok: true; pendingAction: { id: number; expiresAt: Date; status: string } }
-  | { ok: false; status: 404 | 409; error: string };
+  | { ok: false; status: 400 | 404 | 409; error: string };
 
 /**
  * Crée l'intention (sans exécuter quoi que ce soit). Vérifie que la cible
@@ -235,6 +254,57 @@ export async function requestPendingAction({
       return { ok: false, status: 409, error: "Utilisateur déjà banni définitivement" };
     }
     payload = { pubkey: user.pubkey, nickname: user.nickname };
+  } else if (actionType === "purge_dm_pair") {
+    // paire canonique `keyA|keyB` (triée) — MÉTADONNÉES uniquement figées :
+    // compteur, non-lus, octets de ciphertext. AUCUN contenu (E2EE §1.4).
+    const { parseDmPair } = await import("@/lib/mbote/e2ee-purge");
+    const parsed = parseDmPair(targetId);
+    if (!parsed) {
+      return { ok: false, status: 400, error: "Paire DM invalide — format attendu `keyA|keyB` (triée, ≤ 200 caractères par clé)" };
+    }
+    const rows = (await db.$queryRawUnsafe<Array<{ n: number; u: number; b: number }>>(
+      `SELECT COUNT(*) AS n,
+              COALESCE(SUM(CASE WHEN readAt IS NULL THEN 1 ELSE 0 END), 0) AS u,
+              COALESCE(SUM(LENGTH(ciphertext)), 0) AS b
+       FROM DirectMessage
+       WHERE (senderKey = ? AND recipientKey = ?) OR (senderKey = ? AND recipientKey = ?)`,
+      parsed.keyA, parsed.keyB, parsed.keyB, parsed.keyA
+    )) as Array<{ n: number; u: number; b: number }>;
+    const before = rows[0] ?? { n: 0, u: 0, b: 0 };
+    if (Number(before.n) === 0) {
+      return { ok: false, status: 404, error: "Paire DM introuvable (aucun message — déjà purgée ?)" };
+    }
+    payload = {
+      pair: targetId,
+      keyA: parsed.keyA,
+      keyB: parsed.keyB,
+      messageCount: Number(before.n),
+      unreadCount: Number(before.u),
+      bytes: Number(before.b),
+    };
+  } else if (actionType === "purge_group_messages") {
+    // groupe : shell + membres CONSERVÉS — seuls les ciphertexts (messages +
+    // enveloppes MLS) seront détruits à l'approbation. Payload sans BigInt
+    // (mlsEpoch) : JSON.stringify ne sérialise pas BigInt.
+    const group = await db.group.findUnique({
+      where: { id: targetId },
+      select: { id: true, name: true, mlsGroupId: true },
+    });
+    if (!group) return { ok: false, status: 404, error: "Groupe introuvable (déjà dissous ?)" };
+    const [messageCount, envelopeCount] = await Promise.all([
+      db.groupMessage.count({ where: { groupId: group.id } }),
+      db.groupEnvelope.count({ where: { groupId: group.id } }),
+    ]);
+    if (messageCount === 0 && envelopeCount === 0) {
+      return { ok: false, status: 409, error: "Aucun contenu chiffré à purger pour ce groupe (déjà purgé ?)" };
+    }
+    payload = {
+      groupId: group.id,
+      name: group.name,
+      mlsGroupId: group.mlsGroupId,
+      messageCount,
+      envelopeCount,
+    };
   } else {
     const post = await db.post.findUnique({
       where: { id: targetId },
@@ -269,7 +339,7 @@ export async function requestPendingAction({
     row = await db.pendingAction.create({
       data: {
         actionType,
-        targetType: actionType === "ban_user" ? "user" : "post",
+        targetType: PENDING_TARGET_TYPE[actionType],
         targetId,
         payloadJson: JSON.stringify(payload),
         justification: just.formatted,
@@ -310,7 +380,7 @@ export async function requestPendingAction({
     actorId: ctx.adminUserId,
     actorRole: ctx.role,
     action: "pendingaction_created",
-    targetType: actionType === "ban_user" ? "user" : "post",
+    targetType: PENDING_TARGET_TYPE[actionType],
     targetId,
     after: {
       pendingActionId: row.id,
@@ -426,18 +496,37 @@ export async function approvePendingAction({
         ip: ctx.ip,
         userAgent: ctx.userAgent,
       };
-      const purge = await purgePostWithAudit(tx, {
-        postId: action.targetId,
-        actor: purgeActor,
-        reason: action.justification,
-        fourEyes: {
-          pendingActionId: action.id,
-          requestedById: action.createdById,
-          requestedByEmail: action.createdBy.email,
-          approvedById: ctx.adminUserId,
-        },
-      });
-      outcome = purge as unknown as Record<string, unknown>;
+      const fourEyes = {
+        pendingActionId: action.id,
+        requestedById: action.createdById,
+        requestedByEmail: action.createdBy.email,
+        approvedById: ctx.adminUserId,
+      };
+      if (action.actionType === "purge_dm_pair") {
+        const { purgeDmPairWithAudit } = await import("@/lib/mbote/e2ee-purge");
+        outcome = (await purgeDmPairWithAudit(tx, {
+          pair: action.targetId,
+          actor: purgeActor,
+          reason: action.justification,
+          fourEyes,
+        })) as unknown as Record<string, unknown>;
+      } else if (action.actionType === "purge_group_messages") {
+        const { purgeGroupMessagesWithAudit } = await import("@/lib/mbote/e2ee-purge");
+        outcome = (await purgeGroupMessagesWithAudit(tx, {
+          groupId: action.targetId,
+          actor: purgeActor,
+          reason: action.justification,
+          fourEyes,
+        })) as unknown as Record<string, unknown>;
+      } else {
+        const purge = await purgePostWithAudit(tx, {
+          postId: action.targetId,
+          actor: purgeActor,
+          reason: action.justification,
+          fourEyes,
+        });
+        outcome = purge as unknown as Record<string, unknown>;
+      }
     }
 
     await tx.pendingAction.update({

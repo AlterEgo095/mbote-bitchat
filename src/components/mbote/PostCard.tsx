@@ -26,7 +26,6 @@ import { MboteAvatar } from "./Avatar";
 interface PostCardProps {
   post: PostWithMeta;
   myPub: string | null;
-  forceOffline?: boolean;
   /** F-28 : peut retourner false = rejet DÉFINITIF → rollback de l'état optimiste. */
   onLike: (postId: string, liked: boolean) => boolean | Promise<boolean> | void;
   onReply?: (parentId: string, content: string) => Promise<void>;
@@ -36,7 +35,6 @@ interface PostCardProps {
 export function PostCard({
   post,
   myPub,
-  forceOffline = false,
   onLike,
   onReply,
   compact = false,
@@ -253,7 +251,6 @@ export function PostCard({
                         post={r}
                         myPub={myPub}
                         compact
-                        forceOffline={forceOffline}
                         onLike={onLike}
                       />
                     </li>
@@ -263,18 +260,6 @@ export function PostCard({
             </div>
           )}
         </div>
-
-        {compact && threadOpen && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-11"
-            onClick={() => setThreadOpen(false)}
-            aria-label={t("post.closeThread")}
-          >
-            <X className="size-3.5" aria-hidden="true" />
-          </Button>
-        )}
       </div>
     </article>
   );

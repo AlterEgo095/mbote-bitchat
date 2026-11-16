@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   DashboardMetrics,
@@ -6,6 +5,7 @@ import {
   type DashboardPayload,
 } from "@/components/DashboardMetrics";
 import { ADMIN_COOKIE, callBackend, getPanelSessionServer, type PanelSession } from "@/lib/admin-backend";
+import { AdminNav } from "@/components/AdminNav";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // /dashboard — instrument de pilotage (ADM Étape 5). 4 métriques, rien de plus.
@@ -100,20 +100,7 @@ export default async function DashboardPage() {
               {session ? `${session.email} · ${session.role}` : "liaison app principale perdue"}
             </span>
           </div>
-          <nav className="flex flex-wrap items-center gap-2" aria-label="Navigation panneau">
-            <Link
-              href="/posts"
-              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
-            >
-              Contenus
-            </Link>
-            <Link
-              href="/"
-              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
-            >
-              Retour
-            </Link>
-          </nav>
+          <AdminNav />
         </div>
       </header>
 

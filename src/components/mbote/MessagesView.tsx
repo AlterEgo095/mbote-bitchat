@@ -1504,19 +1504,10 @@ export function MessagesView({
                   >
                     <Loader2 className="size-3.5 animate-spin text-primary" aria-hidden="true" />
                     <span className="flex-1">
-                      {uploadState.stage === "strip"
-                        ? t("messages.upload.strip")
-                        : uploadState.stage === "encrypt"
-                          ? t("messages.upload.encrypt")
-                          : uploadState.stage === "presign"
-                            ? t("messages.upload.presign")
-                            : uploadState.stage === "put"
-                              ? t("messages.upload.put", {
-                                  percent: Math.round((uploadState.fraction ?? 0) * 100),
-                                })
-                              : uploadState.stage === "finalize"
-                                ? t("messages.upload.finalize")
-                                : t("messages.upload.done")}
+                      {t("chat.uploadWorking")}
+                      {uploadState.fraction != null
+                        ? ` ${Math.round(uploadState.fraction * 100)}%`
+                        : ""}
                     </span>
                   </div>
                 )}

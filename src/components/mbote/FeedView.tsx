@@ -342,7 +342,6 @@ export function FeedView({
         <Composer
           key={draft ?? "composer"}
           initialText={draft ?? undefined}
-          canPost
           channelGeohash={activeChannel?.geohash ?? null}
           channelPrecision={activeChannel?.precision ?? null}
           channelLabel={activeChannel?.label ?? null}
@@ -394,7 +393,6 @@ export function FeedView({
             <PostCard
               post={showFocusCard}
               myPub={myPub}
-              forceOffline={forceOffline}
               onLike={onLike}
               onReply={onReply}
             />
@@ -490,7 +488,6 @@ export function FeedView({
               <PostCard
                 post={p}
                 myPub={myPub}
-                forceOffline={forceOffline}
                 onLike={onLike}
                 onReply={onReply}
               />

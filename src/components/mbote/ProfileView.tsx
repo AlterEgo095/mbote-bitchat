@@ -477,7 +477,6 @@ export function ProfileView({
                 key={p.id}
                 post={p}
                 myPub={myPub}
-                forceOffline={forceOffline}
                 onLike={onLike}
                 onReply={onReply}
               />

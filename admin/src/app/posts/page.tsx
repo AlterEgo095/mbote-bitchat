@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PostsView, type PostsLoadState, type PostsPayload } from "@/components/PostsView";
 import { ADMIN_COOKIE, callBackend, getPanelSessionServer, type PanelSession } from "@/lib/admin-backend";
+import { AdminNav } from "@/components/AdminNav";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // /posts — annuaire GLOBAL des contenus publics (back-office 2026-11).
@@ -87,38 +87,7 @@ export default async function PostsPage() {
               {session ? `${session.email} · ${session.role}` : "liaison app principale perdue"}
             </span>
           </div>
-          <nav className="flex flex-wrap items-center gap-2" aria-label="Navigation panneau">
-            <Link
-              href="/queue"
-              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
-            >
-              File de modération
-            </Link>
-            <Link
-              href="/pending-actions"
-              className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-900 shadow-sm transition hover:bg-red-100"
-            >
-              Four-eyes
-            </Link>
-            <Link
-              href="/users"
-              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
-            >
-              Utilisateurs
-            </Link>
-            <Link
-              href="/dashboard"
-              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
-            >
-              Tableau de bord
-            </Link>
-            <Link
-              href="/"
-              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
-            >
-              Retour
-            </Link>
-          </nav>
+          <AdminNav />
         </div>
       </header>
 

@@ -12,7 +12,6 @@ import { precisionLabel } from "@/lib/mbote/geohash";
 import { useI18n } from "@/lib/mbote/i18n";
 
 interface ComposerProps {
-  canPost: boolean;
   channelGeohash?: string | null;
   channelPrecision?: number | null;
   channelLabel?: string | null;
@@ -24,7 +23,6 @@ interface ComposerProps {
 }
 
 export function Composer({
-  canPost,
   channelGeohash,
   channelPrecision,
   channelLabel,
@@ -62,7 +60,7 @@ export function Composer({
   return (
     <div
       className={`rounded-xl border bg-card p-4 ${
-        forceOffline && canPost ? "border-amber-500/40" : "border-border"
+        forceOffline ? "border-amber-500/40" : "border-border"
       }`}
       aria-label={t("composer.aria")}
     >
@@ -98,7 +96,6 @@ export function Composer({
           }
           rows={3}
           maxLength={MAX_POST_LENGTH}
-          disabled={!canPost}
           className="min-h-[64px] resize-none text-sm"
           aria-label={t("composer.textareaAria")}
         />
@@ -106,7 +103,7 @@ export function Composer({
 
       <div className="mt-2.5 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          {forceOffline && canPost ? (
+          {forceOffline ? (
             <span className="inline-flex items-center gap-1 text-[11px] text-amber-500">
               <Mail className="size-3.5" aria-hidden="true" />
               {t("composer.meshHint")}
@@ -126,15 +123,15 @@ export function Composer({
           >
             {fmt.fmtNumber(remaining)}
           </span>
-          <Button onClick={submit} disabled={!canPost || !valid || submitting} className="h-9">
+          <Button onClick={submit} disabled={!valid || submitting} className="h-9">
             {submitting ? (
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            ) : forceOffline && canPost ? (
+            ) : forceOffline ? (
               <Mail className="size-4" aria-hidden="true" />
             ) : (
               <Send className="size-4" aria-hidden="true" />
             )}
-            {forceOffline && canPost ? t("composer.queue") : t("composer.publish")}
+            {forceOffline ? t("composer.queue") : t("composer.publish")}
           </Button>
         </div>
       </div>

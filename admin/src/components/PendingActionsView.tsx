@@ -11,6 +11,12 @@
 // marque `expired` (audité) au premier GET qui constate le dépassement, et
 // l'UI grise déjà localement toute ligne dont expiresAt < now (le rejeu du
 // GET la fait disparaître du statut pending). Pas de cron séparé.
+//
+// BACK-OFFICE 2026-11 : deux nouveaux actionType four-eyes — purge_dm_pair
+// (ciphertexts DM d'une paire) et purge_group_messages (ciphertexts MLS d'un
+// groupe) — même cycle, mêmes badges rouges ; leurs payloads figés
+// (MÉTADONNÉES ONLY — compteurs/tailles, jamais de contenu, invariant §1.4)
+// sont rendus par une union typée parsePayload (pas de any).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useState } from "react";
@@ -44,6 +50,76 @@ export type PendingLoadState =
       httpStatus?: number;
     };
 
+/** Payloads figés dans l'intention (payloadJson, parsé côté backend) — union explicite. */
+export type PendingActionPayloadInfo =
+  | {
+      kind: "purge_dm_pair";
+      pair: string;
+      keyA?: string;
+      keyB?: string;
+      messageCount: number;
+      unreadCount: number;
+      bytes: number;
+    }
+  | {
+      kind: "purge_group_messages";
+      groupId: string;
+      name?: string;
+      mlsGroupId?: string;
+      messageCount: number;
+      envelopeCount: number;
+    }
+  | { kind: "unknown" };
+
+/**
+ * Parse SÛR du payload figé — métadonnées only (compteurs / tailles / clés) :
+ * purge_dm_pair {pair, keyA, keyB, messageCount, unreadCount, bytes} et
+ * purge_group_messages {groupId, name, mlsGroupId, messageCount,
+ * envelopeCount}. Chaque champ est vérifié (pas de any, pas de cast aveugle)
+ * ; payload absent ou non conforme → kind "unknown" (rendu neutre).
+ */
+function parsePayload(
+  actionType: string,
+  payload: Record<string, unknown> | null
+): PendingActionPayloadInfo {
+  if (!payload) return { kind: "unknown" };
+  if (actionType === "purge_dm_pair") {
+    const pair = typeof payload.pair === "string" ? payload.pair : null;
+    const messageCount = typeof payload.messageCount === "number" ? payload.messageCount : null;
+    const unreadCount = typeof payload.unreadCount === "number" ? payload.unreadCount : null;
+    const bytes = typeof payload.bytes === "number" ? payload.bytes : null;
+    if (pair && messageCount !== null && unreadCount !== null && bytes !== null) {
+      return {
+        kind: "purge_dm_pair",
+        pair,
+        keyA: typeof payload.keyA === "string" ? payload.keyA : undefined,
+        keyB: typeof payload.keyB === "string" ? payload.keyB : undefined,
+        messageCount,
+        unreadCount,
+        bytes,
+      };
+    }
+    return { kind: "unknown" };
+  }
+  if (actionType === "purge_group_messages") {
+    const groupId = typeof payload.groupId === "string" ? payload.groupId : null;
+    const messageCount = typeof payload.messageCount === "number" ? payload.messageCount : null;
+    const envelopeCount = typeof payload.envelopeCount === "number" ? payload.envelopeCount : null;
+    if (groupId && messageCount !== null && envelopeCount !== null) {
+      return {
+        kind: "purge_group_messages",
+        groupId,
+        name: typeof payload.name === "string" ? payload.name : undefined,
+        mlsGroupId: typeof payload.mlsGroupId === "string" ? payload.mlsGroupId : undefined,
+        messageCount,
+        envelopeCount,
+      };
+    }
+    return { kind: "unknown" };
+  }
+  return { kind: "unknown" };
+}
+
 const ROLE_LEVEL: Record<string, number> = {
   auditor: 1,
   support: 2,
@@ -72,6 +148,30 @@ function expiresIn(iso: string): string {
   if (mins < 60) return `expire dans ${mins} min`;
   return `expire dans ${Math.floor(mins / 60)} h ${mins % 60} min`;
 }
+
+/** Taille de ciphertext LISIBLE (payload purge_dm_pair) — compteur, jamais de contenu. */
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} o`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} Ko`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} Mo`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(1)} Go`;
+}
+
+/** Badges d'actionType — les 4 purges/bans partagent le badge rouge danger. */
+const ACTION_TYPE_BADGE: Record<string, string> = {
+  ban_user: "BAN DÉFINITIF",
+  purge_post: "PURGE DE POST",
+  purge_dm_pair: "PURGE PAIRE DM",
+  purge_group_messages: "PURGE GROUPE",
+};
+
+/** Libellés targetType lisibles (dm_pair → « paire DM », group → « groupe »). */
+const TARGET_LABEL: Record<string, string> = {
+  user: "utilisateur",
+  post: "contenu",
+  dm_pair: "paire DM",
+  group: "groupe",
+};
 
 const STATUS_BADGE: Record<string, string> = {
   pending: "border-amber-300 bg-amber-50 text-amber-800",
@@ -267,6 +367,7 @@ export function PendingActionsView({
         <ul className="flex flex-col gap-3">
           {pending.map((item) => {
             const greyed = item.expiredNow;
+            const payloadInfo = parsePayload(item.actionType, item.payload);
             return (
               <li
                 key={item.id}
@@ -280,7 +381,7 @@ export function PendingActionsView({
                     {item.status}
                   </span>
                   <span className="rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-900">
-                    {item.actionType === "ban_user" ? "BAN DÉFINITIF" : "PURGE DE POST"}
+                    {ACTION_TYPE_BADGE[item.actionType] ?? item.actionType}
                   </span>
                   <span className="text-xs text-zinc-500" data-testid={`pending-expires-${item.id}`}>
                     {expiresIn(item.expiresAt)}
@@ -289,7 +390,7 @@ export function PendingActionsView({
                 </div>
                 <div className="mt-2 grid gap-1 text-xs text-zinc-700">
                   <p>
-                    Cible :{" "}
+                    Cible ({TARGET_LABEL[item.targetType] ?? item.targetType}) :{" "}
                     <span className="font-mono" data-testid={`pending-target-${item.id}`}>
                       {item.targetType}:{item.targetId.length > 24 ? `${item.targetId.slice(0, 24)}…` : item.targetId}
                     </span>
@@ -297,6 +398,29 @@ export function PendingActionsView({
                       ? ` (${item.payload.nickname})`
                       : ""}
                   </p>
+                  {/* payload figé des NOUVEAUX types — métadonnées only (§1.4) : */}
+                  {/* purge_dm_pair → paire mono + « N messages · M non-lus · B octets » ; */}
+                  {/* purge_group_messages → « groupe "name" · N messages · M enveloppes ». */}
+                  {payloadInfo.kind === "purge_dm_pair" && (
+                    <p data-testid={`pending-payload-${item.id}`}>
+                      Paire DM <span className="font-mono">{payloadInfo.pair.length > 40 ? `${payloadInfo.pair.slice(0, 40)}…` : payloadInfo.pair}</span>{" "}
+                      · {payloadInfo.messageCount} message{payloadInfo.messageCount > 1 ? "s" : ""} ·{" "}
+                      {payloadInfo.unreadCount} non-lu{payloadInfo.unreadCount > 1 ? "s" : ""} ·{" "}
+                      {fmtBytes(payloadInfo.bytes)} de ciphertext
+                    </p>
+                  )}
+                  {payloadInfo.kind === "purge_group_messages" && (
+                    <p data-testid={`pending-payload-${item.id}`}>
+                      Groupe « {payloadInfo.name ?? payloadInfo.groupId} »{" "}
+                      · {payloadInfo.messageCount} message{payloadInfo.messageCount > 1 ? "s" : ""} ·{" "}
+                      {payloadInfo.envelopeCount} enveloppe{payloadInfo.envelopeCount > 1 ? "s" : ""} MLS
+                      {payloadInfo.mlsGroupId ? (
+                        <span className="ml-1 font-mono text-zinc-500" title={payloadInfo.mlsGroupId}>
+                          ({payloadInfo.mlsGroupId.length > 20 ? `${payloadInfo.mlsGroupId.slice(0, 20)}…` : payloadInfo.mlsGroupId})
+                        </span>
+                      ) : null}
+                    </p>
+                  )}
                   <p>
                     Demandeur : <strong>{item.requestedBy.email}</strong> · {fmt(item.createdAt)}
                   </p>
@@ -359,9 +483,9 @@ export function PendingActionsView({
                   <span className={`rounded-full border px-2 py-0.5 font-semibold ${STATUS_BADGE[item.status] ?? "border-zinc-300"}`}>
                     {item.status}
                   </span>
-                  <span className="font-medium text-zinc-800">{item.actionType}</span>
+                  <span className="font-medium text-zinc-800">{ACTION_TYPE_BADGE[item.actionType] ?? item.actionType}</span>
                   <span className="font-mono text-zinc-500">
-                    {item.targetType}:{item.targetId.length > 20 ? `${item.targetId.slice(0, 20)}…` : item.targetId}
+                    {TARGET_LABEL[item.targetType] ?? item.targetType}:{item.targetId.length > 20 ? `${item.targetId.slice(0, 20)}…` : item.targetId}
                   </span>
                   <span className="text-zinc-500">
                     par {item.requestedBy.email}

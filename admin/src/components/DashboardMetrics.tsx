@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { apiFetch } from "@/lib/api-base";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,8 +129,14 @@ export function DashboardMetrics({ role, initial }: { role: string; initial: Das
   const [refreshing, setRefreshing] = useState(false);
   // F #59 — dégradation honnête : les dernières valeurs connues restent
   // affichées (grisées + horodatage) au lieu d'une page vide + bandeau seul.
-  const lastDataRef = useRef<DashboardPayload | null>(initial.kind === "ready" ? initial.data : null);
-  const lastFetchedRef = useRef<string | null>(initial.kind === "ready" ? initial.fetchedAt : null);
+  // NB : STATE (pas ref) — ces valeurs sont lues AU RENDU (react-hooks/refs) ;
+  // une ref lue au rendu ne provoque pas de re-rendu et masque les mises à jour.
+  const [lastData, setLastData] = useState<DashboardPayload | null>(
+    initial.kind === "ready" ? initial.data : null
+  );
+  const [lastFetched, setLastFetched] = useState<string | null>(
+    initial.kind === "ready" ? initial.fetchedAt : null
+  );
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -159,8 +165,8 @@ export function DashboardMetrics({ role, initial }: { role: string; initial: Das
         return;
       }
       const fetchedAt = new Date().toISOString();
-      lastDataRef.current = data;
-      lastFetchedRef.current = fetchedAt;
+      setLastData(data);
+      setLastFetched(fetchedAt);
       setState({ kind: "ready", data, fetchedAt });
     } catch {
       setState({ kind: "error", code: "backend-unreachable" });
@@ -171,50 +177,50 @@ export function DashboardMetrics({ role, initial }: { role: string; initial: Das
 
   return (
     <div className="flex flex-col gap-4">
-      {state.kind === "error" && lastDataRef.current && lastFetchedRef.current && (
+      {state.kind === "error" && lastData && lastFetched && (
         // F #59 — les cartes restent rendues (grisées, horodatées) au lieu de
         // disparaître : l'admin garde la dernière valeur connue.
         <section aria-label="Dernières valeurs connues (figées)">
           <p className="text-xs font-medium text-zinc-600">
             Dernières valeurs connues — figées au{" "}
-            <time dateTime={lastFetchedRef.current}>{hhmmss(lastFetchedRef.current)}</time>{" "}
+            <time dateTime={lastFetched}>{hhmmss(lastFetched)}</time>{" "}
             jusqu&apos;au retour de l&apos;app principale :
           </p>
           <div className="mt-2 grid grid-cols-1 gap-4 opacity-60 grayscale sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard
               label="Utilisateurs actifs"
-              value={`${lastDataRef.current.activeUsers.h24} / ${lastDataRef.current.activeUsers.d7}`}
+              value={`${lastData.activeUsers.h24} / ${lastData.activeUsers.d7}`}
               sub="24 h / 7 j (post ou DM)"
-              status={lastDataRef.current.activeUsers.status}
-              updatedAt={lastDataRef.current.activeUsers.updatedAt}
+              status={lastData.activeUsers.status}
+              updatedAt={lastData.activeUsers.updatedAt}
               threshold="vert ≥ 5 · orange 1–4 · rouge 0"
             />
             <MetricCard
               label="Reports ouverts"
-              value={String(lastDataRef.current.openReports.value)}
+              value={String(lastData.openReports.value)}
               sub="non pris en charge (handledById vide)"
-              status={lastDataRef.current.openReports.status}
-              updatedAt={lastDataRef.current.openReports.updatedAt}
+              status={lastData.openReports.status}
+              updatedAt={lastData.openReports.updatedAt}
               threshold="vert ≤ 10 · orange 11–50 · rouge > 50"
             />
             <MetricCard
               label="Uptime conteneur"
-              value={formatUptime(lastDataRef.current.uptime.seconds)}
-              sub={`(${lastDataRef.current.uptime.seconds.toLocaleString("fr-FR")} s)`}
-              status={lastDataRef.current.uptime.status}
-              updatedAt={lastDataRef.current.uptime.updatedAt}
+              value={formatUptime(lastData.uptime.seconds)}
+              sub={`(${lastData.uptime.seconds.toLocaleString("fr-FR")} s)`}
+              status={lastData.uptime.status}
+              updatedAt={lastData.uptime.updatedAt}
               threshold="vert ≥ 24 h · orange 1–24 h · rouge < 1 h"
             />
             <MetricCard
               label="Dernier backup"
-              value={BACKUP_LABEL[lastDataRef.current.backup.state]}
+              value={BACKUP_LABEL[lastData.backup.state]}
               sub={
-                lastDataRef.current.backup.ageHours !== null
-                  ? `il y a ${lastDataRef.current.backup.ageHours} h — ${lastDataRef.current.backup.detail}`
-                  : lastDataRef.current.backup.detail
+                lastData.backup.ageHours !== null
+                  ? `il y a ${lastData.backup.ageHours} h — ${lastData.backup.detail}`
+                  : lastData.backup.detail
               }
-              status={lastDataRef.current.backup.status}
-              updatedAt={lastDataRef.current.backup.updatedAt}
+              status={lastData.backup.status}
+              updatedAt={lastData.backup.updatedAt}
               threshold="vert < 24 h · orange > 24 h / non configuré · rouge échec"
             />
           </div>

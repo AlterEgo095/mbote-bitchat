@@ -1087,10 +1087,6 @@ export function MboteApp() {
               </p>
               <div className="space-y-0.5 text-[11px] text-muted-foreground">
                 <p>
-                  <span className="font-mono font-semibold text-primary">{realtimeOk ? fmt.fmtNumber(presence) : "—"}</span>{" "}
-                  {t("view.liveIdentities")}
-                </p>
-                <p>
                   <span className="font-mono font-semibold text-foreground">{stats.data?.users != null ? fmt.fmtNumber(stats.data.users) : "—"}</span>{" "}
                   {t("view.registeredIdentities")}
                 </p>
@@ -1134,7 +1130,8 @@ export function MboteApp() {
             {t("view.conceptSuffix")}
           </p>
           <p className="flex flex-wrap items-center justify-center gap-x-2">
-            <span>
+            {/* doublon de la carte Réseau (desktop) → mobile uniquement */}
+            <span className="md:hidden">
               {t("view.footerStats", {
                 users: stats.data?.users != null ? fmt.fmtNumber(stats.data.users) : "—",
                 posts: stats.data?.posts != null ? fmt.fmtNumber(stats.data.posts) : "—",
@@ -1155,7 +1152,7 @@ export function MboteApp() {
         aria-label={t("nav.mobileAria")}
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        <div className="grid grid-cols-5">
+        <div className="grid grid-cols-6">
           {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
             <button
               key={key}

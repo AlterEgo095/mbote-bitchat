@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "actionType invalide — four-eyes réservé aux actions irréversibles (ban_user | purge_post)",
+            "actionType invalide — four-eyes réservé aux actions irréversibles (ban_user | purge_post | purge_dm_pair | purge_group_messages)",
         },
         { status: 400 }
       );
