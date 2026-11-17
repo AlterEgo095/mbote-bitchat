@@ -49,7 +49,7 @@ function linkClasses(href: string, active: boolean, kind?: "danger"): string {
     : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 focus-visible:outline-zinc-500";
 }
 
-export function AdminNav() {
+export function AdminNav({ showBack = true }: { showBack?: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -67,12 +67,14 @@ export function AdminNav() {
           </Link>
         );
       })}
-      <Link
-        href="/"
-        className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-500"
-      >
-        Retour
-      </Link>
+      {showBack && (
+        <Link
+          href="/"
+          className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-500"
+        >
+          Retour
+        </Link>
+      )}
     </nav>
   );
 }
