@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api-base";
 
 export interface AuthPanelInitial {
@@ -18,6 +19,11 @@ export interface AuthPanelInitial {
   email: string;
   role: string;
   totpEnrolled: boolean;
+  // CSRF de la session CÔTÉ SERVEUR (verify) — présent uniquement quand la
+  // session existe au rendu de la page. Sans lui, après un router.refresh()
+  // post-login, toute mutation (dont logout) échouait en 403 : le csrfRef
+  // mémoire ne surviv pas au re-rendu serveur.
+  csrfToken?: string;
 }
 
 type PanelState =
@@ -25,12 +31,13 @@ type PanelState =
   | { phase: "authed"; email: string; role: string; totpEnrolled: boolean };
 
 export function AdminAuthPanel({ initial }: { initial: AuthPanelInitial }) {
+  const router = useRouter();
   const [state, setState] = useState<PanelState>(
     initial.authenticated
       ? { phase: "authed", email: initial.email, role: initial.role, totpEnrolled: initial.totpEnrolled }
       : { phase: "anonymous" }
   );
-  const csrfRef = useRef<string>("");
+  const csrfRef = useRef<string>(initial.csrfToken ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // break-glass : nouveau secret TOTP à enrôler (affiché UNE fois)
@@ -61,6 +68,10 @@ export function AdminAuthPanel({ initial }: { initial: AuthPanelInitial }) {
           role: String(body.role ?? ""),
           totpEnrolled: body.totpEnrolled === true,
         });
+        // FIX « la page ne charge pas après connexion » : le panneau (nav +
+        // hub) est rendu CÔTÉ SERVEUR selon la session — sans refresh, il
+        // n'apparaissait qu'après un rechargement manuel.
+        router.refresh();
       } else if (res.status === 429) {
         setError("Trop de tentatives — réessayez dans quelques minutes.");
       } else {
@@ -152,6 +163,9 @@ export function AdminAuthPanel({ initial }: { initial: AuthPanelInitial }) {
       csrfRef.current = "";
       setPendingEnroll(null);
       setState({ phase: "anonymous" });
+      // Miroir du login : sans refresh, la nav et le hub restaient affichés
+      // (client) alors que la session serveur était morte.
+      router.refresh();
     } catch {
       setError("App principale injoignable.");
     } finally {

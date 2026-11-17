@@ -86,3 +86,24 @@ Issues de l'audit conservateur (aucune fonctionnalité supprimée, transparence 
   seul admin) — les gardes anti-auto-approbation sont actives et testées.
 - Compteurs ReplayCounter : le sweep de rétention de l'app purge les epochs expirés — les
   vues sécurité ne montrent que les gardes vivantes (comportement correct).
+
+## 7. Correctifs post-déploiement (2026-11-17, constat opérateur)
+
+Constat : « la page ne charge pas après connexion ». Reproduction locale complète
+(build standalone = conteneur Docker, compte admin de vérification, agent-browser) :
+
+- **Cause 1 (blocante)** — l'accueil rendait nav + hub CÔTÉ SERVEUR selon la session,
+  mais le login réussi ne provoquait aucun re-rendu serveur : la nav et le hub
+  n'apparaissaient qu'après un rechargement manuel. Fix : `router.refresh()` après
+  login ET après logout (miroir : la nav restait affichée après destruction de la
+  session). Le CSRF de session (`verify` → `initial.csrfToken`) est désormais passé
+  au panneau : sans lui, les mutations post-refresh (dont logout) tombaient en 403.
+- **Cause 2 (course à l'hydratation, durcissement)** — un clic sur « Se connecter »
+  avant la fin de l'hydratation déclenche la soumission NATIVE du formulaire : GET
+  avec `?email=&password=&totp=` dans l'URL (jamais aboutissable — le login est un
+  POST fetch). L'accueil purge désormais ces paramètres par `redirect("/")`
+  immédiat (constaté : URL nettoyée). Reproduction du flux complet après fix :
+  login → nav + hub visibles SANS reload → clic carte « Tableau de bord » →
+  `/dashboard` rend → logout → nav + hub disparaissent immédiatement.
+- Accueil livré d'abord incomplet (5 liens codés à la main au lieu de la nav 12
+  sections) — corrigé en amont de ces deux points (hub groupé + AdminNav partagé).

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { BackendStatus } from "@/components/BackendStatus";
 import { AdminAuthPanel } from "@/components/AdminAuthPanel";
 import { AdminNav } from "@/components/AdminNav";
@@ -112,10 +113,29 @@ const HUB_GROUPS: Array<{
   },
 ];
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  // Durcissement : si le formulaire de login a été soumis NATIVEMENT (clic
+  // avant la fin de l'hydratation — possible sur réseau mobile lent), le GET
+  // a mis email/password/totp dans l'URL. Ce chargement ne peut JAMAIS
+  // aboutir (le login est un POST fetch avec CSRF mémoire) : on purge l'URL
+  // immédiatement pour ne pas laisser les identifiants affichés ni retenter.
+  const sp = await searchParams;
+  if (sp.email !== undefined || sp.password !== undefined || sp.totp !== undefined) {
+    redirect("/");
+  }
   const session = await getPanelSessionServer().catch(() => null);
   const initial = session
-    ? { authenticated: true, email: session.email, role: session.role, totpEnrolled: session.totpEnrolled }
+    ? {
+        authenticated: true,
+        email: session.email,
+        role: session.role,
+        totpEnrolled: session.totpEnrolled,
+        csrfToken: session.csrfToken,
+      }
     : { authenticated: false, email: "", role: "", totpEnrolled: false };
   return (
     <div className="flex min-h-screen flex-col">
