@@ -59,4 +59,11 @@ USER 10003:10003
 
 EXPOSE 3001
 
+# DS-0026 (security.yml Trivy, audit 2026-11 §4.9) : HEALTHCHECK au niveau
+# image — le compose définit un healthcheck PLUS STRICT (200 ok / 503
+# degraded selon l'état du backend, preuve ADM-step1-2.md) qui PRÉVAUT à
+# l'exécution ; celui-ci sert de garde-fou hors compose.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD bun -e "await fetch('http://127.0.0.1:' + (process.env.PORT || 3001) + '/health').then(r => { if (!r.ok) throw new Error('unhealthy: ' + r.status); })"
+
 CMD ["bun", "server.js"]

@@ -24,4 +24,11 @@ ENV HOME=/tmp BUN_INSTALL=/tmp/.bun
 USER 10002:10002
 
 EXPOSE 3030 3031
+
+# DS-0026 (security.yml Trivy, audit 2026-11 §4.9) : HEALTHCHECK au niveau
+# image — le compose définit un healthcheck (identique ici) qui PRÉVAUT à
+# l'exécution ; celui-ci sert de garde-fou hors compose.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD bun -e "await fetch('http://127.0.0.1:3031/health').then(r => { if (!r.ok) throw new Error('unhealthy: ' + r.status); })"
+
 CMD ["bun", "index.ts"]

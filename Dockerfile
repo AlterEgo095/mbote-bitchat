@@ -88,6 +88,13 @@ VOLUME ["/app/db"]
 
 EXPOSE 3000
 
+# DS-0026 (security.yml Trivy, audit 2026-11 §4.9) : HEALTHCHECK au niveau
+# image — le compose définit un healthcheck PLUS STRICT (migrations Prisma
+# appliquées + /api/stats) qui PRÉVAUT à l'exécution ; celui-ci sert de
+# garde-fou si l'image est lancée hors compose (docker run autonome).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD bun -e "await fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/api/stats').then(r => { if (!r.ok) throw new Error('unhealthy: ' + r.status); })"
+
 # F-36 : migrations versionnées (jamais db push --accept-data-loss en prod),
 # puis serveur Next standalone (server.js à la racine de /app)
 CMD ["sh", "-c", "bunx prisma migrate deploy && exec bun server.js"]
