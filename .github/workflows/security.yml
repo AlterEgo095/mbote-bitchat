@@ -122,7 +122,7 @@ jobs:
           scan-type: fs
           scanners: vuln,secret,misconfig
           severity: HIGH,CRITICAL
-          version: "0.76.2" # trivy récent (le cache binaire v0.70 du 16/11 + vieux bundle de checks rego donnait des faux positifs DS-0026 — cf. runs 44831/448320/448326)
+          version: "v0.76.2" # tag AVEC préfixe v (le script d'install de setup-trivy requête releases/tags/<valeur> tel quel — '0.76.2' sans v = crit "unable to find", run 44833690075)
           cache: false # DB vulns + checks FRAIS à chaque run — le cache politique du 16/11 faussait l'évaluation (exit 1 sur findings note-level)
           skip-dirs: mobile
           # Capture de preuve C1 (JWT VAPID expirés du harnais — assertions
