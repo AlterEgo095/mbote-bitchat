@@ -118,20 +118,40 @@ Voir §0 point 2. État final : `PermitRootLogin no` + `AllowUsers aenews` +
 `PasswordAuthentication no` + clés uniquement + ciphers/MACs durcis (le socle
 `99-aenews-hardened.conf` de 2026-03 conservé, complété par `00-hardening.conf`).
 
-## 9. Lot 9 — Trivy bloquant + gates admin (TERMINÉ)
+## 9. Lot 9 — Trivy bloquant + gates admin (TERMINÉ — 6 runs de mise au point)
 
 - Trivy passe `exit-code: 1` (BLOQUANT : HIGH/CRITICAL vuln + secrets + misconfig
-  font échouer security.yml → le gate F-1 refuse le deploy). Pré-activation vérifiée
-  par scan local : **0 finding** sur la surface racine.
-- `effect@3.21.0` (ReDoS CVE-2026-121707, transitif via `@prisma/config`) corrigé
-  par override `3.22.1` — `bun.lock` régénéré.
-- `mobile/` exclu du scan (26 vulns de chaîne de build React Native : @xmldom/xmldom
-  0.7.13, tar 6.2.1, postcss 8.4.49, image-size 1.2.1 — non déployé sur le VPS ;
-  bumps transitifs à valider avec un build Android complet → follow-up tracé).
-- Gates admin : `admin/` (package.json séparé) est désormais linté + typechecké par
-  le deploy workflow (aucun gate avant — le build Docker seul).
-- Note deps : `relay-service` n'a pas de lockfile (package.json seul) → rien à
-  scanner ; envisager un lockfile dédié lors d'une prochaine passe.
+  font échouer security.yml → le gate F-1 refuse le deploy).
+- **Chaîne de mise au point (documentée pour les runs suivants)** :
+  1. Run 1 : jwt-token ×6 dans `docs/proofs/assets/c1-wire-capture.jsonl`
+     (captures VAPID expirées du harnais C1 — assertions signées non
+     réutilisables sans clé privée) → skip-files scopé (l'input
+     `ignorefile` N'EXISTE PAS dans trivy-action v0.36.0) ;
+  2. Runs 2-4 : DS-0026 (HEALTHCHECK manquant, **LOW/note**) évalué en exit 1
+     malgré `severity: HIGH,CRITICAL` — le wrapper trivy-action n'applique PAS
+     le filtre de sévérité au verdict d'exit ; reproduction locale exit 0 avec
+     les mêmes flags → le cache de checks rego restauré du 16/11 + trivy binaire
+     0.70 du cache expliquaient l'écart ;
+  3. version: "0.76.2" sans préfixe v → crit « unable to find » (le script
+     d'install de setup-trivy requête releases/tags/<valeur> tel quel) →
+     **v0.76.2** + `cache: false` (DB + checks frais à chaque run) ;
+  4. **Correction RACINE** : HEALTHCHECK image-level ajouté aux 3 Dockerfiles
+     (bun fetch /api/stats mesh · /health admin · :3031/health relay) — les
+     healthchecks compose PLUS STRICTS prévalent à l'exécution ; DS-0026
+     disparaît et le scan devient vert de façon reproductible.
+- Le gate F-1 a REFUSÉ le deploy d'un SHA avec security rouge (comportement
+  conforme capté en réel) ; race tests-green/security-in-progress corrigée :
+  le gate ATTEND les runs security non terminées (10 min) puis fail-closed.
+- `effect@3.21.0` (ReDoS CVE-2026-121707, transitif via `@prisma/config`)
+  corrigé par override `3.22.1` — `bun.lock` régénéré.
+- `mobile/` exclu du scan (26 vulns de chaîne de build React Native :
+  @xmldom/xmldom 0.7.13, tar 6.2.1, postcss 8.4.49, image-size 1.2.1 — non
+  déployé sur le VPS ; bumps transitifs à valider avec un build Android
+  complet → follow-up tracé).
+- Gates admin : `admin/` est désormais linté + typechecké par le deploy
+  workflow (aucun gate avant).
+- Note deps : `relay-service` n'a pas de lockfile (package.json seul) → rien
+  à scanner ; envisager un lockfile dédié lors d'une prochaine passe.
 
 ## 10. Lot 10 — Patch apt + voisins cassés (PARTIEL — reboot fait)
 
@@ -161,8 +181,8 @@ Voir §0 point 2. État final : `PermitRootLogin no` + `AllowUsers aenews` +
 | Item | Statut | Responsable |
 |---|---|---|
 | Créer le 2ᵉ super-admin (§2.1 ADMIN-OPERATIONS) | TODO humain | titulaire |
-| Patch apt 72 maj + reboot clôture si noyau | TODO VPS (fenêtre calme) | ops |
+| Patch apt 92 maj (dont docker-ce 29.10, nginx security, noyau 6.8.0-151 → reboot requis) | DEFÉRÉ — orage de restarts voisins en cours au moment T, aucune fenêtre calme ; noyau = reboot de toute façon | ops |
 | Bumps transitifs mobile/ (26 vulns build) | TODO CI mobile | dev |
 | Externalisation des .db.enc (S3/R2/2ᵉ machine) | P2 | ops |
 | Corriger le crash au boot d'aenewsos-backend avant réactivation | hors périmètre MBotE | propriétaire |
-| Vérifier `/api/push/config` = available:true après ce deploy | validation | ops/dev |
+| /api/push/config = available:true | ✅ VÉRIFIÉ 2026-11-21 (clé publique servie) | — |
