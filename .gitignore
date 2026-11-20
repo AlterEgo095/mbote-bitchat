@@ -83,3 +83,6 @@ package-lock.json
 # le dépôt (32-72 MB par build). En local, placer un APK dans ce dossier pour
 # tester le bouton de la landing page.
 /public/downloads/
+
+# Ops helpers locaux (ne JAMAIS committer : contiennent des credentials)
+/tools/
