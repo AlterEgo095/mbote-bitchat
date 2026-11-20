@@ -123,6 +123,7 @@ jobs:
           scanners: vuln,secret,misconfig
           severity: HIGH,CRITICAL
           skip-dirs: mobile
+          ignorefile: .trivyignore.yaml # ignorances scopées par path (justifications écrites dans le fichier)
           exit-code: "1" # BLOQUANT (audit 2026-11 §4.9) — vuln/secret/misconfig HIGH+ font échouer
           format: sarif
           output: security-report.sarif

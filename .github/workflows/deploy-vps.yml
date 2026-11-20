@@ -131,6 +131,27 @@ jobs:
           #    ses paths (package.json/bun.lock/Dockerfile*/security.yml)
           #    sont inchangés → l'audit précédent reste valide (pass-through
           #    documenté CI-AUDIT F-1). En échec → REFUS.
+          #
+          #    RACE (audit 2026-11 §3) : tests et security tournent en
+          #    parallèle — au moment où tests devient vert, security peut
+          #    être EN COURS (aucune run completed → « absent » trompeur et
+          #    un deploy filerait avant le verdict). On ATTEND les runs non
+          #    terminées (40 × 15 s = 10 min max) puis on conclut :
+          #    terminée → sa conclusion ; toujours en cours → REFUS
+          #    fail-closed (une run qui dépasse 10 min est suspecte).
+          PENDING=$(gh api "repos/$REPO/actions/workflows/security.yml/runs?head_sha=$SHA&per_page=100" \
+            --jq '[.workflow_runs[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
+          for i in $(seq 1 40); do
+            [ "$PENDING" = "0" ] && break
+            echo "  security.yml en cours pour $SHA — attente ($i/40, 15 s)"
+            sleep 15
+            PENDING=$(gh api "repos/$REPO/actions/workflows/security.yml/runs?head_sha=$SHA&per_page=100" \
+              --jq '[.workflow_runs[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
+          done
+          if [ "$PENDING" != "0" ]; then
+            echo "::error::F-1 : security.yml toujours en cours pour $SHA après 10 min — déploiement REFUSÉ (fail-closed, re-dispatcher une fois security terminée)"
+            echo "ok=false" >> "$GITHUB_OUTPUT"; echo "reason=security-timeout" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           SECURITY="$(concl security.yml)"
           if [ "$SECURITY" != "success" ] && [ "$SECURITY" != "absent" ]; then
             echo "::error::F-1 : security.yml est $SECURITY sur $SHA — déploiement REFUSÉ (audit des dépendances/Docker en échec)"

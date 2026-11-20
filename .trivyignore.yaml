@@ -1,0 +1,16 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Ignorances ciblées du scan Trivy (security.yml) — audit plateforme 2026-11
+#  Format .trivyignore.yaml (trivy ≥ 0.53) : chaque entrée est SCOPÉE par path.
+#  Toute nouvelle entrée exige une justification écrite + un propriétaire.
+# ─────────────────────────────────────────────────────────────────────────────
+secrets:
+  # docs/proofs/assets/c1-wire-capture.jsonl — capture réseau du harnais de
+  # preuve C1 (Web Push) : les 6 « jwt-token » détectés sont des tokens VAPID
+  # (RFC 8292) signés pour un listener LOCAL (aud 127.0.0.1:3204), déjà EXPIRÉS,
+  # produit d'un artefact de test. Un JWT VAPID n'est pas un secret : c'est une
+  # assertion signée par requête — sans la clé privée (jamais committée) la
+  # signature ne forge rien, et le token est inutilisable hors du test.
+  # Source : tests C1 (preuve push), fixé le 2026-11-20 — ne pas généraliser
+  # cet ignoré à d'autres chemins.
+  - id: jwt-token
+    path: docs/proofs/assets/c1-wire-capture.jsonl
