@@ -17,6 +17,7 @@ import {
   sessionTokenFrom,
   verifyPanelSession,
 } from "@/lib/admin-backend";
+import { clientIp } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
     sessionToken: token,
     csrf: req.headers.get("x-admin-csrf"),
     actorId: session?.adminUserId ?? null,
-    clientForwardedFor: req.headers.get("x-forwarded-for"),
+    clientForwardedFor: clientIp(req.headers),
   });
 
   const res = NextResponse.json({ ok: true });

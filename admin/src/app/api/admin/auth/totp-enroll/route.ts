@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { callBackend, denied, sessionTokenFrom, verifyPanelSession } from "@/lib/admin-backend";
+import { clientIp } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
     sessionToken: sessionTokenFrom(req),
     csrf,
     actorId: session.adminUserId,
-    clientForwardedFor: req.headers.get("x-forwarded-for"),
+    clientForwardedFor: clientIp(req.headers),
   });
 
   if (r.status !== 200) return denied(401);

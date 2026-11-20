@@ -27,6 +27,7 @@ import {
   verifyPanelSession,
   type PanelSession,
 } from "@/lib/admin-backend";
+import { clientIp } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest) {
       method: "GET",
       sessionToken: sessionTokenFrom(req),
       actorId: session.adminUserId,
-      clientForwardedFor: req.headers.get("x-forwarded-for"),
+      clientForwardedFor: clientIp(req.headers),
     });
     if (r.status === 401 || r.status === 403) return denied(r.status);
     return NextResponse.json(r.body, { status: r.status });
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
       sessionToken: sessionTokenFrom(req),
       actorId: session.adminUserId,
       csrf,
-      clientForwardedFor: req.headers.get("x-forwarded-for"),
+      clientForwardedFor: clientIp(req.headers),
       body,
     });
     if (r.status === 401 || r.status === 403) return denied(r.status);

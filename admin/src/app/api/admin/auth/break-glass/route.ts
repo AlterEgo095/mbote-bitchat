@@ -15,6 +15,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_COOKIE, callBackend, cookieFlags, denied } from "@/lib/admin-backend";
+import { clientIp } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
       email: typeof body?.email === "string" ? body.email : "",
       code: typeof body?.code === "string" ? body.code : "",
     },
-    clientForwardedFor: req.headers.get("x-forwarded-for"),
+    clientForwardedFor: clientIp(req.headers),
   });
 
   if (r.status !== 200) {

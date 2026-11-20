@@ -80,6 +80,7 @@
     "deepmerge-ts": "8.0.0",
     "brace-expansion": "1.1.22",
     "ajv": "6.15.0",
-    "eslint-plugin-react-hooks": "7.0.1"
+    "eslint-plugin-react-hooks": "7.0.1",
+    "effect": "3.22.1"
   }
 }

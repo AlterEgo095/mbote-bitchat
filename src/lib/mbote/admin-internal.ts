@@ -49,12 +49,31 @@ export function internalTokenOk(req: NextRequest): boolean {
   return safeEqual(expected, got);
 }
 
-/** IP client : premier saut de x-forwarded-for (posé par nginx/CF + BFF admin). */
+/**
+ * IP client pour le rate-limit login/break-glass — DERNIER saut de
+ * x-forwarded-for (durcissement 2026-11, audit plateforme §4.4).
+ *
+ * Pourquoi le DERNIER et non le premier : la chaîne XFF est append-only et son
+ * PREMIER maillon est contrôlé par le client (X-Forwarded-For: 1.2.3.4 forgé).
+ * Chaque proxy de confiance (nginx-hôte, BFF admin) AJOUTE sa valeur EN FIN de
+ * chaîne — le dernier maillon est donc la seule valeur que l'attaquant ne
+ * contrôle pas. En production le BFF admin (composant interne de confiance)
+ * transmet une valeur UNIQUE résolue par la logique durcie de
+ * admin/src/lib/client-ip.ts (preuve Cloudflare), de sorte que le dernier
+ * saut ici = l'IP réelle du visiteur.
+ *
+ * Dégradation sûre : sans XFF ni x-real-ip → "unknown" (bucket partagé,
+ * plus restrictif — jamais plus permissif ; même arbitrage que client-ip.ts).
+ */
 export function clientIp(req: NextRequest): string {
   const xff = req.headers.get("x-forwarded-for");
   if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
+    const hops = xff
+      .split(",")
+      .map((h) => h.trim())
+      .filter((h) => h.length > 0);
+    const last = hops[hops.length - 1];
+    if (last) return last;
   }
   return req.headers.get("x-real-ip") ?? "unknown";
 }

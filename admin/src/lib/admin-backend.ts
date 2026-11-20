@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from "next/server";
+import { clientIp } from "@/lib/client-ip";
 
 export const ADMIN_COOKIE = "mbote_admin_session";
 
@@ -108,7 +109,7 @@ export async function verifyPanelSession(req: NextRequest): Promise<PanelSession
   const r = await callBackend("/api/internal/admin/verify", {
     method: "POST",
     sessionToken: token,
-    clientForwardedFor: req.headers.get("x-forwarded-for"),
+    clientForwardedFor: clientIp(req.headers),
   });
   if (r.status !== 200) return null;
   const b = r.body;

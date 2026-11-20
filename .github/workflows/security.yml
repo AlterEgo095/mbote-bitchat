@@ -107,16 +107,23 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 — épinglé par SHA (supply chain, condition 6)
 
       - name: Trivy — scan filesystem (vulnérabilités, secrets, misconfig)
-        # Politique post-triage D3 (docs/SECURITY-TRIAGE.md) : exit-code 0
-        # conservé pour le bruit misconfig à filtrer, mais l'artefact SARIF
-        # est désormais nommé security-report.sarif (directive D3) et le
-        # rapport secrets sert d'entrée au scan manuel git du runner D3.
+        # Politique post-audit 2026-11 (§4.9) : scan BLOQUANT (exit-code 1) —
+        # HIGH/CRITICAL vuln + secrets + misconfig font échouer le job et le
+        # gate F-1 du déploiement (deploy-vps.yml refuse un SHA avec security
+        # rouge). Vérifié pré-activation : 0 finding sur la surface racine
+        # (effect@3.21.0 ReDoS corrigé par override 3.22.1 — CVE-2026-121707).
+        # mobile/ exclu du scan : 26 vulns de chaîne de build (xmldom 0.7,
+        # tar, postcss 8.4, image-size) — outilage React Native non déployé
+        # sur le VPS ; resserrage suivi dans docs/audits/AUDIT-PLATEFORME-
+        # GLOBALE-2026-11-19-SSH-VERIFICATION.md §4.9 (bumps transitifs à
+        # valider avec un build Android complet).
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 — épinglé par SHA
         with:
           scan-type: fs
           scanners: vuln,secret,misconfig
           severity: HIGH,CRITICAL
-          exit-code: "0" # rapport seul pour commencer — resserrage planifié
+          skip-dirs: mobile
+          exit-code: "1" # BLOQUANT (audit 2026-11 §4.9) — vuln/secret/misconfig HIGH+ font échouer
           format: sarif
           output: security-report.sarif
 

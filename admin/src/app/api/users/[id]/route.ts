@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { callBackend, denied, sessionTokenFrom, verifyPanelSession } from "@/lib/admin-backend";
+import { clientIp } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ export async function GET(
         method: "GET",
         sessionToken: sessionTokenFrom(req),
         actorId: session.adminUserId,
-        clientForwardedFor: req.headers.get("x-forwarded-for"),
+        clientForwardedFor: clientIp(req.headers),
       }
     );
     if (r.status === 401 || r.status === 403) return denied(r.status);

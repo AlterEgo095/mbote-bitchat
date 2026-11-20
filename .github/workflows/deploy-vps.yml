@@ -12,6 +12,9 @@
 #  ─ workflow_dispatch : deploy manuel — le gate reste ENFORCE (tests vertes
 #    obligatoires sur le SHA) ; l'urgence passe par une run de tests d'abord,
 #    pas par un contournement (F-1 : du code non testé ne part pas en prod).
+#    Input `ref` (audit 2026-11 §4.5) : SHA/branche/tag à déployer — ROLLBACK
+#    documenté docs/PRE-DEPLOY-CHECKLIST.md §Rollback. Le gate F-1 s'applique
+#    au SHA fourni : il n'a jamais été testé vert → refus (aucun contournement).
 #  ─ rsync du commit exact → docker compose up -d --build
 #  ─ En cas d'échec de build : les anciens conteneurs continuent de tourner
 #  ─ Idempotent : premier déploiement == 100e déploiement
@@ -28,6 +31,9 @@
 #    refusés) et ADMIN_BASE_PATH + NEXT_PUBLIC_ADMIN_BASE_PATH (Go-to-Market
 #    2026-11 — obscurcissement : chemin secret du panneau admin, ex.
 #    /console-xxxx/ ; MÊME valeur pour les deux ; vide = racine)
+#    VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY (audit 2026-11 §4.2 — Web Push
+#    C1/réveil ; absentes = push DÉSACTIVÉ fail-closed côté sender). Voir
+#    docs/RUNBOOK-ADMIN-KEY.md (génération : bunx web-push generate-vapid-keys)
 #    — écrits dans le .env VPS. Voir docs/RUNBOOK-ADMIN-KEY.md.
 #  ─ Distribution APK (Go-to-Market 2026-11) : le workflow télécharge sur le
 #    VPS l'APK de la release GitHub « latest » (asset mbote-latest.apk, mis à
@@ -49,6 +55,11 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "SHA/branche/tag à déployer (ROLLBACK) — vide = dernier SHA testé sur main"
+        required: false
+        default: ""
 
 concurrency:
   group: vps-deploy
@@ -74,7 +85,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (épinglé par SHA — supply chain)
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.event.inputs.ref || github.event.workflow_run.head_sha || github.sha }}
 
       - name: Gate F-1 — le SHA déployé a passé tests (+ security si exécutée)
         id: gate
@@ -83,8 +94,11 @@ jobs:
         run: |
           set -euo pipefail
           REPO="${{ github.repository }}"
-          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          SHA="${{ github.event.inputs.ref || github.event.workflow_run.head_sha || github.sha }}"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ github.event.inputs.ref }}" ]; then
+            echo "::notice::ROLLBACK demandé — déploiement du ref fourni $SHA (gate F-1 inchangé : tests vertes obligatoires sur ce SHA)"
+          fi
 
           concl() {
             # dernière run COMPLÈTE du workflow $1 pour ce SHA (API : tri desc)
@@ -141,12 +155,23 @@ jobs:
         with:
           bun-version: "1.3.14"
 
-      - name: Portail qualité — lint + typecheck
+      - name: Portail qualité — lint + typecheck (racine)
         if: steps.gate.outputs.ok == 'true'
         run: |
           bun install --frozen-lockfile
           bun run lint
           bunx tsc --noEmit
+
+      - name: Portail qualité — lint + typecheck (admin, audit 2026-11 §4.9)
+        # Le panneau admin a son propre package.json — il n'était NI linté NI
+        # typechecké par la CI (le build Docker échouait seulement en cas de
+        # TS bloquant). Gates identiques à la racine : même niveau d'exigence.
+        if: steps.gate.outputs.ok == 'true'
+        run: |
+          cd admin
+          bun install --frozen-lockfile
+          bun run lint
+          bun run typecheck
 
       - name: Empreinte du déploiement
         if: steps.gate.outputs.ok == 'true'
@@ -198,7 +223,7 @@ jobs:
                echo '::warning::APK indisponible (release « latest » absente du dépôt) — /downloads/mbote-latest.apk répondra 404'; \
              fi"
 
-      - name: Environnement de build (.env sur le VPS — 10 variables critiques)
+      - name: Environnement de build (.env sur le VPS — 12 variables critiques)
         if: steps.gate.outputs.ok == 'true'
         run: |
           if [ -z "$ADMIN_API_KEY" ]; then
@@ -213,6 +238,9 @@ jobs:
           if [ -z "$ADMIN_BASE_PATH" ]; then
             echo "::notice::Secret ADMIN_BASE_PATH absent — panneau admin servi à la racine (URL non obscurcie). Provisionner : gh secret set ADMIN_BASE_PATH --repo AlterEgo095/mbote-bitchat (ex. /console-xxxxxxxx)"
           fi
+          if [ -z "$VAPID_PUBLIC_KEY" ] || [ -z "$VAPID_PRIVATE_KEY" ]; then
+            echo "::warning::Secrets VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY absents — Web Push DÉSACTIVÉ (fail-closed côté sender). Provisionner : bunx web-push generate-vapid-keys puis gh secret set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY --repo AlterEgo095/mbote-bitchat — voir docs/RUNBOOK-ADMIN-KEY.md"
+          fi
           {
             echo "NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL}"
             echo "RELAY_ALLOWED_ORIGIN=${RELAY_ALLOWED_ORIGIN}"
@@ -224,12 +252,14 @@ jobs:
             echo "ADMIN_INTERNAL_TOKEN=${ADMIN_INTERNAL_TOKEN}"
             echo "ADMIN_BASE_PATH=${ADMIN_BASE_PATH}"
             echo "NEXT_PUBLIC_ADMIN_BASE_PATH=${NEXT_PUBLIC_ADMIN_BASE_PATH}"
+            echo "VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}"
+            echo "VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}"
           } | ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "cat > '$VPS_DIR/.env'"
           ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "chmod 600 '$VPS_DIR/.env'"
           if [ -n "$ADMIN_API_KEY" ]; then
-            echo "✅ .env écrit sur le VPS (F-09/F-51/F-29/F-02/A3/C2-TURN/ADM-4/GTM — 10 variables, ADMIN_API_KEY incluse)"
+            echo "✅ .env écrit sur le VPS (F-09/F-51/F-29/F-02/A3/C2-TURN/ADM-4/GTM/VAPID — 12 variables, ADMIN_API_KEY incluse)"
           else
-            echo "✅ .env écrit sur le VPS (9 variables — ADMIN_API_KEY absente : modération admin OFF)"
+            echo "✅ .env écrit sur le VPS (11 variables — ADMIN_API_KEY absente : modération admin OFF)"
           fi
         env:
           NEXT_PUBLIC_SOCKET_URL: ${{ secrets.NEXT_PUBLIC_SOCKET_URL }}
@@ -242,6 +272,8 @@ jobs:
           ADMIN_INTERNAL_TOKEN: ${{ secrets.ADMIN_INTERNAL_TOKEN }}
           ADMIN_BASE_PATH: ${{ secrets.ADMIN_BASE_PATH }}
           NEXT_PUBLIC_ADMIN_BASE_PATH: ${{ secrets.NEXT_PUBLIC_ADMIN_BASE_PATH }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
 
       - name: Build & démarrage
         if: steps.gate.outputs.ok == 'true'
@@ -250,9 +282,48 @@ jobs:
             "$VPS_USER@$VPS_HOST" \
             "cd '$VPS_DIR' && docker compose up -d --build && docker image prune -f"
 
-      - name: Vérification santé
+      - name: Vérification santé — 3 services + retries (audit 2026-11 §4.3)
         if: steps.gate.outputs.ok == 'true'
         run: |
+          # les variables du workflow sont injectées dans l'env de la commande
+          # distante (le heredoc est quoté : aucune expansion locale).
           ssh -p "$VPS_PORT" -i ~/.ssh/id_mbote_ci -o IdentitiesOnly=yes \
             "$VPS_USER@$VPS_HOST" \
-            "sleep 6 && curl -fsS http://127.0.0.1:${VPS_WEB_PORT}/api/stats > /dev/null && echo '✅ API en bonne santé' && cd '$VPS_DIR' && docker compose ps"
+            "VPS_WEB_PORT='${VPS_WEB_PORT}' VPS_DIR='${VPS_DIR}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$VPS_DIR"
+
+          # 1) les trois conteneurs doivent être healthy (mesh/admin/relay).
+          #    start_period Next ≈ 40 s → 24 essais × 5 s = 120 s de tolérance.
+          echo "→ attente healthchecks docker (mbote-mesh, mbote-admin, mbote-relay)"
+          for i in $(seq 1 24); do
+            UNHEALTHY=$(docker inspect --format '{{.Name}}={{.State.Health.Status}}' mbote-mesh mbote-admin mbote-relay 2>/dev/null | awk -F= '$2 != "healthy" {printf "%s ", $0}')
+            if [ "$UNHEALTHY" = "" ]; then
+              echo "✅ 3/3 conteneurs healthy (essai $i)"
+              break
+            fi
+            echo "  essai $i/24 — pas encore healthy : $UNHEALTHY"
+            if [ "$i" = "24" ]; then
+              echo "::error::healthchecks docker non verts après 120 s : $UNHEALTHY — déploiement DÉFAILLANT"
+              docker compose ps
+              exit 1
+            fi
+            sleep 5
+          done
+
+          # 2) l'API publique répond-elle ? (curl + retries — détection d'une
+          #    app construite mais cassée au runtime)
+          echo "→ sonde HTTP /api/stats (local)"
+          for i in $(seq 1 12); do
+            if curl -fsS --max-time 5 "http://127.0.0.1:${VPS_WEB_PORT}/api/stats" > /dev/null 2>&1; then
+              echo "✅ /api/stats répond (essai $i)"
+              docker compose ps
+              exit 0
+            fi
+            echo "  essai $i/12 — /api/stats ne répond pas encore"
+            sleep 5
+          done
+          echo "::error::/api/stats injoignable après 60 s — déploiement DÉFAILLANT (rollback manuel : re-dispatch sur le SHA précédent, docs/PRE-DEPLOY-CHECKLIST.md §Rollback)"
+          docker compose ps
+          exit 1
+          REMOTE

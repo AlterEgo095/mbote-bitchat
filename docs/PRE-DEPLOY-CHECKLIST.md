@@ -217,13 +217,27 @@
 
 **NO-GO / STOP** : échec migrations au boot · counts legacy ≠ 0 · panel accessible sans CF Access (200 direct) · push device réel en échec (§6.5) · toute erreur 5xx non expliquée dans les logs 30 min après deploy.
 
-**Rollback** (si NO-GO bloquant) :
+**Rollback** (si NO-GO bloquant) — procédure officielle depuis 2026-11 (audit plateforme §4.5) :
+
+Le VPS n'a PAS de `.git` (rsync exclut `.git` — le checkout local côté serveur est impossible). Le rollback passe par la CI, qui porte le gate F-1 (le SHA déployé doit avoir des tests vertes — un SHA déjà déployé l'a, par construction) :
+
+```text
+GitHub → Actions → « Déploiement VPS » → Run workflow →
+  ref = <SHA du déploiement précédent connu bon>  → Run
+```
+
+- L'input `ref` accepte un SHA complet/court, une branche ou un tag.
+- Le workflow rsync le code de CE SHA, reconstruit et redémarre les 3 conteneurs.
+- La nouvelle étape « Vérification santé — 3 services + retries » échoue si les healthchecks docker ou /api/stats ne reviennent pas au vert (retour d'état explicite dans la run).
+- En dernier recours (CI indisponible) : rsync manuel depuis la workstation vers `$VPS_DIR` puis `docker compose up -d --build` — même résultat, sans le gate.
+
 ```bash
-# Sur le VPS — revenir à l'image précédente (le rsync ne pousse pas un rollback : redéployer le commit précédent via Actions, ou manuellement) :
+# Restauration DB ponctuelle (indépendante du code) — uniquement si les données
+# doivent revenir en arrière ; les migrations sont ADDITIVES (aucune suppression
+# de colonne 0004→0008) : une DB restaurée pré-clôture redémarre proprement sur
+# l'ancien code ; les tables admin restantes sont inertes.
 docker exec mbote-mesh sh -c 'cp /app/db/custom.db.pre-cloture-<ts> /app/db/custom.db'
-cd <VPS_DIR> && git checkout <commit-precedent> && docker compose up -d --build
-# Les migrations sont ADDITIVES (aucune suppression de colonne 0004→0008) : une DB restaurée
-# pré-clôture redémarre proprement sur l'ancien code ; les tables admin restantes sont inertes.
+# → runbook complet de restauration : docs/RUNBOOK-RESTAURATION-BACKUP.md
 ```
 
 ---

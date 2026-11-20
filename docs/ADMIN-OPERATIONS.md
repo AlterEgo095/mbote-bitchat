@@ -29,6 +29,21 @@ docker exec -it mbote-mesh bun run admin:create -- --email=moderateur@exemple.cd
 - Garde-fous : refuse sans `--allow-prod` en production, refuse un email déjà pris, refuse si le bootstrap n'a pas été fait, écrit une ligne d'audit `admin_created`.
 - Le nouveau compte enrole son TOTP au premier login (code demandé puis confirmé).
 
+### 2.1 Créer le SECOND super-admin (four-eyes exercable — audit 2026-11 §4.7)
+
+Le four-eyes (§4) exige **deux super-admins DISTINCTS** ; à un seul compte, la fonctionnalité est inertée (aucune purge/ban possible). État au 2026-11-20 : **1 seul super-admin réel** — créer le second est la première priorité opérationnelle :
+
+```bash
+docker exec -it mbote-mesh bun run admin:create -- --email=superadmin2@exemple.cd --role=super-admin --allow-prod
+# → mot de passe généré + secret TOTP (QR) affichés UNE FOIS — remettre au second
+#   titulaire par un canal privé (jamais le panneau, jamais un post public).
+```
+
+1. Choisir un titulaire DIFFÉRENT de la personne qui détient le compte n°1 (le four-eyes est un contrôle humain, pas technique — deux comptes pour la même personne ne le rétablit pas).
+2. Le second titulaire se connecte au panneau, enrole son TOTP, et conserve ses codes de secours.
+3. Vérification : `docker exec mbote-mesh bun run admin:list 2>/dev/null || true` ou contrôle dans `/users` du panneau — deux comptes `super-admin` actifs.
+4. L'audit `admin_created` trace la création ; une révocation éventuelle se fait via la suspension du compte (§4-§7) + suppression DB manuelle si nécessaire.
+
 ## 3. Investiguer un signalement (queue)
 
 `/queue` — la file pèse chaque contenu par son **nombre de reports ouverts** (les plus signalés d'abord, puis ancienneté). Filtres : période (24h/7d/30d/all), type (post/comment).
