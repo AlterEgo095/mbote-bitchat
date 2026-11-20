@@ -122,6 +122,8 @@ jobs:
           scan-type: fs
           scanners: vuln,secret,misconfig
           severity: HIGH,CRITICAL
+          version: "0.76.2" # trivy récent (le cache binaire v0.70 du 16/11 + vieux bundle de checks rego donnait des faux positifs DS-0026 — cf. runs 44831/448320/448326)
+          cache: false # DB vulns + checks FRAIS à chaque run — le cache politique du 16/11 faussait l'évaluation (exit 1 sur findings note-level)
           skip-dirs: mobile
           # Capture de preuve C1 (JWT VAPID expirés du harnais — assertions
           # signées non réutilisables sans clé privée) : exclue du scan via
