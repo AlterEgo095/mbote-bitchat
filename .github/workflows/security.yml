@@ -123,7 +123,13 @@ jobs:
           scanners: vuln,secret,misconfig
           severity: HIGH,CRITICAL
           skip-dirs: mobile
-          ignorefile: .trivyignore.yaml # ignorances scopées par path (justifications écrites dans le fichier)
+          # Capture de preuve C1 (JWT VAPID expirés du harnais — assertions
+          # signées non réutilisables sans clé privée) : exclue du scan via
+          # skip-files, l'input « ignorefile » n'existe pas dans trivy-action
+          # v0.36.0 (warning « unexpected input » constaté en run 44832034160).
+          # Justification complète : .trivyignore.yaml (documente aussi les
+          # ignorances futures, au format trivy ≥0.53).
+          skip-files: docs/proofs/assets/c1-wire-capture.jsonl
           exit-code: "1" # BLOQUANT (audit 2026-11 §4.9) — vuln/secret/misconfig HIGH+ font échouer
           format: sarif
           output: security-report.sarif
