@@ -3,7 +3,7 @@
 # Épinglage par digest (condition 6 : build reproductible) :
 # oven/bun:1 == sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d
 # (épinglé 2026-11-04 — vérifié via registry API)
-FROM oven/bun:1@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d
+FROM oven/bun:1@sha256:3aa040e5445efa09d75bb428a64ba50db13e2b3ac9b6b0c7f145615f62b2ee18
 WORKDIR /app
 # bun.lock copié + --frozen-lockfile (condition 6) : le lockfile existait déjà
 # dans le dépôt mais `bun install` seul l'IGNORAIT → versions résolues à la
